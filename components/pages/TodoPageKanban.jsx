@@ -194,41 +194,43 @@ export default function TodoPageKanban({ user }) {
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
+    setActiveId(null);
     
     if (!over) {
-      setActiveId(null);
       return;
     }
 
     const activeTask = todos.find(t => t.id === active.id);
     if (!activeTask) {
-      setActiveId(null);
       return;
     }
 
-    // Check if dropped on a different column
-    const overTask = todos.find(t => t.id === over.id);
+    // Determine new status based on which column the task is dropped on
     let newStatus = activeTask.status;
-
-    if (overTask && overTask.status !== activeTask.status) {
+    
+    // Check if over a task in different column
+    const overTask = todos.find(t => t.id === over.id);
+    if (overTask) {
       newStatus = overTask.status;
     }
 
     // Update status if changed
     if (newStatus !== activeTask.status) {
+      // Optimistically update UI
+      setTodos(todos.map(t => 
+        t.id === activeTask.id ? { ...t, status: newStatus } : t
+      ));
+
       try {
         await todoAPI.update(activeTask.id, { status: newStatus });
-        setTodos(todos.map(t => 
-          t.id === activeTask.id ? { ...t, status: newStatus } : t
-        ));
-        toast.success('Status berhasil diubah!');
+        toast.success(`Status diubah ke ${getStatusLabel(newStatus)}!`);
       } catch (error) {
         console.error('Failed to update status:', error);
         toast.error('Gagal mengubah status');
+        // Revert on error
+        loadTodos();
       }
     }
-
-    setActiveId(null);
   };
 
   const handleDragOver = (event) => {
@@ -240,16 +242,28 @@ export default function TodoPageKanban({ user }) {
 
     if (!activeTask || !overTask) return;
 
+    // Only update if moving to different column
     if (activeTask.status !== overTask.status) {
       setTodos(todos => {
-        const activeIndex = todos.findIndex(t => t.id === active.id);
-        const overIndex = todos.findIndex(t => t.id === over.id);
-
-        const newTodos = [...todos];
-        newTodos[activeIndex] = { ...activeTask, status: overTask.status };
-
-        return arrayMove(newTodos, activeIndex, overIndex);
+        return todos.map(t => 
+          t.id === active.id ? { ...t, status: overTask.status } : t
+        );
       });
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'draft':
+      case 'pending':
+        return 'Draft';
+      case 'in_progress':
+        return 'On Progress';
+      case 'done':
+      case 'completed':
+        return 'Done';
+      default:
+        return status;
     }
   };
 
