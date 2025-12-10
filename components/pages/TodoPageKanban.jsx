@@ -265,22 +265,13 @@ export default function TodoPageKanban({ user }) {
     setActiveId(null);
     
     if (!over) {
-      console.log('❌ No drop target');
       return;
     }
 
     const activeTask = todos.find(t => t.id === active.id);
     if (!activeTask) {
-      console.log('❌ Active task not found');
       return;
     }
-
-    console.log('🎯 Drag End Debug:', {
-      activeTaskId: active.id,
-      activeTaskStatus: activeTask.status,
-      overTargetId: over.id,
-      overTargetType: typeof over.id
-    });
 
     // Determine new status based on where it was dropped
     let newStatus = activeTask.status;
@@ -288,26 +279,18 @@ export default function TodoPageKanban({ user }) {
     // First, check if dropped directly on a column droppable area
     if (over.id === 'draft' || over.id === 'pending') {
       newStatus = 'draft';
-      console.log('✅ Detected: Draft column');
     } else if (over.id === 'in_progress') {
       newStatus = 'in_progress';
-      console.log('✅ Detected: In Progress column');
     } else if (over.id === 'done' || over.id === 'completed') {
       newStatus = 'done';
-      console.log('✅ Detected: Done column');
     } else {
       // If not dropped on column directly, check if dropped on a task
       // and use that task's status (which represents the column it's in)
       const overTask = todos.find(t => t.id === over.id);
       if (overTask) {
         newStatus = overTask.status;
-        console.log('✅ Detected: Dropped on task with status:', overTask.status);
-      } else {
-        console.log('⚠️ Could not determine target - over.id:', over.id);
       }
     }
-
-    console.log('📊 Status change:', activeTask.status, '→', newStatus);
 
     // Only update if status actually changed
     if (newStatus !== activeTask.status) {
@@ -326,9 +309,6 @@ export default function TodoPageKanban({ user }) {
         // Revert UI on error
         loadTodos();
       }
-    } else {
-      // No status change detected
-      console.log('⚠️ No status change - task remains in same column');
     }
   };
 
