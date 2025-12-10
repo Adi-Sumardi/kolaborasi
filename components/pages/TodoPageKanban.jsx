@@ -95,7 +95,7 @@ function TaskCard({ task, onDelete, onEdit }) {
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-            onClick={() => onDelete(task.id)}
+            onClick={() => onDelete(task)}
           >
             <Trash2 className="w-3 h-3" />
           </Button>
