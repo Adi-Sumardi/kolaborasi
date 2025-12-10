@@ -413,8 +413,8 @@ export default function JobdeskPage({ user }) {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-gray-600">
                     {job.dueDate && (
                       <div className="flex items-center space-x-1">
                         <Calendar className="w-4 h-4" />
@@ -426,7 +426,7 @@ export default function JobdeskPage({ user }) {
                       <span>{job.assignedTo?.length || 0} karyawan</span>
                     </div>
                   </div>
-                  <div className="flex space-x-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -434,15 +434,18 @@ export default function JobdeskPage({ user }) {
                         setSelectedJobdesk(job);
                         setShowAttachmentModal(true);
                       }}
+                      className="flex-1 sm:flex-none"
                     >
                       <Paperclip className="w-4 h-4 mr-1" />
-                      Lampiran
+                      <span className="hidden sm:inline">Lampiran</span>
+                      <span className="sm:hidden">File</span>
                     </Button>
                     {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && job.status === 'pending' && (
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleUpdateStatus(job.id, 'in_progress')}
+                        className="flex-1 sm:flex-none"
                       >
                         <PlayCircle className="w-4 h-4 mr-1" />
                         Mulai
@@ -457,13 +460,16 @@ export default function JobdeskPage({ user }) {
                             setSelectedJobdesk(job);
                             setShowLogModal(true);
                           }}
+                          className="flex-1 sm:flex-none"
                         >
                           <Clock className="w-4 h-4 mr-1" />
-                          Log Aktivitas
+                          <span className="hidden sm:inline">Log Aktivitas</span>
+                          <span className="sm:hidden">Log</span>
                         </Button>
                         <Button
                           size="sm"
                           onClick={() => handleUpdateStatus(job.id, 'completed')}
+                          className="flex-1 sm:flex-none"
                         >
                           <CheckCircle2 className="w-4 h-4 mr-1" />
                           Selesai
