@@ -126,6 +126,15 @@ export default function ChatPage({ user, socket }) {
     });
   };
 
+  const filteredUsers = users
+    .filter(u => u.id !== user.id)
+    .filter(u => {
+      if (!userSearchQuery) return true;
+      const query = userSearchQuery.toLowerCase();
+      return u.name.toLowerCase().includes(query) || 
+             u.email.toLowerCase().includes(query);
+    });
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
