@@ -110,11 +110,11 @@ user_problem_statement: |
 backend:
   - task: "Create API endpoint for converting To-Do to Daily Log"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/api/[[...path]]/route.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
@@ -125,6 +125,38 @@ backend:
           - Creates daily_log entry with todo title/description and hoursSpent
           - Updates todo with convertedToLog=true flag
           Backend ready for testing.
+      - working: true
+        agent: "testing"
+        comment: |
+          COMPREHENSIVE BACKEND TESTING COMPLETED - ALL TESTS PASSED (8/8)
+          
+          ✅ Authentication Tests:
+          - Unauthorized requests correctly rejected (401)
+          - Valid auth token accepted
+          
+          ✅ Validation Tests:
+          - Missing hoursSpent rejected (400)
+          - Zero/negative hoursSpent rejected (400)
+          - All validation error messages correct
+          
+          ✅ Business Logic Tests:
+          - Non-existent todoId returns 404
+          - Todo without jobdeskId rejected with proper message
+          - Todo with status != 'done' rejected with proper message
+          - Already converted todo rejected with proper message
+          
+          ✅ Success Test:
+          - Valid conversion creates daily_log with correct data
+          - Todo updated with convertedToLog=true flag
+          - Notes formatted with "**[From To-Do]**" prefix
+          - hoursSpent correctly parsed as float
+          
+          ✅ Database Verification:
+          - daily_logs collection contains new entry
+          - todos collection updated with conversion flag
+          - All data integrity maintained
+          
+          API endpoint is fully functional and production-ready.
 
 frontend:
   - task: "Add Jobdesk selection dropdown in Create/Edit To-Do modal"
