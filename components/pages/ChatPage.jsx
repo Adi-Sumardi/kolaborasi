@@ -22,6 +22,7 @@ export default function ChatPage({ user, socket }) {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', members: [] });
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
