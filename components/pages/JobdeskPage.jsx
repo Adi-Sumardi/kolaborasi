@@ -440,38 +440,38 @@ export default function JobdeskPage({ user }) {
                     </Button>
                     {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && (
                       <>
-                      {job.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleUpdateStatus(job.id, 'in_progress')}
-                        >
-                          <PlayCircle className="w-4 h-4 mr-1" />
-                          Mulai
-                        </Button>
-                      )}
-                      {job.status === 'in_progress' && (
-                        <>
+                        {job.status === 'pending' && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setSelectedJobdesk(job);
-                              setShowLogModal(true);
-                            }}
+                            onClick={() => handleUpdateStatus(job.id, 'in_progress')}
                           >
-                            <Clock className="w-4 h-4 mr-1" />
-                            Log Aktivitas
+                            <PlayCircle className="w-4 h-4 mr-1" />
+                            Mulai
                           </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleUpdateStatus(job.id, 'completed')}
-                          >
-                            <CheckCircle2 className="w-4 h-4 mr-1" />
-                            Selesai
-                          </Button>
-                        </>
-                      )}
+                        )}
+                        {job.status === 'in_progress' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedJobdesk(job);
+                                setShowLogModal(true);
+                              }}
+                            >
+                              <Clock className="w-4 h-4 mr-1" />
+                              Log Aktivitas
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateStatus(job.id, 'completed')}
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-1" />
+                              Selesai
+                            </Button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
