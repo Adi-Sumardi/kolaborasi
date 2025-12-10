@@ -209,13 +209,22 @@ export default function TodoPageKanban({ user }) {
       return;
     }
 
-    // Determine new status based on which column the task is dropped on
+    // Determine new status
     let newStatus = activeTask.status;
     
-    // Check if over a task in different column
-    const overTask = todos.find(t => t.id === over.id);
-    if (overTask) {
-      newStatus = overTask.status;
+    // Check if dropped directly on a column (droppable area)
+    if (over.id === 'draft' || over.id === 'pending') {
+      newStatus = 'draft';
+    } else if (over.id === 'in_progress') {
+      newStatus = 'in_progress';
+    } else if (over.id === 'done' || over.id === 'completed') {
+      newStatus = 'done';
+    } else {
+      // Dropped on a task, get that task's status
+      const overTask = todos.find(t => t.id === over.id);
+      if (overTask) {
+        newStatus = overTask.status;
+      }
     }
 
     // Update status if changed
