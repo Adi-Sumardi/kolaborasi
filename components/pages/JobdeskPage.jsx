@@ -21,6 +21,7 @@ export default function JobdeskPage({ user }) {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [selectedJobdesk, setSelectedJobdesk] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
