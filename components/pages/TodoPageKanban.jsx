@@ -317,15 +317,16 @@ export default function TodoPageKanban({ user }) {
 
     try {
       await todoAPI.create({
-        title: formData.task, // API expects "title" not "task"
+        title: formData.task,
         description: formData.description,
         priority: formData.priority,
         dueDate: formData.dueDate,
+        jobdeskId: formData.jobdeskId || null,
         status: selectedStatus
       });
       toast.success('Tugas berhasil ditambahkan!');
       setShowCreateModal(false);
-      setFormData({ task: '', description: '', priority: 'medium', dueDate: '' });
+      setFormData({ task: '', description: '', priority: 'medium', dueDate: '', jobdeskId: '' });
       loadTodos();
     } catch (error) {
       console.error('Failed to create todo:', error);
