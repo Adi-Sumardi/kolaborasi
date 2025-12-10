@@ -31,6 +31,8 @@ export default function AttachmentSection({ jobdesk, user }) {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
 
   useEffect(() => {
     loadAttachments();
