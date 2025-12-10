@@ -1195,6 +1195,174 @@ async function handleMarkNotificationRead(request, notificationId) {
 }
 
 // ============================================
+// ATTACHMENT ENDPOINTS
+// ============================================
+
+// Get attachments for a jobdesk
+async function handleGetAttachments(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if user has access to this jobdesk
+    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+    if (!jobdesk) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    // Check permission: assigned karyawan, pengurus, or super_admin
+    const hasAccess = 
+      jobdesk.assignedTo?.includes(user.userId) ||
+      hasPermission(user.role, ['super_admin', 'pengurus']);
+
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const attachments = await db.collection('attachments')
+      .find({ jobdeskId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return NextResponse.json({ attachments });
+  } catch (error) {
+    console.error('Get attachments error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get attachments' },
+      { status: 500 }
+    );
+  }
+}
+
+// Create attachment (file or link)
+async function handleCreateAttachment(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if user has access to this jobdesk
+    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+    if (!jobdesk) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    // Check permission: only assigned karyawan can upload
+    if (!jobdesk.assignedTo?.includes(user.userId)) {
+      return NextResponse.json({ 
+        error: 'Only assigned karyawan can upload attachments' 
+      }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { type, url, fileName, fileSize, fileType } = body;
+
+    if (!type || (type === 'link' && !url) || (type === 'file' && !fileName)) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    const attachment = {
+      id: uuidv4(),
+      jobdeskId,
+      userId: user.userId,
+      type, // 'file' or 'link'
+      url: url || null,
+      fileName: fileName || null,
+      fileSize: fileSize || null,
+      fileType: fileType || null,
+      createdAt: new Date()
+    };
+
+    await db.collection('attachments').insertOne(attachment);
+
+    // Send notification to pengurus
+    const pengurusUsers = await db.collection('users').find({
+      role: { $in: ['pengurus', 'super_admin'] }
+    }).toArray();
+
+    for (const pengurus of pengurusUsers) {
+      const notification = {
+        id: uuidv4(),
+        userId: pengurus.id,
+        type: 'attachment_added',
+        title: 'Lampiran Baru',
+        message: `${user.email} menambahkan lampiran di jobdesk: ${jobdesk.title}`,
+        read: false,
+        createdAt: new Date()
+      };
+      
+      await db.collection('notifications').insertOne(notification);
+      
+      try {
+        sendNotification(pengurus.id, notification);
+      } catch (err) {
+        console.error('Socket notification error:', err);
+      }
+    }
+
+    return NextResponse.json({
+      message: 'Attachment added successfully',
+      attachment
+    });
+  } catch (error) {
+    console.error('Create attachment error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create attachment' },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete attachment
+async function handleDeleteAttachment(request, attachmentId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    const attachment = await db.collection('attachments').findOne({ id: attachmentId });
+    if (!attachment) {
+      return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
+    }
+
+    // Check permission: owner, pengurus, or super_admin
+    const canDelete = 
+      attachment.userId === user.userId ||
+      hasPermission(user.role, ['super_admin', 'pengurus']);
+
+    if (!canDelete) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    await db.collection('attachments').deleteOne({ id: attachmentId });
+
+    return NextResponse.json({ message: 'Attachment deleted successfully' });
+  } catch (error) {
+    console.error('Delete attachment error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete attachment' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
 // USER MANAGEMENT ENDPOINTS
 // ============================================
 
