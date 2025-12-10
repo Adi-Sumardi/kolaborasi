@@ -112,11 +112,16 @@ async function handleCreateUser(request) {
 async function handleRegister(request) {
   try {
     const body = await request.json();
-    const { email, password, name, role, divisionId } = body;
+    let { email, password, name, role, divisionId } = body;
 
-    if (!email || !password || !name || !role) {
+    // Sanitize inputs
+    email = sanitizeEmail(email);
+    name = sanitizeString(name);
+    role = sanitizeString(role);
+    
+    if (!email || !password || !name || !role || !validators.email(email) || !validators.password(password)) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing or invalid required fields' },
         { status: 400 }
       );
     }
