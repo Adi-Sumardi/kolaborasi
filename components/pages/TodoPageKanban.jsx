@@ -230,8 +230,7 @@ export default function TodoPageKanban({ user }) {
 
   const loadJobdesks = async () => {
     try {
-      const res = await fetch('/api/jobdesks');
-      const data = await res.json();
+      const data = await jobdeskAPI.getAll();
       // Filter only assigned jobdesks for current user
       const myJobdesks = data.jobdesks?.filter(j => 
         j.assignedTo?.includes(user.id) || 
@@ -241,6 +240,7 @@ export default function TodoPageKanban({ user }) {
       setJobdesks(myJobdesks);
     } catch (error) {
       console.error('Failed to load jobdesks:', error);
+      toast.error('Gagal memuat daftar jobdesk');
     }
   };
 
