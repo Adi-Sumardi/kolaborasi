@@ -1008,6 +1008,95 @@ async function handleCreateTodo(request) {
   }
 }
 
+// Convert todo to daily log
+async function handleConvertTodoToLog(request, todoId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { hoursSpent } = body;
+
+    if (!hoursSpent || hoursSpent <= 0) {
+      return NextResponse.json(
+        { error: 'Hours spent must be greater than 0' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Get todo
+    const todo = await db.collection('todos').findOne({ id: todoId, userId: user.userId });
+    if (!todo) {
+      return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+    }
+
+    // Check if already converted
+    if (todo.convertedToLog) {
+      return NextResponse.json(
+        { error: 'Todo already converted to log' },
+        { status: 400 }
+      );
+    }
+
+    // Check if has jobdesk
+    if (!todo.jobdeskId) {
+      return NextResponse.json(
+        { error: 'Todo must have a jobdesk to convert' },
+        { status: 400 }
+      );
+    }
+
+    // Check if status is done
+    if (todo.status !== 'done' && todo.status !== 'completed') {
+      return NextResponse.json(
+        { error: 'Todo must be in done status to convert' },
+        { status: 400 }
+      );
+    }
+
+    // Create daily log
+    const dailyLog = {
+      id: uuidv4(),
+      userId: user.userId,
+      jobdeskId: todo.jobdeskId,
+      date: new Date(),
+      notes: `**[From To-Do]** ${todo.title}\n\n${todo.description || 'No description'}`,
+      hoursSpent: parseFloat(hoursSpent),
+      createdAt: new Date()
+    };
+
+    await db.collection('daily_logs').insertOne(dailyLog);
+
+    // Update todo
+    await db.collection('todos').updateOne(
+      { id: todoId },
+      {
+        $set: {
+          convertedToLog: true,
+          logId: dailyLog.id,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return NextResponse.json({
+      message: 'Todo converted to log successfully',
+      log: dailyLog
+    });
+  } catch (error) {
+    console.error('Convert todo to log error:', error);
+    return NextResponse.json(
+      { error: 'Failed to convert todo to log' },
+      { status: 500 }
+    );
+  }
+}
+
 // Update todo
 async function handleUpdateTodo(request, todoId) {
   try {
