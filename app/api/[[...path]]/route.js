@@ -33,6 +33,81 @@ const hasPermission = (userRole, allowedRoles) => {
 // ============================================
 
 // Register new user
+async function handleCreateUser(request) {
+  try {
+    // Auth check - only super_admin and pengurus can create users
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { email, password, name, role, divisionId } = body;
+
+    if (!email || !password || !name || !role) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if user already exists
+    const existingUser = await db.collection('users').findOne({ email });
+    if (existingUser) {
+      return NextResponse.json(
+        { error: 'Email already registered' },
+        { status: 400 }
+      );
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Generate 2FA secret
+    const secret = speakeasy.generateSecret({
+      name: `Workspace (${email})`,
+      length: 32
+    });
+
+    const user = {
+      id: uuidv4(),
+      email,
+      password: hashedPassword,
+      name,
+      role,
+      divisionId: divisionId || null,
+      isActive: true,
+      twoFactorSecret: secret.base32,
+      twoFactorEnabled: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    await db.collection('users').insertOne(user);
+
+    return NextResponse.json({
+      message: 'User created successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        divisionId: user.divisionId,
+        isActive: user.isActive
+      }
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create user' },
+      { status: 500 }
+    );
+  }
+}
+
 async function handleRegister(request) {
   try {
     const body = await request.json();
