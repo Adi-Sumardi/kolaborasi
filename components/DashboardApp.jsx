@@ -11,7 +11,9 @@ import {
   Users, 
   MessageSquare, 
   CheckSquare, 
-  Settings
+  Settings,
+  Menu,
+  X
 } from 'lucide-react';
 import { 
   getUser, 
