@@ -203,23 +203,37 @@ export default function ChatPage({ user, socket }) {
               </div>
               <div>
                 <Label>Pilih Anggota * ({formData.members.length} dipilih)</Label>
+                <Input
+                  type="text"
+                  placeholder="🔍 Cari nama atau email..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="mt-2"
+                />
                 <ScrollArea className="h-[200px] border rounded-md p-3 mt-2">
                   <div className="space-y-2">
-                    {users.filter(u => u.id !== user.id).map(u => (
-                      <div key={u.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`user-${u.id}`}
-                          checked={formData.members.includes(u.id)}
-                          onCheckedChange={() => toggleMember(u.id)}
-                        />
-                        <label
-                          htmlFor={`user-${u.id}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {u.name} ({u.email})
-                        </label>
-                      </div>
-                    ))}
+                    {filteredUsers.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        {userSearchQuery ? 'User tidak ditemukan' : 'Tidak ada user lain'}
+                      </p>
+                    ) : (
+                      filteredUsers.map(u => (
+                        <div key={u.id} className="flex items-center space-x-2 hover:bg-gray-50 p-2 rounded">
+                          <Checkbox
+                            id={`user-${u.id}`}
+                            checked={formData.members.includes(u.id)}
+                            onCheckedChange={() => toggleMember(u.id)}
+                          />
+                          <label
+                            htmlFor={`user-${u.id}`}
+                            className="flex-1 text-sm font-medium leading-none cursor-pointer"
+                          >
+                            <div className="font-semibold">{u.name}</div>
+                            <div className="text-xs text-gray-500">{u.email}</div>
+                          </label>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </ScrollArea>
               </div>
