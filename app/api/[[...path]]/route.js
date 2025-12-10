@@ -1580,6 +1580,12 @@ export async function POST(request, { params }) {
     // Chat
     if (path === 'chat/rooms') return handleCreateChatRoom(request);
     if (path === 'chat/messages') return handleSendMessage(request);
+    
+    // Attachments
+    if (path.startsWith('jobdesks/') && path.endsWith('/attachments')) {
+      const jobdeskId = path.split('/')[1];
+      return handleCreateAttachment(request, jobdeskId);
+    }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
