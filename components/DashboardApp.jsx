@@ -119,6 +119,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
     { id: 'home', label: 'Dashboard', icon: Home, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'jobdesk', label: 'Jobdesk', icon: ClipboardList, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'kpi', label: 'KPI', icon: BarChart3, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
+    { id: 'users', label: 'User', icon: Users, roles: ['super_admin', 'pengurus'] },
     { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'pengurus', 'sdm'] },
     { id: 'chat', label: 'Chat', icon: MessageSquare, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
