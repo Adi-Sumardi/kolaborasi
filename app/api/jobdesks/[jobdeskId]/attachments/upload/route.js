@@ -5,6 +5,13 @@ import { v4 as uuidv4 } from 'uuid';
 import clientPromise from '@/lib/mongodb';
 import jwt from 'jsonwebtoken';
 import { sendNotification } from '@/lib/socket-server';
+import fs from 'fs';
+
+// Ensure upload directory exists
+const uploadDir = join(process.cwd(), 'public', 'uploads', 'jobdesk-attachments');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const verifyToken = (request) => {
   const authHeader = request.headers.get('authorization');
