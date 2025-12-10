@@ -1539,6 +1539,12 @@ export async function GET(request, { params }) {
     
     // Notifications
     if (path === 'notifications') return handleGetNotifications(request);
+    
+    // Attachments
+    if (path.startsWith('jobdesks/') && path.endsWith('/attachments')) {
+      const jobdeskId = path.split('/')[1];
+      return handleGetAttachments(request, jobdeskId);
+    }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
