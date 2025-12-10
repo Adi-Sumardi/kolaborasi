@@ -41,12 +41,16 @@ app.prepare().then(() => {
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production-12345');
+      if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET not configured');
+      }
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = decoded.userId;
       socket.userEmail = decoded.email;
       socket.userRole = decoded.role;
       next();
     } catch (err) {
+      console.error('Socket auth error:', err.message);
       next(new Error('Authentication error'));
     }
   });
