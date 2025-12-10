@@ -245,8 +245,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Add Jobdesk selection dropdown in Create/Edit To-Do modal"
-    - "Add 'Convert to Log' button and modal for completed To-Dos"
+    - "Update User Password API endpoint"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
