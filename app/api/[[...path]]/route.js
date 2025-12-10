@@ -1396,3 +1396,30 @@ export async function PUT(request, { params }) {
     );
   }
 }
+
+export async function DELETE(request, { params }) {
+  const path = params?.path?.join('/') || '';
+
+  try {
+    // Divisions
+    if (path.match(/^divisions\/[^/]+$/)) {
+      const divisionId = path.split('/')[1];
+      return handleDeleteDivision(request, divisionId);
+    }
+    
+    // Users
+    if (path.match(/^users\/[^/]+$/)) {
+      const userId = path.split('/')[1];
+      return handleDeleteUser(request, userId);
+    }
+
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
