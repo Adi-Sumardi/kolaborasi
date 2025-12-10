@@ -351,6 +351,8 @@ export default function TodoPageKanban({ user }) {
             tasks={draftTodos}
             color="bg-gradient-to-r from-gray-500 to-gray-600"
             onAddTask={() => openAddModal('draft')}
+            onDelete={handleDeleteTodo}
+            onEdit={openEditModal}
           />
           <KanbanColumn
             title="⚡ On Progress"
@@ -358,6 +360,8 @@ export default function TodoPageKanban({ user }) {
             tasks={inProgressTodos}
             color="bg-gradient-to-r from-blue-500 to-blue-600"
             onAddTask={() => openAddModal('in_progress')}
+            onDelete={handleDeleteTodo}
+            onEdit={openEditModal}
           />
           <KanbanColumn
             title="✅ Done"
@@ -365,6 +369,8 @@ export default function TodoPageKanban({ user }) {
             tasks={doneTodos}
             color="bg-gradient-to-r from-green-500 to-green-600"
             onAddTask={() => openAddModal('done')}
+            onDelete={handleDeleteTodo}
+            onEdit={openEditModal}
           />
         </div>
 
