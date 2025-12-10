@@ -285,7 +285,10 @@ export default function TodoPageKanban({ user }) {
 
     try {
       await todoAPI.create({
-        ...formData,
+        title: formData.task, // API expects "title" not "task"
+        description: formData.description,
+        priority: formData.priority,
+        dueDate: formData.dueDate,
         status: selectedStatus
       });
       toast.success('Tugas berhasil ditambahkan!');
@@ -294,7 +297,7 @@ export default function TodoPageKanban({ user }) {
       loadTodos();
     } catch (error) {
       console.error('Failed to create todo:', error);
-      toast.error('Gagal menambahkan tugas');
+      toast.error(error.message || 'Gagal menambahkan tugas');
     }
   };
 
