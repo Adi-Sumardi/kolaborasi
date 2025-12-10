@@ -312,6 +312,31 @@ export default function TodoPageKanban({ user }) {
     }
   };
 
+  const handleConvertToLog = async (task) => {
+    if (!task.jobdeskId) {
+      toast.error('Task ini tidak memiliki jobdesk terkait');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/todos/${task.id}/convert-to-log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to convert');
+      }
+
+      toast.success('Berhasil disimpan ke Log Aktivitas!');
+      loadTodos();
+    } catch (error) {
+      console.error('Failed to convert to log:', error);
+      toast.error(error.message || 'Gagal menyimpan ke log');
+    }
+  };
+
   const handleCreateTodo = async (e) => {
     e.preventDefault();
 
