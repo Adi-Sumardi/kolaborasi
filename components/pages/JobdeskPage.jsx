@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { jobdeskAPI, userAPI, dailyLogAPI } from '@/lib/api';
+import { jobdeskAPI, userAPI, dailyLogAPI, divisionAPI } from '@/lib/api';
 import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
