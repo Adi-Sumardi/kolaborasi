@@ -305,7 +305,12 @@ export default function TodoPageKanban({ user }) {
     e.preventDefault();
 
     try {
-      await todoAPI.update(editingTask.id, formData);
+      await todoAPI.update(editingTask.id, {
+        title: formData.task, // API expects "title" not "task"
+        description: formData.description,
+        priority: formData.priority,
+        dueDate: formData.dueDate
+      });
       toast.success('Tugas berhasil diupdate!');
       setShowEditModal(false);
       setEditingTask(null);
@@ -313,7 +318,7 @@ export default function TodoPageKanban({ user }) {
       loadTodos();
     } catch (error) {
       console.error('Failed to update todo:', error);
-      toast.error('Gagal mengupdate tugas');
+      toast.error(error.message || 'Gagal mengupdate tugas');
     }
   };
 
