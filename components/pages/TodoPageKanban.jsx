@@ -344,16 +344,26 @@ export default function TodoPageKanban({ user }) {
     }
   };
 
-  const handleConvertToLog = async (task) => {
-    if (!task.jobdeskId) {
-      toast.error('Task ini tidak memiliki jobdesk terkait');
+  const openConvertDialog = (task) => {
+    setConvertingTask(task);
+    setHoursSpent('1');
+    setShowConvertDialog(true);
+  };
+
+  const handleConvertToLog = async () => {
+    if (!convertingTask) return;
+
+    const hours = parseFloat(hoursSpent);
+    if (isNaN(hours) || hours <= 0) {
+      toast.error('Jam kerja harus lebih dari 0');
       return;
     }
 
     try {
-      const response = await fetch(`/api/todos/${task.id}/convert-to-log`, {
+      const response = await fetch(`/api/todos/${convertingTask.id}/convert-to-log`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hoursSpent: hours })
       });
 
       if (!response.ok) {
@@ -362,6 +372,9 @@ export default function TodoPageKanban({ user }) {
       }
 
       toast.success('Berhasil disimpan ke Log Aktivitas!');
+      setShowConvertDialog(false);
+      setConvertingTask(null);
+      setHoursSpent('1');
       loadTodos();
     } catch (error) {
       console.error('Failed to convert to log:', error);
