@@ -1123,6 +1123,146 @@ async function handleMarkNotificationRead(request, notificationId) {
 }
 
 // ============================================
+// USER MANAGEMENT ENDPOINTS
+// ============================================
+
+// Update user
+async function handleUpdateUser(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, email, role, divisionId } = body;
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if email already exists (excluding current user)
+    if (email) {
+      const existingUser = await db.collection('users').findOne({ 
+        email, 
+        id: { $ne: userId } 
+      });
+      if (existingUser) {
+        return NextResponse.json(
+          { error: 'Email already in use' },
+          { status: 400 }
+        );
+      }
+    }
+
+    const updateData = { updatedAt: new Date() };
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+    if (role) updateData.role = role;
+    if (divisionId !== undefined) updateData.divisionId = divisionId;
+
+    await db.collection('users').updateOne(
+      { id: userId },
+      { $set: updateData }
+    );
+
+    return NextResponse.json({ message: 'User updated successfully' });
+  } catch (error) {
+    console.error('Update user error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update user' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update user status (enable/disable)
+async function handleUpdateUserStatus(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { isActive } = body;
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    await db.collection('users').updateOne(
+      { id: userId },
+      { $set: { isActive, updatedAt: new Date() } }
+    );
+
+    return NextResponse.json({ 
+      message: `User ${isActive ? 'enabled' : 'disabled'} successfully` 
+    });
+  } catch (error) {
+    console.error('Update user status error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update user status' },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete user
+async function handleDeleteUser(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || user.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Soft delete - just set isActive to false
+    await db.collection('users').updateOne(
+      { id: userId },
+      { $set: { isActive: false, deletedAt: new Date() } }
+    );
+
+    return NextResponse.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete user' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update user division
+async function handleUpdateUserDivision(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { divisionId } = body;
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    await db.collection('users').updateOne(
+      { id: userId },
+      { $set: { divisionId, updatedAt: new Date() } }
+    );
+
+    return NextResponse.json({ message: 'User division updated successfully' });
+  } catch (error) {
+    console.error('Update user division error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update user division' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
