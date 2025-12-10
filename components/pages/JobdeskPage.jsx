@@ -180,10 +180,10 @@ export default function JobdeskPage({ user }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Jobdesk</h1>
-          <p className="text-gray-600 mt-1">Kelola tugas dan pekerjaan</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Jobdesk</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">Kelola tugas dan pekerjaan</p>
         </div>
         {(user.role === 'super_admin' || user.role === 'pengurus') && (
           <Dialog open={showCreateModal} onOpenChange={(open) => {
@@ -196,7 +196,7 @@ export default function JobdeskPage({ user }) {
             }
           }}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />
                 Tambah Jobdesk
               </Button>
