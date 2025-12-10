@@ -129,6 +129,25 @@ export default function AttachmentSection({ jobdesk, user }) {
     }
   };
 
+  const handleView = (attachment) => {
+    if (attachment.type === 'file') {
+      // Check if it's previewable
+      const isImage = attachment.fileType?.includes('image');
+      const isPdf = attachment.fileType?.includes('pdf');
+      
+      if (isImage || isPdf) {
+        setPreviewAttachment(attachment);
+        setShowPreviewModal(true);
+      } else {
+        // For other files, open in new tab
+        window.open(attachment.url, '_blank');
+      }
+    } else {
+      // For links, open directly
+      window.open(attachment.url, '_blank');
+    }
+  };
+
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
