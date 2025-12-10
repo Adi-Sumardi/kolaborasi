@@ -161,7 +161,7 @@ function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit
             </Button>
           </div>
         </CardHeader>
-        <CardContent ref={setNodeRef} className="p-3 min-h-[400px] max-h-[calc(100vh-300px)] overflow-y-auto">
+        <CardContent ref={setNodeRef} className="p-3 min-h-[400px] max-h-[calc(100vh-300px)] overflow-y-auto" data-column-status={status}>
           <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm">
