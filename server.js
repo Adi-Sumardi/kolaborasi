@@ -3,6 +3,8 @@ const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const helmet = require('helmet');
+const compression = require('compression');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
@@ -11,9 +13,53 @@ const port = 3000;
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
+// Graceful shutdown handler
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} signal received: closing HTTP server`);
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+};
+
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
+      // Apply security headers
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https:", "blob:"],
+            connectSrc: ["'self'", process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'],
+            fontSrc: ["'self'", "data:"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+          },
+        },
+        hsts: {
+          maxAge: 31536000,
+          includeSubDomains: true,
+          preload: true
+        },
+        frameguard: { action: 'deny' },
+        xssFilter: true,
+        noSniff: true,
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+      })(req, res, () => {});
+      
+      // Apply compression
+      compression()(req, res, () => {});
+      
       const parsedUrl = parse(req.url, true);
       await handle(req, res, parsedUrl);
     } catch (err) {
@@ -22,6 +68,10 @@ app.prepare().then(() => {
       res.end('internal server error');
     }
   });
+  
+  // Register graceful shutdown handlers
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   // Initialize Socket.IO
   const io = new Server(server, {
