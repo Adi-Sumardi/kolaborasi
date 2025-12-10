@@ -737,9 +737,13 @@ async function handleGetDailyLogs(request) {
     }
 
     if (startDate && endDate) {
+      // Set endDate to end of day (23:59:59.999) to include all logs on that day
+      const endDateTime = new Date(endDate);
+      endDateTime.setHours(23, 59, 59, 999);
+      
       query.date = {
         $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $lte: endDateTime
       };
     }
 
