@@ -95,20 +95,34 @@ export default function ChatPage({ user, socket }) {
   const handleCreateRoom = async (e) => {
     e.preventDefault();
 
+    if (formData.members.length === 0) {
+      toast.error('Pilih minimal 1 anggota');
+      return;
+    }
+
     try {
       await chatAPI.createRoom({
         name: formData.name,
-        members: [],
+        members: formData.members,
         type: 'group'
       });
       toast.success('Ruang chat berhasil dibuat!');
       setShowCreateModal(false);
-      setFormData({ name: '' });
+      setFormData({ name: '', members: [] });
       loadRooms();
     } catch (error) {
       console.error('Failed to create room:', error);
       toast.error(error.message || 'Gagal membuat ruang chat');
     }
+  };
+
+  const toggleMember = (userId) => {
+    setFormData(prev => {
+      const members = prev.members.includes(userId)
+        ? prev.members.filter(id => id !== userId)
+        : [...prev.members, userId];
+      return { ...prev, members };
+    });
   };
 
   const handleSendMessage = async (e) => {
