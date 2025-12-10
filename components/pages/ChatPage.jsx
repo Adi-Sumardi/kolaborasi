@@ -258,21 +258,50 @@ export default function ChatPage({ user, socket }) {
           <CardContent className="p-0">
             <ScrollArea className="h-[400px] md:h-[calc(100vh-350px)]">
               {rooms.length === 0 ? (
-                <p className="text-center text-gray-500 py-4 px-4 text-sm">Belum ada ruang chat</p>
+                <div className="text-center py-8 px-4">
+                  <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Belum ada ruang chat</p>
+                </div>
               ) : (
-                <div className="space-y-1 p-2">
+                <div className="space-y-2 p-2">
                   {rooms.map(room => (
-                    <Button
+                    <div
                       key={room.id}
-                      variant={selectedRoom?.id === room.id ? 'secondary' : 'ghost'}
-                      className="w-full justify-start text-left"
                       onClick={() => setSelectedRoom(room)}
+                      className={`
+                        p-3 rounded-lg cursor-pointer transition-all
+                        ${selectedRoom?.id === room.id 
+                          ? 'bg-blue-50 border-2 border-blue-500 shadow-sm' 
+                          : 'bg-white border-2 border-gray-100 hover:border-blue-200 hover:shadow-sm'
+                        }
+                      `}
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate text-sm">{room.name}</p>
-                        <p className="text-xs text-gray-500">{room.members?.length || 0} anggota</p>
+                      <div className="flex items-start gap-3">
+                        <div className={`
+                          p-2 rounded-full flex-shrink-0
+                          ${selectedRoom?.id === room.id ? 'bg-blue-500' : 'bg-gray-200'}
+                        `}>
+                          <MessageCircle className={`w-4 h-4 ${selectedRoom?.id === room.id ? 'text-white' : 'text-gray-600'}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold truncate text-sm ${selectedRoom?.id === room.id ? 'text-blue-900' : 'text-gray-900'}`}>
+                            {room.name}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1">
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <Users className="w-3 h-3" />
+                              <span>{room.members?.length || 0}</span>
+                            </div>
+                            {room.lastMessage && (
+                              <div className="flex items-center gap-1 text-xs text-gray-400">
+                                <Clock className="w-3 h-3" />
+                                <span>{new Date(room.lastMessage?.createdAt || room.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </Button>
+                    </div>
                   ))}
                 </div>
               )}
