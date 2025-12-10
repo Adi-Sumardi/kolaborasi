@@ -138,6 +138,8 @@ export default function DashboardApp({ setIsLoggedIn }) {
         return <JobdeskPage user={currentUser} />;
       case 'kpi':
         return <KPIPage user={currentUser} />;
+      case 'users':
+        return <UserManagementPage user={currentUser} />;
       case 'divisions':
         return <DivisionPage user={currentUser} />;
       case 'chat':
