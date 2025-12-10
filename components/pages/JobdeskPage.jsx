@@ -486,7 +486,7 @@ export default function JobdeskPage({ user }) {
       
       {/* Attachment Modal */}
       <Dialog open={showAttachmentModal} onOpenChange={setShowAttachmentModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Lampiran - {selectedJobdesk?.title}</DialogTitle>
             <DialogDescription>
