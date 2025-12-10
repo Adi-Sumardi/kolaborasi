@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Clock, CheckCircle2, Activity } from 'lucide-react';
+import { TrendingUp, Clock, CheckCircle2, Activity, Download } from 'lucide-react';
+import { generateKPIPDF } from '@/lib/pdfGenerator';
 
 export default function KPIPage({ user }) {
   const [selectedUserId, setSelectedUserId] = useState(user.id);
