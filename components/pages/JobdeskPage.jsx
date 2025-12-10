@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
+import AttachmentSection from '@/components/AttachmentSection';
 
 export default function JobdeskPage({ user }) {
   const [jobdesks, setJobdesks] = useState([]);
