@@ -411,6 +411,36 @@ async function handleCreateDivision(request) {
   }
 }
 
+// Delete division
+async function handleDeleteDivision(request, divisionId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Remove division from all users
+    await db.collection('users').updateMany(
+      { divisionId },
+      { $set: { divisionId: null, updatedAt: new Date() } }
+    );
+
+    // Delete the division
+    await db.collection('divisions').deleteOne({ id: divisionId });
+
+    return NextResponse.json({ message: 'Division deleted successfully' });
+  } catch (error) {
+    console.error('Delete division error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete division' },
+      { status: 500 }
+    );
+  }
+}
+
 // ============================================
 // JOBDESK ENDPOINTS
 // ============================================
