@@ -130,6 +130,46 @@ export default function JobdeskPage({ user }) {
     const karyawanIds = users.filter(u => u.role === 'karyawan').map(u => u.id);
     setFormData(prev => ({ ...prev, assignedTo: karyawanIds }));
   };
+  
+  const selectAllFiltered = () => {
+    const filteredIds = getFilteredUsers().map(u => u.id);
+    setFormData(prev => ({ ...prev, assignedTo: filteredIds }));
+  };
+  
+  const clearSelection = () => {
+    setFormData(prev => ({ ...prev, assignedTo: [] }));
+  };
+  
+  // Filter function
+  const getFilteredUsers = () => {
+    let filtered = users.filter(u => u.role === 'karyawan');
+    
+    // Filter by search query (nama atau email)
+    if (searchQuery) {
+      filtered = filtered.filter(u => 
+        u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Filter by division
+    if (divisionFilter !== 'all') {
+      if (divisionFilter === 'no_division') {
+        filtered = filtered.filter(u => !u.divisionId);
+      } else {
+        filtered = filtered.filter(u => u.divisionId === divisionFilter);
+      }
+    }
+    
+    // Filter by status
+    if (statusFilter === 'active') {
+      filtered = filtered.filter(u => u.isActive !== false);
+    } else if (statusFilter === 'inactive') {
+      filtered = filtered.filter(u => u.isActive === false);
+    }
+    
+    return filtered;
+  };
 
   if (loading) {
     return <div className="text-center py-8">Memuat data...</div>;
