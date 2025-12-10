@@ -273,10 +273,10 @@ export default function TodoPageKanban({ user }) {
       return;
     }
 
-    // Determine new status
+    // Determine new status based on where it was dropped
     let newStatus = activeTask.status;
     
-    // Check if dropped directly on a column (droppable area)
+    // First, check if dropped directly on a column droppable area
     if (over.id === 'draft' || over.id === 'pending') {
       newStatus = 'draft';
     } else if (over.id === 'in_progress') {
@@ -284,49 +284,40 @@ export default function TodoPageKanban({ user }) {
     } else if (over.id === 'done' || over.id === 'completed') {
       newStatus = 'done';
     } else {
-      // Dropped on a task, get that task's status
+      // If not dropped on column directly, check if dropped on a task
+      // and use that task's status (which represents the column it's in)
       const overTask = todos.find(t => t.id === over.id);
       if (overTask) {
         newStatus = overTask.status;
       }
     }
 
-    // Update status if changed
+    // Only update if status actually changed
     if (newStatus !== activeTask.status) {
-      // Optimistically update UI
-      setTodos(todos.map(t => 
+      // Optimistically update UI immediately for better UX
+      setTodos(prevTodos => prevTodos.map(t => 
         t.id === activeTask.id ? { ...t, status: newStatus } : t
       ));
 
       try {
+        // Update in backend
         await todoAPI.update(activeTask.id, { status: newStatus });
         toast.success(`Status diubah ke ${getStatusLabel(newStatus)}!`);
       } catch (error) {
         console.error('Failed to update status:', error);
         toast.error('Gagal mengubah status');
-        // Revert on error
+        // Revert UI on error
         loadTodos();
       }
+    } else {
+      // No status change detected
+      console.log('No status change - task remains in same column');
     }
   };
 
   const handleDragOver = (event) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeTask = todos.find(t => t.id === active.id);
-    const overTask = todos.find(t => t.id === over.id);
-
-    if (!activeTask || !overTask) return;
-
-    // Only update if moving to different column
-    if (activeTask.status !== overTask.status) {
-      setTodos(todos => {
-        return todos.map(t => 
-          t.id === active.id ? { ...t, status: overTask.status } : t
-        );
-      });
-    }
+    // Visual feedback during drag - no state changes
+    // This is kept minimal to avoid conflicts with handleDragEnd
   };
 
   const getStatusLabel = (status) => {
