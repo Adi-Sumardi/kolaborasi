@@ -835,15 +835,20 @@ async function handleGetKPI(request) {
 
     let dateQuery = {};
     if (startDate && endDate) {
+      // Set endDate to end of day (23:59:59.999) to include all logs on that day
+      const endDateTime = new Date(endDate);
+      endDateTime.setHours(23, 59, 59, 999);
+      
       dateQuery = {
         $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $lte: endDateTime
       };
     } else {
       // Default to current month
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      lastDay.setHours(23, 59, 59, 999);
       dateQuery = { $gte: firstDay, $lte: lastDay };
     }
 
