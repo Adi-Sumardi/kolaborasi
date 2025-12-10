@@ -663,7 +663,7 @@ export default function TodoPageKanban({ user }) {
             <div>
               <Label htmlFor="edit-jobdesk">Jobdesk Terkait (opsional)</Label>
               <Select
-                value={formData.jobdeskId || undefined}
+                value={formData.jobdeskId || 'none'}
                 onValueChange={(value) => setFormData({ ...formData, jobdeskId: value === 'none' ? '' : value })}
               >
                 <SelectTrigger>
