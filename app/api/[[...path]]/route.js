@@ -1664,6 +1664,12 @@ export async function DELETE(request, { params }) {
       const userId = path.split('/')[1];
       return handleDeleteUser(request, userId);
     }
+    
+    // Attachments
+    if (path.match(/^attachments\/[^/]+$/)) {
+      const attachmentId = path.split('/')[1];
+      return handleDeleteAttachment(request, attachmentId);
+    }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
