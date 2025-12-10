@@ -55,6 +55,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showJobdeskModal, setShowJobdeskModal] = useState(false);
   const [checkingJobdesks, setCheckingJobdesks] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const user = getUser();
