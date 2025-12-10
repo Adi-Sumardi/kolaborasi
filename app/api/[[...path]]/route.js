@@ -174,9 +174,12 @@ async function handleRegister(request) {
 async function handleLogin(request) {
   try {
     const body = await request.json();
-    const { email, password, twoFactorCode, rememberMe } = body;
+    let { email, password, twoFactorCode, rememberMe } = body;
 
-    if (!email || !password) {
+    // Sanitize inputs
+    email = sanitizeEmail(email);
+    
+    if (!email || !password || !validators.email(email)) {
       return NextResponse.json(
         { error: 'Email and password required' },
         { status: 400 }
