@@ -177,27 +177,27 @@ export default function ChatPage({ user, socket }) {
       </div>
 
       {/* Chat Interface */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 h-[calc(100vh-250px)]">
-        {/* Rooms List */}
-        <Card className="md:col-span-1">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Rooms List - Hidden on mobile when room is selected */}
+        <Card className={`md:col-span-1 ${selectedRoom ? 'hidden md:block' : 'block'}`}>
           <CardHeader>
-            <CardTitle className="text-lg">Ruang Chat</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Ruang Chat</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[calc(100vh-350px)]">
+            <ScrollArea className="h-[400px] md:h-[calc(100vh-350px)]">
               {rooms.length === 0 ? (
-                <p className="text-center text-gray-500 py-4 px-4">Belum ada ruang chat</p>
+                <p className="text-center text-gray-500 py-4 px-4 text-sm">Belum ada ruang chat</p>
               ) : (
                 <div className="space-y-1 p-2">
                   {rooms.map(room => (
                     <Button
                       key={room.id}
                       variant={selectedRoom?.id === room.id ? 'secondary' : 'ghost'}
-                      className="w-full justify-start"
+                      className="w-full justify-start text-left"
                       onClick={() => setSelectedRoom(room)}
                     >
-                      <div className="text-left">
-                        <p className="font-medium truncate">{room.name}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate text-sm">{room.name}</p>
                         <p className="text-xs text-gray-500">{room.members?.length || 0} anggota</p>
                       </div>
                     </Button>
