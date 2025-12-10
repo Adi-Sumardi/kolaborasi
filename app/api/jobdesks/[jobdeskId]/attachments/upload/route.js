@@ -99,7 +99,6 @@ export async function POST(request, { params }) {
     const originalFileName = file.name;
     
     // Save to public/uploads/jobdesk-attachments
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'jobdesk-attachments');
     const filePath = join(uploadDir, fileName);
     
     await writeFile(filePath, buffer);
