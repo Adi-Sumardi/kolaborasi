@@ -95,7 +95,7 @@ function TaskCard({ task, onDelete, onEdit }) {
 }
 
 // Kanban Column Component
-function KanbanColumn({ title, status, tasks, color, onAddTask }) {
+function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit }) {
   const taskIds = tasks.map(t => t.id);
 
   return (
@@ -125,7 +125,16 @@ function KanbanColumn({ title, status, tasks, color, onAddTask }) {
               <div className="text-center py-8 text-gray-400 text-sm">
                 Tidak ada tugas
               </div>
-            ) : null}
+            ) : (
+              tasks.map(task => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                />
+              ))
+            )}
           </SortableContext>
         </CardContent>
       </Card>
