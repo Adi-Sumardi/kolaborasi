@@ -26,7 +26,17 @@ export default function ChatPage({ user, socket }) {
 
   useEffect(() => {
     loadRooms();
+    loadUsers();
   }, []);
+
+  const loadUsers = async () => {
+    try {
+      const res = await userAPI.getAll();
+      setUsers(res.users || []);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    }
+  };
 
   useEffect(() => {
     if (socket && selectedRoom) {
