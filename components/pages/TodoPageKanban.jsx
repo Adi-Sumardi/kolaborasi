@@ -360,9 +360,13 @@ export default function TodoPageKanban({ user }) {
     }
 
     try {
+      const token = getToken();
       const response = await fetch(`/api/todos/${convertingTask.id}/convert-to-log`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ hoursSpent: hours })
       });
 
