@@ -125,16 +125,7 @@ function KanbanColumn({ title, status, tasks, color, onAddTask }) {
               <div className="text-center py-8 text-gray-400 text-sm">
                 Tidak ada tugas
               </div>
-            ) : (
-              tasks.map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onDelete={(id) => console.log('Delete', id)}
-                  onEdit={(task) => console.log('Edit', task)}
-                />
-              ))
-            )}
+            ) : null}
           </SortableContext>
         </CardContent>
       </Card>
