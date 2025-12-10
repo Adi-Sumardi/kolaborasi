@@ -63,6 +63,7 @@ async function seed() {
         name: 'Super Administrator',
         role: 'super_admin',
         divisionId: null,
+        isActive: true,
         twoFactorSecret: speakeasy.generateSecret({ length: 32 }).base32,
         twoFactorEnabled: false,
         createdAt: new Date(),
