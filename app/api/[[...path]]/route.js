@@ -1660,7 +1660,7 @@ export async function POST(request, { params }) {
     if (path === 'auth/2fa/enable') return handleEnable2FA(request);
     
     // Users
-    if (path === 'users') return handleRegister(request);
+    if (path === 'users') return handleCreateUser(request);
     
     // Divisions
     if (path === 'divisions') return handleCreateDivision(request);
