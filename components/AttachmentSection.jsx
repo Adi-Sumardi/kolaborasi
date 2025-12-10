@@ -326,7 +326,7 @@ export default function AttachmentSection({ jobdesk, user }) {
                         </>
                       )}
                       <p className="text-xs text-gray-500 mt-1">
-                        {new Date(attachment.createdAt).toLocaleString('id-ID')}
+                        Oleh: <span className="font-medium">{attachment.uploaderName}</span> • {new Date(attachment.createdAt).toLocaleString('id-ID')}
                       </p>
                     </div>
                   </div>
