@@ -193,9 +193,12 @@ export default function TodoPageKanban({ user }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('draft');
   const [editingTask, setEditingTask] = useState(null);
   const [deletingTask, setDeletingTask] = useState(null);
+  const [convertingTask, setConvertingTask] = useState(null);
+  const [hoursSpent, setHoursSpent] = useState('1');
   const [formData, setFormData] = useState({
     task: '',
     description: '',
