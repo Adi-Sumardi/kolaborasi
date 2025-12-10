@@ -1736,6 +1736,12 @@ export async function PUT(request, { params }) {
       return handleMarkNotificationRead(request, notificationId);
     }
 
+    // Chat Rooms
+    if (path.match(/^chat\/rooms\/[^/]+$/)) {
+      const roomId = path.split('/')[2];
+      return handleUpdateChatRoom(request, roomId);
+    }
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
