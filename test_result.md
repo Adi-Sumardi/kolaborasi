@@ -237,6 +237,27 @@ frontend:
           
           The entire Convert to Log feature is production-ready and working perfectly.
 
+  - task: "Update User Password API endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Implemented handleUpdateUserPassword function (line ~1752-1820).
+          - PUT /api/users/:id/password endpoint
+          - Authorization: Only super_admin can change user passwords
+          - Validates: newPassword must be at least 6 characters
+          - Hashes password with bcrypt before updating database
+          - Updates user's password in users collection
+          - Added route matcher in PUT handler
+          - Updated frontend to call new dedicated endpoint
+          Backend ready for testing.
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
