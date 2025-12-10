@@ -1,0 +1,358 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { jobdeskAPI, userAPI, dailyLogAPI } from '@/lib/api';
+import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { Checkbox } from '@/components/ui/checkbox';
+
+export default function JobdeskPage({ user }) {
+  const [jobdesks, setJobdesks] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [selectedJobdesk, setSelectedJobdesk] = useState(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    assignedTo: [],
+    dueDate: ''
+  });
+  const [logData, setLogData] = useState({
+    notes: '',
+    hoursSpent: 0,
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [jobdeskRes, usersRes] = await Promise.all([
+        jobdeskAPI.getAll(),
+        user.role !== 'karyawan' ? userAPI.getAll() : Promise.resolve({ users: [] })
+      ]);
+
+      setJobdesks(jobdeskRes.jobdesks || []);
+      setUsers(usersRes.users || []);
+    } catch (error) {
+      console.error('Failed to load jobdesks:', error);
+      toast.error('Gagal memuat data jobdesk');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateJobdesk = async (e) => {
+    e.preventDefault();
+
+    if (formData.assignedTo.length === 0) {
+      toast.error('Pilih minimal satu karyawan');
+      return;
+    }
+
+    try {
+      await jobdeskAPI.create(formData);
+      toast.success('Jobdesk berhasil dibuat!');
+      setShowCreateModal(false);
+      setFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
+      loadData();
+    } catch (error) {
+      console.error('Failed to create jobdesk:', error);
+      toast.error(error.message || 'Gagal membuat jobdesk');
+    }
+  };
+
+  const handleUpdateStatus = async (jobdeskId, newStatus) => {
+    try {
+      await jobdeskAPI.updateStatus(jobdeskId, newStatus);
+      toast.success('Status jobdesk diperbarui');
+      loadData();
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      toast.error('Gagal memperbarui status');
+    }
+  };
+
+  const handleCreateLog = async (e) => {
+    e.preventDefault();
+
+    try {
+      await dailyLogAPI.create({
+        ...logData,
+        jobdeskId: selectedJobdesk.id
+      });
+      toast.success('Log aktivitas berhasil ditambahkan!');
+      setShowLogModal(false);
+      setLogData({ notes: '', hoursSpent: 0, date: new Date().toISOString().split('T')[0] });
+      setSelectedJobdesk(null);
+    } catch (error) {
+      console.error('Failed to create log:', error);
+      toast.error('Gagal menambahkan log');
+    }
+  };
+
+  const toggleUserSelection = (userId) => {
+    setFormData(prev => ({
+      ...prev,
+      assignedTo: prev.assignedTo.includes(userId)
+        ? prev.assignedTo.filter(id => id !== userId)
+        : [...prev.assignedTo, userId]
+    }));
+  };
+
+  const selectAllKaryawan = () => {
+    const karyawanIds = users.filter(u => u.role === 'karyawan').map(u => u.id);
+    setFormData(prev => ({ ...prev, assignedTo: karyawanIds }));
+  };
+
+  if (loading) {
+    return <div className="text-center py-8">Memuat data...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Jobdesk</h1>
+          <p className="text-gray-600 mt-1">Kelola tugas dan pekerjaan</p>
+        </div>
+        {(user.role === 'super_admin' || user.role === 'pengurus') && (
+          <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Tambah Jobdesk
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Tambah Jobdesk Baru</DialogTitle>
+                <DialogDescription>
+                  Buat jobdesk baru dan assign ke karyawan
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreateJobdesk} className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Judul Jobdesk *</Label>
+                  <Input
+                    id="title"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description">Deskripsi</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="dueDate">Tenggat Waktu</Label>
+                  <Input
+                    id="dueDate"
+                    type="date"
+                    value={formData.dueDate}
+                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label>Assign ke Karyawan *</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={selectAllKaryawan}>
+                      Pilih Semua Karyawan
+                    </Button>
+                  </div>
+                  <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
+                    {users.filter(u => u.role === 'karyawan').map(u => (
+                      <div key={u.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`user-${u.id}`}
+                          checked={formData.assignedTo.includes(u.id)}
+                          onCheckedChange={() => toggleUserSelection(u.id)}
+                        />
+                        <Label htmlFor={`user-${u.id}`} className="cursor-pointer flex-1">
+                          {u.name} ({u.email})
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {formData.assignedTo.length} karyawan dipilih
+                  </p>
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
+                    Batal
+                  </Button>
+                  <Button type="submit">Buat Jobdesk</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+
+      {/* Jobdesk List */}
+      <div className="grid gap-4">
+        {jobdesks.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-gray-500">
+              Belum ada jobdesk
+            </CardContent>
+          </Card>
+        ) : (
+          jobdesks.map(job => (
+            <Card key={job.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-xl">{job.title}</CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">{job.description}</p>
+                  </div>
+                  <div className="ml-4">
+                    {job.status === 'pending' && (
+                      <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-full">
+                        Pending
+                      </span>
+                    )}
+                    {job.status === 'in_progress' && (
+                      <span className="px-3 py-1 bg-yellow-200 text-yellow-700 text-sm rounded-full">
+                        Dalam Proses
+                      </span>
+                    )}
+                    {job.status === 'completed' && (
+                      <span className="px-3 py-1 bg-green-200 text-green-700 text-sm rounded-full">
+                        Selesai
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                    {job.dueDate && (
+                      <div className="flex items-center space-x-1">
+                        <Calendar className="w-4 h-4" />
+                        <span>{new Date(job.dueDate).toLocaleDateString('id-ID')}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center space-x-1">
+                      <User className="w-4 h-4" />
+                      <span>{job.assignedTo?.length || 0} karyawan</span>
+                    </div>
+                  </div>
+                  {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && (
+                    <div className="flex space-x-2">
+                      {job.status === 'pending' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUpdateStatus(job.id, 'in_progress')}
+                        >
+                          <PlayCircle className="w-4 h-4 mr-1" />
+                          Mulai
+                        </Button>
+                      )}
+                      {job.status === 'in_progress' && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedJobdesk(job);
+                              setShowLogModal(true);
+                            }}
+                          >
+                            <Clock className="w-4 h-4 mr-1" />
+                            Log Aktivitas
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdateStatus(job.id, 'completed')}
+                          >
+                            <CheckCircle2 className="w-4 h-4 mr-1" />
+                            Selesai
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Log Activity Modal */}
+      <Dialog open={showLogModal} onOpenChange={setShowLogModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log Aktivitas Harian</DialogTitle>
+            <DialogDescription>
+              Catat progress pekerjaan Anda untuk jobdesk: {selectedJobdesk?.title}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateLog} className="space-y-4">
+            <div>
+              <Label htmlFor="log-date">Tanggal</Label>
+              <Input
+                id="log-date"
+                type="date"
+                value={logData.date}
+                onChange={(e) => setLogData({ ...logData, date: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="log-hours">Jam Kerja</Label>
+              <Input
+                id="log-hours"
+                type="number"
+                step="0.5"
+                min="0"
+                value={logData.hoursSpent}
+                onChange={(e) => setLogData({ ...logData, hoursSpent: parseFloat(e.target.value) })}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="log-notes">Catatan Progress *</Label>
+              <Textarea
+                id="log-notes"
+                value={logData.notes}
+                onChange={(e) => setLogData({ ...logData, notes: e.target.value })}
+                rows={4}
+                placeholder="Deskripsikan progress yang sudah dicapai hari ini..."
+                required
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => setShowLogModal(false)}>
+                Batal
+              </Button>
+              <Button type="submit">Simpan Log</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
