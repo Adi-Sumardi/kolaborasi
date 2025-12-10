@@ -1215,10 +1215,10 @@ async function handleGetAttachments(request, jobdeskId) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
-    // Check permission: assigned karyawan, pengurus, or super_admin
+    // Check permission: assigned karyawan, pengurus, sdm, or super_admin
     const hasAccess = 
       jobdesk.assignedTo?.includes(user.userId) ||
-      hasPermission(user.role, ['super_admin', 'pengurus']);
+      hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
