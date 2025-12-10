@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 export default function JobdeskPage({ user }) {
   const [jobdesks, setJobdesks] = useState([]);
   const [users, setUsers] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
@@ -31,6 +32,11 @@ export default function JobdeskPage({ user }) {
     hoursSpent: 0,
     date: new Date().toISOString().split('T')[0]
   });
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [divisionFilter, setDivisionFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('active');
 
   useEffect(() => {
     loadData();
