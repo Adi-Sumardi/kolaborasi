@@ -201,7 +201,6 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Create API endpoint for converting To-Do to Daily Log"
     - "Add Jobdesk selection dropdown in Create/Edit To-Do modal"
     - "Add 'Convert to Log' button and modal for completed To-Dos"
   stuck_tasks: []
