@@ -339,15 +339,16 @@ export default function TodoPageKanban({ user }) {
 
     try {
       await todoAPI.update(editingTask.id, {
-        title: formData.task, // API expects "title" not "task"
+        title: formData.task,
         description: formData.description,
         priority: formData.priority,
-        dueDate: formData.dueDate
+        dueDate: formData.dueDate,
+        jobdeskId: formData.jobdeskId || null
       });
       toast.success('Tugas berhasil diupdate!');
       setShowEditModal(false);
       setEditingTask(null);
-      setFormData({ task: '', description: '', priority: 'medium', dueDate: '' });
+      setFormData({ task: '', description: '', priority: 'medium', dueDate: '', jobdeskId: '' });
       loadTodos();
     } catch (error) {
       console.error('Failed to update todo:', error);
