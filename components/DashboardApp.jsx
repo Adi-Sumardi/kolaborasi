@@ -43,7 +43,7 @@ import JobdeskPage from './pages/JobdeskPage';
 import KPIPage from './pages/KPIPage';
 import DivisionPage from './pages/DivisionPage';
 import ChatPage from './pages/ChatPage';
-import TodoPage from './pages/TodoPage';
+import TodoPageKanban from './pages/TodoPageKanban';
 import SettingsPage from './pages/SettingsPage';
 import UserManagementPage from './pages/UserManagementPage';
 
