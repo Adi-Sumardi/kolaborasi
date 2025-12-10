@@ -65,17 +65,23 @@ export default function DashboardApp({ setIsLoggedIn }) {
       console.error('Failed to fetch user:', err);
     });
 
-    // Initialize Socket.io
-    const socketInstance = initSocket();
-    if (socketInstance) {
-      setSocket(socketInstance);
+    // Initialize Socket.io with delay to avoid connection spam
+    const socketTimer = setTimeout(() => {
+      try {
+        const socketInstance = initSocket();
+        if (socketInstance) {
+          setSocket(socketInstance);
 
-      // Listen for notifications
-      socketInstance.on('notification', (notification) => {
-        setNotifications(prev => [notification, ...prev]);
-        toast.info(notification.title, { description: notification.message });
-      });
-    }
+          // Listen for notifications
+          socketInstance.on('notification', (notification) => {
+            setNotifications(prev => [notification, ...prev]);
+            toast.info(notification.title, { description: notification.message });
+          });
+        }
+      } catch (error) {
+        console.warn('Socket.io not available, continuing without real-time features');
+      }
+    }, 1000); // Delay 1 second
 
     // Fetch initial notifications
     notificationAPI.getAll().then(data => {
