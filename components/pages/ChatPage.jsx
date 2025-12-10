@@ -137,6 +137,40 @@ export default function ChatPage({ user, socket }) {
              u.email.toLowerCase().includes(query);
     });
 
+  const openEditModal = (room) => {
+    setEditingRoom(room);
+    setFormData({
+      name: room.name,
+      members: room.members || []
+    });
+    setUserSearchQuery('');
+    setShowEditModal(true);
+  };
+
+  const handleUpdateRoom = async (e) => {
+    e.preventDefault();
+
+    if (formData.members.length === 0) {
+      toast.error('Ruang chat harus memiliki minimal 1 anggota');
+      return;
+    }
+
+    try {
+      await chatAPI.updateRoom(editingRoom.id, {
+        name: formData.name,
+        members: formData.members
+      });
+      toast.success('Ruang chat berhasil diupdate!');
+      setShowEditModal(false);
+      setEditingRoom(null);
+      setFormData({ name: '', members: [] });
+      loadRooms();
+    } catch (error) {
+      console.error('Failed to update room:', error);
+      toast.error(error.message || 'Gagal mengupdate ruang chat');
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
