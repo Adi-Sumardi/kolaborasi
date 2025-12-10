@@ -360,7 +360,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
       )}
 
       {/* Main Content */}
-      <main className="p-4 sm:p-6 lg:p-8">
+      <main className="p-4 sm:p-6 lg:p-8 pb-20 sm:pb-8">
         {renderPage()}
       </main>
 
