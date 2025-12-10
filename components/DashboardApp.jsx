@@ -154,7 +154,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
       case 'chat':
         return <ChatPage user={currentUser} socket={socket} />;
       case 'todo':
-        return <TodoPage user={currentUser} />;
+        return <TodoPageKanban user={currentUser} />;
       case 'settings':
         return <SettingsPage user={currentUser} />;
       default:
