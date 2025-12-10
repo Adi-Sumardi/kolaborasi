@@ -37,7 +37,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 // Sortable Task Card Component
-function TaskCard({ task, onDelete, onEdit }) {
+function TaskCard({ task, onDelete, onEdit, onConvertToLog, jobdesks }) {
   const {
     attributes,
     listeners,
@@ -62,6 +62,10 @@ function TaskCard({ task, onDelete, onEdit }) {
     }
   };
 
+  const isDone = task.status === 'done' || task.status === 'completed';
+  const hasJobdesk = !!task.jobdeskId;
+  const jobdesk = jobdesks.find(j => j.id === task.jobdeskId);
+
   return (
     <div
       ref={setNodeRef}
@@ -77,13 +81,25 @@ function TaskCard({ task, onDelete, onEdit }) {
           {task.description && (
             <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>
           )}
+          {hasJobdesk && jobdesk && (
+            <div className="flex items-center gap-1 mt-1">
+              <Briefcase className="w-3 h-3 text-blue-600" />
+              <p className="text-xs text-blue-600 font-medium">{jobdesk.title}</p>
+            </div>
+          )}
           {task.dueDate && (
             <p className="text-xs text-gray-400 mt-1">
               📅 {new Date(task.dueDate).toLocaleDateString('id-ID')}
             </p>
           )}
+          {task.convertedToLog && (
+            <div className="flex items-center gap-1 mt-2">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              <span className="text-xs text-green-600 font-medium">Tersimpan di Log Aktivitas</span>
+            </div>
+          )}
         </div>
-        <div className="flex gap-1 flex-shrink-0">
+        <div className="flex flex-col gap-1 flex-shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -100,6 +116,17 @@ function TaskCard({ task, onDelete, onEdit }) {
           >
             <Trash2 className="w-3 h-3" />
           </Button>
+          {isDone && hasJobdesk && !task.convertedToLog && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              onClick={() => onConvertToLog(task)}
+              title="Simpan ke Log Aktivitas"
+            >
+              <CheckCircle className="w-3 h-3" />
+            </Button>
+          )}
         </div>
       </div>
     </div>
