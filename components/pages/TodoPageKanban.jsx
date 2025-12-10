@@ -134,7 +134,7 @@ function TaskCard({ task, onDelete, onEdit, onConvertToLog, jobdesks }) {
 }
 
 // Kanban Column Component
-function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit }) {
+function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit, onConvertToLog, jobdesks }) {
   const taskIds = tasks.map(t => t.id);
   const { setNodeRef } = useDroppable({
     id: status,
@@ -174,6 +174,8 @@ function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit
                   task={task}
                   onDelete={onDelete}
                   onEdit={onEdit}
+                  onConvertToLog={onConvertToLog}
+                  jobdesks={jobdesks}
                 />
               ))
             )}
