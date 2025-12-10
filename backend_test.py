@@ -31,7 +31,7 @@ REGULAR_USER_CREDS = {
     "password": "password123"
 }
 
-class TodoConversionTester:
+class PasswordUpdateTester:
     def __init__(self):
         self.session = requests.Session()
         self.auth_token = None
