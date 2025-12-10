@@ -197,19 +197,29 @@ export default function DashboardApp({ setIsLoggedIn }) {
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo & Title */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              {/* Mobile Menu Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </Button>
+              
               <div className="flex items-center space-x-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-400 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-white" />
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-blue-600 to-blue-400 rounded-lg flex items-center justify-center">
+                  <Users className="w-4 h-4 md:w-6 md:h-6 text-white" />
                 </div>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">Workspace</h1>
-                  <p className="text-xs text-gray-500">Sistem Kolaborasi</p>
+                <div className="hidden sm:block">
+                  <h1 className="text-lg md:text-xl font-bold text-gray-900">Workspace</h1>
+                  <p className="text-xs text-gray-500 hidden md:block">Sistem Kolaborasi</p>
                 </div>
               </div>
             </div>
 
-            {/* Navigation Menu */}
+            {/* Desktop Navigation Menu */}
             <nav className="hidden md:flex items-center space-x-1">
               {filteredMenuItems.map(item => {
                 const Icon = item.icon;
@@ -222,14 +232,14 @@ export default function DashboardApp({ setIsLoggedIn }) {
                     className="flex items-center space-x-2"
                   >
                     <Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
+                    <span className="hidden lg:inline">{item.label}</span>
                   </Button>
                 );
               })}
             </nav>
 
             {/* Right Side */}
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 md:space-x-3">
               {/* Notifications */}
               <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
                 <DropdownMenuTrigger asChild>
