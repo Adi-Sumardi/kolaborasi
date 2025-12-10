@@ -472,14 +472,30 @@ export default function JobdeskPage({ user }) {
                           </Button>
                         </>
                       )}
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))
         )}
       </div>
+      
+      {/* Attachment Modal */}
+      <Dialog open={showAttachmentModal} onOpenChange={setShowAttachmentModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lampiran - {selectedJobdesk?.title}</DialogTitle>
+            <DialogDescription>
+              Upload file atau tambahkan link untuk jobdesk ini
+            </DialogDescription>
+          </DialogHeader>
+          {selectedJobdesk && (
+            <AttachmentSection jobdesk={selectedJobdesk} user={user} />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Log Activity Modal */}
       <Dialog open={showLogModal} onOpenChange={setShowLogModal}>
