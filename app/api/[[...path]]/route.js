@@ -179,6 +179,25 @@ async function handleRegister(request) {
 // Login
 async function handleLogin(request) {
   try {
+    // Rate limiting for login attempts
+    const rateLimit = rateLimitMiddleware(request, 'login');
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { 
+          error: 'Too many login attempts. Please try again later.',
+          retryAfter: rateLimit.retryAfter 
+        },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': rateLimit.retryAfter.toString(),
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
+          }
+        }
+      );
+    }
+    
     const body = await request.json();
     let { email, password, twoFactorCode, rememberMe } = body;
 
