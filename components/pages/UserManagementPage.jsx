@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { userAPI, divisionAPI } from '@/lib/api';
-import { Plus, Edit, Trash2, Power, PowerOff } from 'lucide-react';
+import { Plus, Edit, Trash2, Power, PowerOff, Key } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
