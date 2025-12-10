@@ -101,3 +101,109 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  User wants to integrate To-Do Kanban Board with Daily Jobdesk Log system.
+  When a To-Do item is completed (status = "Done") and has a related jobdesk,
+  users should be able to convert it into a daily_log entry by specifying hours worked.
+
+backend:
+  - task: "Create API endpoint for converting To-Do to Daily Log"
+    implemented: true
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Implemented handleConvertTodoToLog function (line 1012-1098).
+          - POST /api/todos/:id/convert-to-log endpoint
+          - Validates: user auth, hoursSpent > 0, todo exists, not already converted, has jobdeskId, status is done
+          - Creates daily_log entry with todo title/description and hoursSpent
+          - Updates todo with convertedToLog=true flag
+          Backend ready for testing.
+
+frontend:
+  - task: "Add Jobdesk selection dropdown in Create/Edit To-Do modal"
+    implemented: true
+    working: "NA"
+    file: "/app/components/pages/TodoPageKanban.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added Select component for jobdesk selection in:
+          - Create modal (after line 599)
+          - Edit modal (after line 639)
+          User can now associate a To-Do with a jobdesk when creating or editing.
+
+  - task: "Add 'Convert to Log' button and modal for completed To-Dos"
+    implemented: true
+    working: "NA"
+    file: "/app/components/pages/TodoPageKanban.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Implemented complete Convert to Log workflow:
+          - TaskCard shows CheckCircle icon button for Done tasks with jobdeskId (line 119-129)
+          - Added Dialog modal for conversion with hours input (line 709-752)
+          - Modal displays task info and asks for hours worked
+          - Calls POST /api/todos/:id/convert-to-log with hoursSpent
+          - Shows "Tersimpan di Log Aktivitas" badge if already converted (line 95-100)
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Create API endpoint for converting To-Do to Daily Log"
+    - "Add Jobdesk selection dropdown in Create/Edit To-Do modal"
+    - "Add 'Convert to Log' button and modal for completed To-Dos"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      I have completed the To-Do to Daily Log integration feature.
+      
+      BACKEND:
+      - Created handleConvertTodoToLog function with full validation
+      - Endpoint: POST /api/todos/:id/convert-to-log
+      - Requires: authentication, todo must be Done, must have jobdeskId, hoursSpent > 0
+      - Creates entry in daily_logs collection with "**[From To-Do]**" prefix
+      
+      FRONTEND:
+      - Added jobdesk dropdown in Create/Edit modals using Select component
+      - Added CheckCircle button on TaskCard for Done tasks with jobdesk
+      - Created full conversion modal with hours input
+      - Shows badge if task is already converted
+      
+      TESTING NEEDED:
+      1. Test backend endpoint directly with valid/invalid scenarios
+      2. Test complete user flow:
+         a. Create To-Do with jobdesk selection
+         b. Move to Done column
+         c. Click convert button, enter hours
+         d. Verify daily_log created in database
+         e. Verify To-Do shows "Tersimpan di Log Aktivitas" badge
+      
+      CREDENTIALS:
+      - admin@workspace.com / password123 (Super Admin)
+      - karyawan1@workspace.com / password123 (Employee)
+      
+      Please test both backend and frontend thoroughly.
