@@ -192,7 +192,24 @@ export default function TodoPageKanban({ user }) {
 
   useEffect(() => {
     loadTodos();
+    loadJobdesks();
   }, []);
+
+  const loadJobdesks = async () => {
+    try {
+      const res = await fetch('/api/jobdesks');
+      const data = await res.json();
+      // Filter only assigned jobdesks for current user
+      const myJobdesks = data.jobdesks?.filter(j => 
+        j.assignedTo?.includes(user.id) || 
+        user.role === 'super_admin' || 
+        user.role === 'pengurus'
+      ) || [];
+      setJobdesks(myJobdesks);
+    } catch (error) {
+      console.error('Failed to load jobdesks:', error);
+    }
+  };
 
   const loadTodos = async () => {
     try {
