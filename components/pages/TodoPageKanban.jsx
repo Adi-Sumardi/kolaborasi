@@ -18,7 +18,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  TouchSensor
+  TouchSensor,
+  useDroppable
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
