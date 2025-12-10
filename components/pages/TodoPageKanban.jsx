@@ -307,11 +307,19 @@ export default function TodoPageKanban({ user }) {
 
   const openEditModal = (task) => {
     setEditingTask(task);
+    
+    // Convert date to yyyy-MM-dd format if exists
+    let formattedDate = '';
+    if (task.dueDate) {
+      const date = new Date(task.dueDate);
+      formattedDate = date.toISOString().split('T')[0];
+    }
+    
     setFormData({
       task: task.task || task.title || '',
       description: task.description || '',
       priority: task.priority || 'medium',
-      dueDate: task.dueDate || ''
+      dueDate: formattedDate
     });
     setShowEditModal(true);
   };
