@@ -239,11 +239,11 @@ frontend:
 
   - task: "Update User Password API endpoint"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/app/api/[[...path]]/route.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
@@ -257,6 +257,40 @@ frontend:
           - Added route matcher in PUT handler
           - Updated frontend to call new dedicated endpoint
           Backend ready for testing.
+      - working: true
+        agent: "testing"
+        comment: |
+          COMPREHENSIVE BACKEND TESTING COMPLETED - ALL TESTS PASSED (9/9)
+          
+          ✅ Authentication & Authorization Tests:
+          - No auth token correctly rejected (403)
+          - Regular user correctly rejected (403) 
+          - Super admin passes authorization check
+          
+          ✅ Validation Tests:
+          - Missing newPassword field rejected (400)
+          - Short password (<6 chars) rejected with proper message (400)
+          - Valid password length (6+ chars) accepted
+          
+          ✅ User Existence Test:
+          - Non-existent userId returns 404 with proper error
+          - Valid userId processes successfully
+          
+          ✅ Success & Verification Tests:
+          - Password update API call successful (200)
+          - Password hash updated in database
+          - Password properly hashed with bcrypt ($2b$ format)
+          - Password NOT stored as plain text
+          - Can login with new password after update
+          - Original password restored for future tests
+          
+          ✅ Password Hashing Verification:
+          - Bcrypt hash format verified ($2a$ or $2b$ prefix)
+          - Bcrypt verification successful with checkpw()
+          - Hash integrity maintained
+          
+          API endpoint is fully functional and production-ready.
+          All security requirements met: authorization, validation, hashing, and database integrity.
 
 metadata:
   created_by: "main_agent"
