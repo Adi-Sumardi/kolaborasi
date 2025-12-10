@@ -333,6 +333,32 @@ export default function DashboardApp({ setIsLoggedIn }) {
         </div>
       </header>
 
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-white border-b border-gray-200 shadow-lg">
+          <nav className="px-4 py-2 space-y-1">
+            {filteredMenuItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <Button
+                  key={item.id}
+                  variant={currentPage === item.id ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => {
+                    setCurrentPage(item.id);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full justify-start flex items-center space-x-2"
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </Button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="p-4 sm:p-6 lg:p-8">
         {renderPage()}
