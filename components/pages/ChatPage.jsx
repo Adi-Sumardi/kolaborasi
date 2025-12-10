@@ -303,23 +303,22 @@ export default function ChatPage({ user, socket }) {
                   {rooms.map(room => (
                     <div
                       key={room.id}
-                      onClick={() => setSelectedRoom(room)}
                       className={`
-                        p-3 rounded-lg cursor-pointer transition-all
+                        p-3 rounded-lg transition-all relative group
                         ${selectedRoom?.id === room.id 
                           ? 'bg-blue-50 border-2 border-blue-500 shadow-sm' 
                           : 'bg-white border-2 border-gray-100 hover:border-blue-200 hover:shadow-sm'
                         }
                       `}
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3" onClick={() => setSelectedRoom(room)}>
                         <div className={`
-                          p-2 rounded-full flex-shrink-0
+                          p-2 rounded-full flex-shrink-0 cursor-pointer
                           ${selectedRoom?.id === room.id ? 'bg-blue-500' : 'bg-gray-200'}
                         `}>
                           <MessageCircle className={`w-4 h-4 ${selectedRoom?.id === room.id ? 'text-white' : 'text-gray-600'}`} />
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 cursor-pointer">
                           <p className={`font-semibold truncate text-sm ${selectedRoom?.id === room.id ? 'text-blue-900' : 'text-gray-900'}`}>
                             {room.name}
                           </p>
@@ -336,6 +335,20 @@ export default function ChatPage({ user, socket }) {
                             )}
                           </div>
                         </div>
+                        {user.role === 'super_admin' && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(room);
+                            }}
+                            title="Edit Ruang Chat"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
