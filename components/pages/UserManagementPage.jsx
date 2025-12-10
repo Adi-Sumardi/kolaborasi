@@ -181,7 +181,7 @@ export default function UserManagementPage({ user }) {
     }
 
     try {
-      await userAPI.update(selectedUser.id, { password: passwordData.newPassword });
+      await userAPI.changePassword(selectedUser.id, passwordData.newPassword);
       toast.success('Password berhasil diubah!');
       setShowPasswordModal(false);
       setSelectedUser(null);
