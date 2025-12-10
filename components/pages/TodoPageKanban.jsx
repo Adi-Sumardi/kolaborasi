@@ -334,12 +334,19 @@ export default function TodoPageKanban({ user }) {
     }
   };
 
-  const handleDeleteTodo = async (todoId) => {
-    if (!confirm('Yakin ingin menghapus tugas ini?')) return;
+  const openDeleteDialog = (task) => {
+    setDeletingTask(task);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteTodo = async () => {
+    if (!deletingTask) return;
 
     try {
-      await todoAPI.delete(todoId);
+      await todoAPI.delete(deletingTask.id);
       toast.success('Tugas berhasil dihapus!');
+      setShowDeleteDialog(false);
+      setDeletingTask(null);
       loadTodos();
     } catch (error) {
       console.error('Failed to delete todo:', error);
