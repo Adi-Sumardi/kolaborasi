@@ -413,7 +413,7 @@ export default function JobdeskPage({ user }) {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-4 text-sm text-gray-600">
                     {job.dueDate && (
                       <div className="flex items-center space-x-1">
@@ -426,8 +426,20 @@ export default function JobdeskPage({ user }) {
                       <span>{job.assignedTo?.length || 0} karyawan</span>
                     </div>
                   </div>
-                  {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && (
-                    <div className="flex space-x-2">
+                  <div className="flex space-x-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedJobdesk(job);
+                        setShowAttachmentModal(true);
+                      }}
+                    >
+                      <Paperclip className="w-4 h-4 mr-1" />
+                      Lampiran
+                    </Button>
+                    {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && (
+                      <>
                       {job.status === 'pending' && (
                         <Button
                           size="sm"
