@@ -208,32 +208,43 @@ export default function ChatPage({ user, socket }) {
           </CardContent>
         </Card>
 
-        {/* Messages Area */}
-        <Card className="md:col-span-3">
+        {/* Messages Area - Show on mobile when room is selected, or always on desktop */}
+        <Card className={`md:col-span-3 ${!selectedRoom ? 'hidden md:block' : 'block'}`}>
           {selectedRoom ? (
             <>
-              <CardHeader>
-                <CardTitle className="text-lg">{selectedRoom.name}</CardTitle>
-                <p className="text-sm text-gray-600">{selectedRoom.members?.length || 0} anggota</p>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div className="flex-1">
+                  <CardTitle className="text-base sm:text-lg">{selectedRoom.name}</CardTitle>
+                  <p className="text-xs sm:text-sm text-gray-600">{selectedRoom.members?.length || 0} anggota</p>
+                </div>
+                {/* Back button for mobile */}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="md:hidden"
+                  onClick={() => setSelectedRoom(null)}
+                >
+                  Kembali
+                </Button>
               </CardHeader>
-              <CardContent className="flex flex-col h-[calc(100%-80px)]">
+              <CardContent className="flex flex-col">
                 {/* Messages */}
-                <ScrollArea className="flex-1 pr-4 mb-4">
-                  <div className="space-y-4">
+                <ScrollArea className="h-[400px] sm:h-[450px] md:h-[calc(100vh-350px)] pr-2 sm:pr-4 mb-4">
+                  <div className="space-y-3 sm:space-y-4">
                     {messages.length === 0 ? (
-                      <p className="text-center text-gray-500 py-4">Belum ada pesan</p>
+                      <p className="text-center text-gray-500 py-4 text-sm">Belum ada pesan</p>
                     ) : (
                       messages.map((msg, idx) => {
                         const isOwn = msg.userId === user.id;
                         return (
                           <div key={idx} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[70%] ${isOwn ? 'bg-blue-600 text-white' : 'bg-gray-100'} rounded-lg p-3`}>
+                            <div className={`max-w-[85%] sm:max-w-[70%] ${isOwn ? 'bg-blue-600 text-white' : 'bg-gray-100'} rounded-lg p-2 sm:p-3`}>
                               {!isOwn && (
-                                <p className="text-xs font-semibold mb-1">
+                                <p className="text-xs font-semibold mb-1 truncate">
                                   {msg.userEmail}
                                 </p>
                               )}
-                              <p className="text-sm">{msg.content}</p>
+                              <p className="text-sm break-words">{msg.content}</p>
                               <p className={`text-xs mt-1 ${isOwn ? 'text-blue-100' : 'text-gray-500'}`}>
                                 {new Date(msg.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                               </p>
@@ -247,22 +258,22 @@ export default function ChatPage({ user, socket }) {
                 </ScrollArea>
 
                 {/* Message Input */}
-                <form onSubmit={handleSendMessage} className="flex space-x-2">
+                <form onSubmit={handleSendMessage} className="flex gap-2">
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder="Ketik pesan..."
-                    className="flex-1"
+                    className="flex-1 text-sm sm:text-base"
                   />
-                  <Button type="submit" size="icon">
+                  <Button type="submit" size="icon" className="flex-shrink-0">
                     <Send className="w-4 h-4" />
                   </Button>
                 </form>
               </CardContent>
             </>
           ) : (
-            <CardContent className="h-full flex items-center justify-center">
-              <p className="text-gray-500">Pilih ruang chat untuk mulai berkomunikasi</p>
+            <CardContent className="h-[400px] md:h-full flex items-center justify-center">
+              <p className="text-gray-500 text-sm sm:text-base">Pilih ruang chat untuk mulai berkomunikasi</p>
             </CardContent>
           )}
         </Card>
