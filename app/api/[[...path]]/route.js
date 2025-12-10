@@ -1271,10 +1271,14 @@ async function handleCreateAttachment(request, jobdeskId) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
-    // Check permission: only assigned karyawan can upload
-    if (!jobdesk.assignedTo?.includes(user.userId)) {
+    // Check permission: assigned karyawan, pengurus, sdm, or super_admin can upload
+    const canUpload = 
+      jobdesk.assignedTo?.includes(user.userId) ||
+      hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
+      
+    if (!canUpload) {
       return NextResponse.json({ 
-        error: 'Only assigned karyawan can upload attachments' 
+        error: 'Only assigned users or managers can upload attachments' 
       }, { status: 403 });
     }
 
