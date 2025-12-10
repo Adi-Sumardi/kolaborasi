@@ -573,6 +573,25 @@ export default function TodoPageKanban({ user }) {
                 rows={3}
               />
             </div>
+            <div>
+              <Label htmlFor="jobdesk">Jobdesk Terkait (opsional)</Label>
+              <Select
+                value={formData.jobdeskId}
+                onValueChange={(value) => setFormData({ ...formData, jobdeskId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih jobdesk..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Tidak ada</SelectItem>
+                  {jobdesks.map(jd => (
+                    <SelectItem key={jd.id} value={jd.id}>
+                      {jd.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="priority">Prioritas</Label>
