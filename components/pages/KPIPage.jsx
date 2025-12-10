@@ -92,12 +92,37 @@ export default function KPIPage({ user }) {
     hours
   }));
 
+  const handleDownloadPDF = () => {
+    try {
+      const selectedUser = users.find(u => u.id === selectedUserId) || user;
+      generateKPIPDF({
+        user: selectedUser,
+        kpiData,
+        logs,
+        dateRange,
+        barData
+      });
+      toast.success('PDF berhasil didownload!');
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      toast.error('Gagal membuat PDF');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">KPI Dashboard</h1>
-        <p className="text-gray-600 mt-1">Monitor performa dan statistik karyawan</p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">KPI Dashboard</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">Monitor performa dan statistik karyawan</p>
+        </div>
+        {(user.role === 'sdm' || user.role === 'pengurus' || user.role === 'super_admin') && (
+          <Button onClick={handleDownloadPDF} className="w-full sm:w-auto">
+            <Download className="w-4 h-4 mr-2" />
+            Download PDF
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
