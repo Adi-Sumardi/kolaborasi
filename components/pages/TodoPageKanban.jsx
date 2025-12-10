@@ -170,8 +170,10 @@ export default function TodoPageKanban({ user }) {
     task: '',
     description: '',
     priority: 'medium',
-    dueDate: ''
+    dueDate: '',
+    jobdeskId: ''
   });
+  const [jobdesks, setJobdesks] = useState([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
