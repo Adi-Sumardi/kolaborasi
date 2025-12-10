@@ -126,24 +126,24 @@ export default function DashboardHome({ user }) {
           ) : (
             <div className="space-y-3">
               {jobdesks.slice(0, 5).map(job => (
-                <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">{job.title}</p>
-                    <p className="text-sm text-gray-600">{job.description}</p>
+                <div key={job.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{job.title}</p>
+                    <p className="text-sm text-gray-600 line-clamp-2">{job.description}</p>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-shrink-0">
                     {job.status === 'pending' && (
-                      <span className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-full">
+                      <span className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-full whitespace-nowrap">
                         Pending
                       </span>
                     )}
                     {job.status === 'in_progress' && (
-                      <span className="px-2 py-1 bg-yellow-200 text-yellow-700 text-xs rounded-full">
+                      <span className="px-2 py-1 bg-yellow-200 text-yellow-700 text-xs rounded-full whitespace-nowrap">
                         Proses
                       </span>
                     )}
                     {job.status === 'completed' && (
-                      <span className="px-2 py-1 bg-green-200 text-green-700 text-xs rounded-full">
+                      <span className="px-2 py-1 bg-green-200 text-green-700 text-xs rounded-full whitespace-nowrap">
                         Selesai
                       </span>
                     )}
