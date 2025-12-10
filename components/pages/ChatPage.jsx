@@ -133,21 +133,21 @@ export default function ChatPage({ user, socket }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Group Chat</h1>
-          <p className="text-gray-600 mt-1">Komunikasi dengan tim Anda secara real-time</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Group Chat</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">Komunikasi dengan tim Anda secara real-time</p>
         </div>
         <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" />
               Buat Ruang Chat
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="w-[95vw] sm:w-full max-w-md">
             <DialogHeader>
               <DialogTitle>Buat Ruang Chat Baru</DialogTitle>
               <DialogDescription>
