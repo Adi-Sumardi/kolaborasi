@@ -72,9 +72,9 @@ Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
  GET /api/jobdesks 200 in 16ms
  GET /api/auth/me 200 in 12ms
  GET /api/todos 200 in 12ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 18ms
+ GET /api/kpi?userId=collab-dash-2 200 in 18ms
  GET /api/todos 200 in 29ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 62ms
+ GET /api/kpi?userId=collab-dash-2 200 in 62ms
  GET /api/jobdesks 200 in 41ms
  GET /api/jobdesks 200 in 12ms
  GET /api/chat/rooms 200 in 19ms
@@ -91,25 +91,25 @@ Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
  GET /api/chat/rooms 200 in 13ms
  GET /api/chat/rooms 200 in 6ms
  GET /_next/webpack-hmr 404 in 13ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 16ms
- GET /api/daily-logs?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 5ms
- GET /api/daily-logs?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 6ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 8ms
+ GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 16ms
+ GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 5ms
+ GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 6ms
+ GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 8ms
  GET /api/jobdesks 200 in 13ms
  GET /api/jobdesks 200 in 29ms
  GET /api/todos 200 in 13ms
  GET /api/jobdesks 200 in 8ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 9ms
+ GET /api/kpi?userId=collab-dash-2 200 in 9ms
  GET /api/todos 200 in 5ms
  GET /api/jobdesks 200 in 5ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 22ms
+ GET /api/kpi?userId=collab-dash-2 200 in 22ms
  GET /api/jobdesks 200 in 17ms
  GET /api/jobdesks 200 in 30ms
  GET /api/todos 200 in 17ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 18ms
+ GET /api/kpi?userId=collab-dash-2 200 in 18ms
  GET /api/jobdesks 200 in 9ms
  GET /api/jobdesks 200 in 16ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 19ms
+ GET /api/kpi?userId=collab-dash-2 200 in 19ms
  GET /api/todos 200 in 6ms
  GET / 200 in 17ms
  GET /?x_request_source=preview 200 in 14ms
@@ -118,10 +118,10 @@ Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
  ✓ Compiled in 3.4s (1837 modules)
  ○ Compiling /api/[[...path]] ...
  ✓ Compiled /api/[[...path]] in 650ms (1186 modules)
- GET /api/daily-logs?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 811ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 797ms
- GET /api/daily-logs?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 17ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 19ms
+ GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 811ms
+ GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 797ms
+ GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 17ms
+ GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 19ms
  GET /api/chat/rooms 200 in 23ms
  GET /api/chat/rooms 200 in 6ms
  GET /api/todos 200 in 26ms
@@ -129,17 +129,17 @@ Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
  GET /api/jobdesks 200 in 20ms
  GET /api/jobdesks 200 in 6ms
  GET /api/jobdesks 200 in 26ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 27ms
+ GET /api/kpi?userId=collab-dash-2 200 in 27ms
  GET /api/todos 200 in 28ms
  GET /api/jobdesks 200 in 20ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6 200 in 21ms
+ GET /api/kpi?userId=collab-dash-2 200 in 21ms
  GET /api/todos 200 in 23ms
  GET /api/jobdesks 200 in 18ms
  GET /api/jobdesks 200 in 6ms
- GET /api/daily-logs?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 20ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 7ms
- GET /api/daily-logs?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 8ms
- GET /api/kpi?userId=eebbb7a5-0d07-47f6-a47b-5ec346a2caa6&startDate=2025-11-30&endDate=2025-12-10 200 in 19ms
+ GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 20ms
+ GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 7ms
+ GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 8ms
+ GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 19ms
 yarn run v1.22.22
 $ NODE_OPTIONS='--max-old-space-size=512' node server.js
 yarn run v1.22.22
