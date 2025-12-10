@@ -43,6 +43,7 @@ import DivisionPage from './pages/DivisionPage';
 import ChatPage from './pages/ChatPage';
 import TodoPage from './pages/TodoPage';
 import SettingsPage from './pages/SettingsPage';
+import UserManagementPage from './pages/UserManagementPage';
 
 export default function DashboardApp({ setIsLoggedIn }) {
   const [currentUser, setCurrentUser] = useState(null);
