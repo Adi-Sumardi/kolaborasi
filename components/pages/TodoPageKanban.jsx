@@ -727,6 +727,66 @@ export default function TodoPageKanban({ user }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Convert to Log Dialog */}
+      <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>Simpan ke Log Aktivitas</DialogTitle>
+            <DialogDescription>
+              Simpan tugas yang sudah selesai ke dalam log aktivitas harian Anda
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Tugas</Label>
+              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
+                {convertingTask?.task || convertingTask?.title}
+              </p>
+            </div>
+            {convertingTask?.description && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Deskripsi</Label>
+                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
+                  {convertingTask.description}
+                </p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="hours-spent">Jam Kerja (dalam jam) *</Label>
+              <Input
+                id="hours-spent"
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={hoursSpent}
+                onChange={(e) => setHoursSpent(e.target.value)}
+                placeholder="Contoh: 2.5"
+                required
+              />
+              <p className="text-xs text-gray-500">
+                Berapa jam yang Anda habiskan untuk menyelesaikan tugas ini?
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setShowConvertDialog(false)}
+            >
+              Batal
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleConvertToLog}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Simpan ke Log
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
