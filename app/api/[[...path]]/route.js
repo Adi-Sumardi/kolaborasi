@@ -966,7 +966,7 @@ async function handleCreateTodo(request) {
     }
 
     const body = await request.json();
-    const { title, priority, dueDate } = body;
+    const { title, description, priority, dueDate, jobdeskId, status } = body;
 
     if (!title) {
       return NextResponse.json(
@@ -982,9 +982,13 @@ async function handleCreateTodo(request) {
       id: uuidv4(),
       userId: user.userId,
       title,
-      status: 'pending',
+      description: description || '',
+      status: status || 'pending',
       priority: priority || 'medium',
       dueDate: dueDate ? new Date(dueDate) : null,
+      jobdeskId: jobdeskId || null,
+      convertedToLog: false,
+      logId: null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
