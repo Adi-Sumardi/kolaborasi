@@ -553,6 +553,48 @@ export default function UserManagementPage({ user }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Change Password Modal */}
+      <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ganti Password</DialogTitle>
+            <DialogDescription>
+              Ubah password untuk user <strong>{selectedUser?.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <Label htmlFor="new-password">Password Baru *</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                placeholder="Minimal 6 karakter"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="confirm-password">Konfirmasi Password *</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                placeholder="Ketik ulang password"
+                required
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => setShowPasswordModal(false)}>
+                Batal
+              </Button>
+              <Button type="submit">Ganti Password</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
