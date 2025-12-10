@@ -261,14 +261,14 @@ export default function UserManagementPage({ user }) {
                 <div>
                   <Label htmlFor="division">Divisi</Label>
                   <Select
-                    value={formData.divisionId}
-                    onValueChange={(value) => setFormData({ ...formData, divisionId: value })}
+                    value={formData.divisionId || 'none'}
+                    onValueChange={(value) => setFormData({ ...formData, divisionId: value === 'none' ? '' : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Pilih divisi (opsional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Tidak ada divisi</SelectItem>
+                      <SelectItem value="none">Tidak ada divisi</SelectItem>
                       {divisions.map(div => (
                         <SelectItem key={div.id} value={div.id}>
                           {div.name}
