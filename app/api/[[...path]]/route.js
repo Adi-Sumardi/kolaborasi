@@ -1913,6 +1913,10 @@ export async function PUT(request, { params }) {
     }
     
     // Users
+    if (path.match(/^users\/[^/]+\/password$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUserPassword(request, userId);
+    }
     if (path.match(/^users\/[^/]+\/status$/)) {
       const userId = path.split('/')[1];
       return handleUpdateUserStatus(request, userId);
