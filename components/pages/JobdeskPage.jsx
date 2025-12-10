@@ -229,23 +229,126 @@ export default function JobdeskPage({ user }) {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <Label>Assign ke Karyawan *</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={selectAllKaryawan}>
-                      Pilih Semua Karyawan
-                    </Button>
+                    <div className="flex space-x-2">
+                      <Button type="button" variant="outline" size="sm" onClick={selectAllFiltered}>
+                        Pilih Semua (Filter)
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={clearSelection}>
+                        Clear
+                      </Button>
+                    </div>
                   </div>
-                  <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
-                    {users.filter(u => u.role === 'karyawan').map(u => (
-                      <div key={u.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`user-${u.id}`}
-                          checked={formData.assignedTo.includes(u.id)}
-                          onCheckedChange={() => toggleUserSelection(u.id)}
+                  
+                  {/* Filter Section */}
+                  <div className="space-y-3 mb-3 p-3 bg-gray-50 rounded-lg border">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Search Filter */}
+                      <div>
+                        <Label htmlFor="search" className="text-xs">Cari Nama/Email</Label>
+                        <Input
+                          id="search"
+                          type="text"
+                          placeholder="Cari karyawan..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="h-9"
                         />
-                        <Label htmlFor={`user-${u.id}`} className="cursor-pointer flex-1">
-                          {u.name} ({u.email})
-                        </Label>
                       </div>
-                    ))}
+                      
+                      {/* Division Filter */}
+                      <div>
+                        <Label htmlFor="division-filter" className="text-xs">Filter Divisi</Label>
+                        <Select value={divisionFilter} onValueChange={setDivisionFilter}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Semua Divisi</SelectItem>
+                            <SelectItem value="no_division">Tanpa Divisi</SelectItem>
+                            {divisions.map(div => (
+                              <SelectItem key={div.id} value={div.id}>
+                                {div.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {/* Status Filter */}
+                      <div>
+                        <Label htmlFor="status-filter" className="text-xs">Filter Status</Label>
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Semua Status</SelectItem>
+                            <SelectItem value="active">Aktif</SelectItem>
+                            <SelectItem value="inactive">Nonaktif</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <span>
+                        Menampilkan {getFilteredUsers().length} dari {users.filter(u => u.role === 'karyawan').length} karyawan
+                      </span>
+                      {(searchQuery || divisionFilter !== 'all' || statusFilter !== 'all') && (
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setDivisionFilter('all');
+                            setStatusFilter('active');
+                          }}
+                          className="h-7 text-xs"
+                        >
+                          Reset Filter
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* User List */}
+                  <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
+                    {getFilteredUsers().length === 0 ? (
+                      <p className="text-center text-gray-500 py-4">
+                        Tidak ada karyawan yang sesuai dengan filter
+                      </p>
+                    ) : (
+                      getFilteredUsers().map(u => (
+                        <div key={u.id} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                          <Checkbox
+                            id={`user-${u.id}`}
+                            checked={formData.assignedTo.includes(u.id)}
+                            onCheckedChange={() => toggleUserSelection(u.id)}
+                          />
+                          <Label htmlFor={`user-${u.id}`} className="cursor-pointer flex-1">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{u.name}</p>
+                                <p className="text-xs text-gray-500">{u.email}</p>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                {u.divisionId && divisions.find(d => d.id === u.divisionId) && (
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                    {divisions.find(d => d.id === u.divisionId)?.name}
+                                  </span>
+                                )}
+                                {u.isActive === false && (
+                                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                                    Nonaktif
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </Label>
+                        </div>
+                      ))
+                    )}
                   </div>
                   <p className="text-sm text-gray-500 mt-2">
                     {formData.assignedTo.length} karyawan dipilih
