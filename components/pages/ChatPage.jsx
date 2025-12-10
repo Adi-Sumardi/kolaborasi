@@ -186,10 +186,32 @@ export default function ChatPage({ user, socket }) {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({ name: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Contoh: Tim Marketing, Diskusi Project"
                   required
                 />
+              </div>
+              <div>
+                <Label>Pilih Anggota * ({formData.members.length} dipilih)</Label>
+                <ScrollArea className="h-[200px] border rounded-md p-3 mt-2">
+                  <div className="space-y-2">
+                    {users.filter(u => u.id !== user.id).map(u => (
+                      <div key={u.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`user-${u.id}`}
+                          checked={formData.members.includes(u.id)}
+                          onCheckedChange={() => toggleMember(u.id)}
+                        />
+                        <label
+                          htmlFor={`user-${u.id}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {u.name} ({u.email})
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
               </div>
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
