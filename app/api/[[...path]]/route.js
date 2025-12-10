@@ -1360,10 +1360,10 @@ async function handleDeleteAttachment(request, attachmentId) {
       return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
     }
 
-    // Check permission: owner, pengurus, or super_admin
+    // Check permission: owner, pengurus, sdm, or super_admin
     const canDelete = 
       attachment.userId === user.userId ||
-      hasPermission(user.role, ['super_admin', 'pengurus']);
+      hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
 
     if (!canDelete) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
