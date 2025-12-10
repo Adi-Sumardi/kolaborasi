@@ -507,6 +507,8 @@ export default function TodoPageKanban({ user }) {
             onAddTask={() => openAddModal('draft')}
             onDelete={openDeleteDialog}
             onEdit={openEditModal}
+            onConvertToLog={openConvertDialog}
+            jobdesks={jobdesks}
           />
           <KanbanColumn
             title="⚡ On Progress"
@@ -516,6 +518,8 @@ export default function TodoPageKanban({ user }) {
             onAddTask={() => openAddModal('in_progress')}
             onDelete={openDeleteDialog}
             onEdit={openEditModal}
+            onConvertToLog={openConvertDialog}
+            jobdesks={jobdesks}
           />
           <KanbanColumn
             title="✅ Done"
@@ -525,6 +529,8 @@ export default function TodoPageKanban({ user }) {
             onAddTask={() => openAddModal('done')}
             onDelete={openDeleteDialog}
             onEdit={openEditModal}
+            onConvertToLog={openConvertDialog}
+            jobdesks={jobdesks}
           />
         </div>
 
