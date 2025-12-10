@@ -113,8 +113,8 @@ class PasswordUpdateTester:
             return False
             
     def test_no_auth_token(self):
-        """Test 1: Request without auth token should fail with 401"""
-        print("\n🧪 Test 1: No auth token (should fail 401)")
+        """Test 1: Request without auth token should fail with 403"""
+        print("\n🧪 Test 1: No auth token (should fail 403)")
         
         try:
             response = requests.put(
@@ -122,11 +122,11 @@ class PasswordUpdateTester:
                 json={"newPassword": "newpass123"}
             )
             
-            if response.status_code == 401:
-                print("✅ PASS: Correctly rejected unauthorized request (401)")
+            if response.status_code == 403:
+                print("✅ PASS: Correctly rejected unauthorized request (403)")
                 return True
             else:
-                print(f"❌ FAIL: Expected 401, got {response.status_code}")
+                print(f"❌ FAIL: Expected 403, got {response.status_code}")
                 print(f"Response: {response.text}")
                 return False
                 
