@@ -184,7 +184,15 @@ export default function JobdeskPage({ user }) {
           <p className="text-gray-600 mt-1">Kelola tugas dan pekerjaan</p>
         </div>
         {(user.role === 'super_admin' || user.role === 'pengurus') && (
-          <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+          <Dialog open={showCreateModal} onOpenChange={(open) => {
+            setShowCreateModal(open);
+            if (!open) {
+              // Reset filter saat modal ditutup
+              setSearchQuery('');
+              setDivisionFilter('all');
+              setStatusFilter('active');
+            }
+          }}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
