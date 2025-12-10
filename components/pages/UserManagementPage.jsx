@@ -410,13 +410,25 @@ export default function UserManagementPage({ user }) {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openEditModal(u)}
+                                title="Edit User"
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
+                              {user.role === 'super_admin' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openPasswordModal(u)}
+                                  title="Ganti Password"
+                                >
+                                  <Key className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant={u.isActive !== false ? 'outline' : 'default'}
                                 onClick={() => handleToggleStatus(u.id, u.isActive !== false)}
+                                title={u.isActive !== false ? 'Nonaktifkan' : 'Aktifkan'}
                               >
                                 {u.isActive !== false ? (
                                   <PowerOff className="w-4 h-4" />
