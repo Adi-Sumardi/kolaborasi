@@ -15,12 +15,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function ChatPage({ user, socket }) {
   const [rooms, setRooms] = useState([]);
+  const [users, setUsers] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '' });
+  const [formData, setFormData] = useState({ name: '', members: [] });
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
