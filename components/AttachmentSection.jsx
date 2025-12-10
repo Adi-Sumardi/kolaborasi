@@ -331,27 +331,31 @@ export default function AttachmentSection({ jobdesk, user }) {
                     </div>
                   </div>
                   <div className="flex space-x-2 ml-2">
-                    {attachment.type === 'file' ? (
+                    {/* View Button */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleView(attachment)}
+                      title="Lihat"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    
+                    {/* Download Button (only for files) */}
+                    {attachment.type === 'file' && (
                       <Button
                         size="sm"
                         variant="outline"
                         asChild
+                        title="Download"
                       >
                         <a href={attachment.url} download target="_blank" rel="noopener noreferrer">
                           <Download className="w-4 h-4" />
                         </a>
                       </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        asChild
-                      >
-                        <a href={attachment.url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      </Button>
                     )}
+                    
+                    {/* Delete Button */}
                     {canDelete(attachment) && (
                       <Button
                         size="sm"
@@ -360,6 +364,7 @@ export default function AttachmentSection({ jobdesk, user }) {
                           setSelectedAttachment(attachment);
                           setShowDeleteDialog(true);
                         }}
+                        title="Hapus"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
