@@ -428,6 +428,84 @@ export default function ChatPage({ user, socket }) {
           )}
         </Card>
       </div>
+
+      {/* Edit Room Modal (Super Admin Only) */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Ruang Chat</DialogTitle>
+            <DialogDescription>
+              Ubah nama dan kelola anggota ruang chat
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateRoom} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-name">Nama Ruang Chat *</Label>
+              <Input
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Contoh: Tim Marketing, Diskusi Project"
+                required
+              />
+            </div>
+            <div>
+              <Label>Kelola Anggota * ({formData.members.length} dipilih)</Label>
+              <Input
+                type="text"
+                placeholder="🔍 Cari nama atau email..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="mt-2"
+              />
+              <ScrollArea className="h-[200px] border rounded-md p-3 mt-2">
+                <div className="space-y-2">
+                  {filteredUsers.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      {userSearchQuery ? 'User tidak ditemukan' : 'Tidak ada user lain'}
+                    </p>
+                  ) : (
+                    filteredUsers.map(u => {
+                      const isCurrentMember = formData.members.includes(u.id);
+                      return (
+                        <div key={u.id} className="flex items-center space-x-2 hover:bg-gray-50 p-2 rounded">
+                          <Checkbox
+                            id={`edit-user-${u.id}`}
+                            checked={isCurrentMember}
+                            onCheckedChange={() => toggleMember(u.id)}
+                          />
+                          <label
+                            htmlFor={`edit-user-${u.id}`}
+                            className="flex-1 text-sm font-medium leading-none cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-semibold">{u.name}</div>
+                                <div className="text-xs text-gray-500">{u.email}</div>
+                              </div>
+                              {isCurrentMember && (
+                                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                                  Anggota
+                                </span>
+                              )}
+                            </div>
+                          </label>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>
+                Batal
+              </Button>
+              <Button type="submit">Update</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
