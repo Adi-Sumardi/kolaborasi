@@ -44,13 +44,22 @@ export default function JobdeskPage({ user }) {
 
   const loadData = async () => {
     try {
-      const [jobdeskRes, usersRes] = await Promise.all([
+      const promises = [
         jobdeskAPI.getAll(),
         user.role !== 'karyawan' ? userAPI.getAll() : Promise.resolve({ users: [] })
-      ]);
+      ];
+      
+      if (user.role !== 'karyawan') {
+        promises.push(divisionAPI.getAll());
+      }
 
-      setJobdesks(jobdeskRes.jobdesks || []);
-      setUsers(usersRes.users || []);
+      const results = await Promise.all(promises);
+      
+      setJobdesks(results[0].jobdesks || []);
+      setUsers(results[1].users || []);
+      if (results[2]) {
+        setDivisions(results[2].divisions || []);
+      }
     } catch (error) {
       console.error('Failed to load jobdesks:', error);
       toast.error('Gagal memuat data jobdesk');
