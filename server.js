@@ -26,8 +26,9 @@ app.prepare().then(() => {
   // Initialize Socket.IO
   const io = new Server(server, {
     cors: {
-      origin: '*',
-      methods: ['GET', 'POST']
+      origin: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST'],
+      credentials: true
     },
     path: '/socket.io/'
   });
