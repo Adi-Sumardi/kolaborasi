@@ -37,6 +37,7 @@ export default function UserManagementPage({ user }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -44,6 +45,10 @@ export default function UserManagementPage({ user }) {
     password: '',
     role: 'karyawan',
     divisionId: ''
+  });
+  const [passwordData, setPasswordData] = useState({
+    newPassword: '',
+    confirmPassword: ''
   });
 
   useEffect(() => {
