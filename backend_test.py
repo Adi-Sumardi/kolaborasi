@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for To-Do to Daily Log Conversion Feature
-Tests the POST /api/todos/:id/convert-to-log endpoint thoroughly
+Backend API Testing Script for Update User Password Feature
+Tests PUT /api/users/:id/password endpoint thoroughly
 """
 
 import requests
 import json
-import uuid
-from datetime import datetime
+import sys
+from pymongo import MongoClient
+import bcrypt
 import os
 from dotenv import load_dotenv
 
@@ -17,10 +18,18 @@ load_dotenv()
 # Configuration
 BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'https://collab-dash-2.preview.emergentagent.com')
 API_BASE = f"{BASE_URL}/api"
+MONGO_URL = os.getenv('MONGO_URL', 'mongodb://localhost:27017/workspace_collaboration')
 
 # Test credentials
-ADMIN_EMAIL = "admin@workspace.com"
-ADMIN_PASSWORD = "password123"
+SUPER_ADMIN_CREDS = {
+    "email": "admin@workspace.com",
+    "password": "password123"
+}
+
+REGULAR_USER_CREDS = {
+    "email": "karyawan1@workspace.com", 
+    "password": "password123"
+}
 
 class TodoConversionTester:
     def __init__(self):
