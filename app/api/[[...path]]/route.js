@@ -1117,6 +1117,65 @@ async function handleCreateChatRoom(request) {
   }
 }
 
+// Update chat room (Super Admin only)
+async function handleUpdateChatRoom(request, roomId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Only super_admin can update rooms
+    if (user.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, members } = body;
+
+    if (!name || !members || members.length === 0) {
+      return NextResponse.json(
+        { error: 'Name and members required' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if room exists
+    const room = await db.collection('chat_rooms').findOne({ id: roomId });
+    if (!room) {
+      return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+    }
+
+    // Update room
+    await db.collection('chat_rooms').updateOne(
+      { id: roomId },
+      {
+        $set: {
+          name,
+          members: [...new Set(members)], // Remove duplicates
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    const updatedRoom = await db.collection('chat_rooms').findOne({ id: roomId });
+
+    return NextResponse.json({
+      message: 'Room updated successfully',
+      room: updatedRoom
+    });
+  } catch (error) {
+    console.error('Update room error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update room' },
+      { status: 500 }
+    );
+  }
+}
+
 // Get messages
 async function handleGetMessages(request, roomId) {
   try {
