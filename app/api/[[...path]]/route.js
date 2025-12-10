@@ -411,6 +411,48 @@ async function handleCreateDivision(request) {
   }
 }
 
+// Update division
+async function handleUpdateDivision(request, divisionId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, description } = body;
+
+    if (!name) {
+      return NextResponse.json(
+        { error: 'Division name required' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    await db.collection('divisions').updateOne(
+      { id: divisionId },
+      {
+        $set: {
+          name,
+          description: description || '',
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return NextResponse.json({ message: 'Division updated successfully' });
+  } catch (error) {
+    console.error('Update division error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update division' },
+      { status: 500 }
+    );
+  }
+}
+
 // Delete division
 async function handleDeleteDivision(request, divisionId) {
   try {
