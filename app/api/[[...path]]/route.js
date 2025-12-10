@@ -1825,6 +1825,10 @@ export async function POST(request, { params }) {
     
     // Todos
     if (path === 'todos') return handleCreateTodo(request);
+    if (path.match(/^todos\/[^/]+\/convert-to-log$/)) {
+      const todoId = path.split('/')[1];
+      return handleConvertTodoToLog(request, todoId);
+    }
     
     // Chat
     if (path === 'chat/rooms') return handleCreateChatRoom(request);
