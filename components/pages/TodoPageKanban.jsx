@@ -383,7 +383,6 @@ export default function TodoPageKanban({ user }) {
   const openEditModal = (task) => {
     setEditingTask(task);
     
-    // Convert date to yyyy-MM-dd format if exists
     let formattedDate = '';
     if (task.dueDate) {
       const date = new Date(task.dueDate);
@@ -394,7 +393,8 @@ export default function TodoPageKanban({ user }) {
       task: task.task || task.title || '',
       description: task.description || '',
       priority: task.priority || 'medium',
-      dueDate: formattedDate
+      dueDate: formattedDate,
+      jobdeskId: task.jobdeskId || ''
     });
     setShowEditModal(true);
   };
