@@ -161,6 +161,37 @@ export default function UserManagementPage({ user }) {
     setShowDeleteDialog(true);
   };
 
+  const openPasswordModal = (userToUpdate) => {
+    setSelectedUser(userToUpdate);
+    setPasswordData({ newPassword: '', confirmPassword: '' });
+    setShowPasswordModal(true);
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+
+    if (passwordData.newPassword.length < 6) {
+      toast.error('Password minimal 6 karakter');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('Password tidak cocok');
+      return;
+    }
+
+    try {
+      await userAPI.update(selectedUser.id, { password: passwordData.newPassword });
+      toast.success('Password berhasil diubah!');
+      setShowPasswordModal(false);
+      setSelectedUser(null);
+      setPasswordData({ newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      console.error('Failed to change password:', error);
+      toast.error(error.message || 'Gagal mengubah password');
+    }
+  };
+
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'super_admin': return 'bg-purple-100 text-purple-800';
