@@ -1748,6 +1748,58 @@ async function handleUpdateUserDivision(request, userId) {
   }
 }
 
+// Update user password
+async function handleUpdateUserPassword(request, userId) {
+  try {
+    const user = verifyToken(request);
+    // Only super_admin can change passwords
+    if (!user || !hasPermission(user.role, ['super_admin'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { newPassword } = body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return NextResponse.json(
+        { error: 'Password must be at least 6 characters' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if user exists
+    const targetUser = await db.collection('users').findOne({ id: userId });
+    if (!targetUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await db.collection('users').updateOne(
+      { id: userId },
+      { 
+        $set: { 
+          password: hashedPassword,
+          updatedAt: new Date() 
+        } 
+      }
+    );
+
+    return NextResponse.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Update user password error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update password' },
+      { status: 500 }
+    );
+  }
+}
+
 // ============================================
 // ROUTER
 // ============================================
