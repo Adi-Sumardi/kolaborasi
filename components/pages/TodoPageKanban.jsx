@@ -576,14 +576,14 @@ export default function TodoPageKanban({ user }) {
             <div>
               <Label htmlFor="jobdesk">Jobdesk Terkait (opsional)</Label>
               <Select
-                value={formData.jobdeskId}
-                onValueChange={(value) => setFormData({ ...formData, jobdeskId: value })}
+                value={formData.jobdeskId || undefined}
+                onValueChange={(value) => setFormData({ ...formData, jobdeskId: value === 'none' ? '' : value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih jobdesk..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tidak ada</SelectItem>
+                  <SelectItem value="none">Tidak ada</SelectItem>
                   {jobdesks.map(jd => (
                     <SelectItem key={jd.id} value={jd.id}>
                       {jd.title}
