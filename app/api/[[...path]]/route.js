@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { sendNotification } from '@/lib/socket-server';
 import { sanitizeUserInput, sanitizeEmail, sanitizeString, validators } from '@/lib/sanitize';
+import { rateLimitMiddleware, getClientIP } from '@/lib/rateLimit';
 
 // Helper function to verify JWT token
 const verifyToken = (request) => {
