@@ -1229,7 +1229,22 @@ async function handleGetAttachments(request, jobdeskId) {
       .sort({ createdAt: -1 })
       .toArray();
 
-    return NextResponse.json({ attachments });
+    // Get user info for each attachment
+    const attachmentsWithUser = await Promise.all(
+      attachments.map(async (att) => {
+        const uploader = await db.collection('users').findOne(
+          { id: att.userId },
+          { projection: { name: 1, email: 1 } }
+        );
+        return {
+          ...att,
+          uploaderName: uploader?.name || 'Unknown',
+          uploaderEmail: uploader?.email || ''
+        };
+      })
+    );
+
+    return NextResponse.json({ attachments: attachmentsWithUser });
   } catch (error) {
     console.error('Get attachments error:', error);
     return NextResponse.json(
