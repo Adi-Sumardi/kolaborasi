@@ -98,6 +98,9 @@ function TaskCard({ task, onDelete, onEdit }) {
 // Kanban Column Component
 function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit }) {
   const taskIds = tasks.map(t => t.id);
+  const { setNodeRef } = useDroppable({
+    id: status,
+  });
 
   return (
     <div className="flex-1 min-w-[280px] sm:min-w-0">
@@ -120,7 +123,7 @@ function KanbanColumn({ title, status, tasks, color, onAddTask, onDelete, onEdit
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-3 min-h-[400px] max-h-[calc(100vh-300px)] overflow-y-auto">
+        <CardContent ref={setNodeRef} className="p-3 min-h-[400px] max-h-[calc(100vh-300px)] overflow-y-auto">
           <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm">
