@@ -394,6 +394,44 @@ export default function AttachmentSection({ jobdesk, user }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Preview Modal */}
+      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Preview - {previewAttachment?.fileName}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-auto max-h-[70vh]">
+            {previewAttachment && (
+              <>
+                {previewAttachment.fileType?.includes('image') ? (
+                  <img 
+                    src={previewAttachment.url} 
+                    alt={previewAttachment.fileName}
+                    className="w-full h-auto"
+                  />
+                ) : previewAttachment.fileType?.includes('pdf') ? (
+                  <iframe
+                    src={previewAttachment.url}
+                    className="w-full h-[70vh]"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>Preview tidak tersedia untuk file ini</p>
+                    <Button 
+                      className="mt-4"
+                      onClick={() => window.open(previewAttachment.url, '_blank')}
+                    >
+                      Buka di Tab Baru
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
