@@ -49,6 +49,8 @@
         "embla-carousel-react": "^8.6.0",
         "input-otp": "^1.4.2",
         "jsonwebtoken": "^9.0.3",
+        "jspdf": "^3.0.4",
+        "jspdf-autotable": "^5.0.2",
         "lucide-react": "^0.516.0",
         "mongodb": "^6.6.0",
         "multer": "^2.0.2",
