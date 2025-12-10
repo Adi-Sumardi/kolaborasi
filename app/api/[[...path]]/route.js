@@ -1349,6 +1349,26 @@ export async function PUT(request, { params }) {
   const path = params?.path?.join('/') || '';
 
   try {
+    // Divisions
+    if (path.match(/^divisions\/[^/]+$/)) {
+      const divisionId = path.split('/')[1];
+      return handleUpdateDivision(request, divisionId);
+    }
+    
+    // Users
+    if (path.match(/^users\/[^/]+\/status$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUserStatus(request, userId);
+    }
+    if (path.match(/^users\/[^/]+\/division$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUserDivision(request, userId);
+    }
+    if (path.match(/^users\/[^/]+$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUser(request, userId);
+    }
+    
     // Jobdesks
     if (path.match(/^jobdesks\/[^/]+\/status$/)) {
       const jobdeskId = path.split('/')[1];
