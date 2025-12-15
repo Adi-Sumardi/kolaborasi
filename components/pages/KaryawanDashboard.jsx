@@ -274,6 +274,10 @@ export default function KaryawanDashboard({ user }) {
           ) : (
             <div className="space-y-3">
               {jobdesks.map((job) => {
+                // Get user's personal status from progress array
+                const userProgress = job.progress?.find(p => p.userId === user.id);
+                const userStatus = userProgress?.status || job.status; // Fallback to global status
+                
                 const getStatusInfo = (status) => {
                   switch (status) {
                     case 'pending':
@@ -287,8 +291,8 @@ export default function KaryawanDashboard({ user }) {
                   }
                 };
 
-                const statusInfo = getStatusInfo(job.status);
-                const isOverdue = job.dueDate && new Date(job.dueDate) < new Date() && job.status !== 'completed';
+                const statusInfo = getStatusInfo(userStatus); // Use personal status
+                const isOverdue = job.dueDate && new Date(job.dueDate) < new Date() && userStatus !== 'completed';
 
                 return (
                   <div
