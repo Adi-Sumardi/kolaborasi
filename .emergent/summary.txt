@@ -1,314 +1,229 @@
 <analysis>
-
-**original_problem_statement:** The user wants to build a collaborative workspace dashboard application.
+**original_problem_statement:** The user's goal is to build a collaborative workspace dashboard. Key features requested and developed include: jobdesk management, a real-time chat, a KPI dashboard, and a Kanban board for To-Dos. The most recent major feature request was to integrate the To-Do list with a Daily Jobdesk Log, allowing users to convert completed tasks into log entries. Following this, the user requested multiple bug fixes and a comprehensive production hardening of the entire application to make it mission-critical ready.
 
 **PRODUCT REQUIREMENTS:**
--   **Tech Stack:** Initially requested Laravel (backend) + Next.js (frontend) + MySQL, but agreed to switch to the existing Next.js (full-stack) + MongoDB environment.
+-   **Tech Stack:** Next.js (full-stack with custom ) + MongoDB.
 -   **User Roles:** Super Admin, Pengurus (Manager), SDM (HR), Karyawan (Employee).
 -   **Core Features:**
-    1.  **Device Lock:** Users must log in to use the device (PC/tablet). Implemented as a web app login gate.
-    2.  **Jobdesk Management:** Employees must input their jobdesk. Managers can assign jobdesks to multiple employees with real-time notifications.
-    3.  **Daily Work Logging & KPI:** Employees log daily work, which is used to calculate KPI.
-    4.  **KPI Dashboard:** Managers/HR can view employee KPIs with statistics and date filters.
-    5.  **Real-time Features:** Group chat and notifications (using Socket.io).
-    6.  **Division Management:** Admins/Managers can create and manage divisions and their members.
-    7.  **To-do List:** A personal to-do list for employees.
-    8.  **Authentication:** Email/password login, with 2FA via an authenticator app. Reset Password was deferred.
-    9.  **File Attachments:** An attachment system (files and links) for jobdesks, with role-based permissions for viewing and deleting.
-    10. **KPI Reporting:** Downloadable PDF reports for KPI data for HR and Managers.
-    11. **Responsive Design:** The application must be responsive for mobile, tablet, and desktop devices.
+    1.  **Management Modules:** Jobdesk, User, Division, and Chat Room management.
+    2.  **Productivity Tools:** A Kanban To-Do board with drag-and-drop, daily work logging, and a To-Do to Log conversion workflow.
+    3.  **Real-time Features:** Group chat and notifications via Socket.io.
+    4.  **Reporting:** A KPI Dashboard with downloadable PDF reports.
+    5.  **Attachments:** File and link attachments for jobdesks.
+    6.  **Authentication:** Secure login with JWT and 2FA.
+    7.  **Production Readiness:** The application must be secure, performant, and stable for a mission-critical environment with up to 100 users.
 
 **User's preferred language**: The user's primary language is **Indonesian (Bahasa Indonesia)**. The next agent MUST respond in Indonesian.
 
 **what currently exists?**
-A comprehensive full-stack Next.js application with a MongoDB database. The application includes a complete user and role management system, authentication with 2FA, division and jobdesk management, daily logging, a basic KPI dashboard, a group chat system, a to-do list, and a file/link attachment system for jobdesks. Most of the core features requested by the user have been implemented as an MVP. The frontend is built with shadcn/ui and Tailwind CSS.
+A feature-rich Next.js application with a monolithic backend API and a custom  for Socket.io. All major features (User/Jobdesk/Chat management, To-Do Kanban, KPI Dashboard) are implemented. A significant production hardening effort was recently undertaken, adding security libraries (helmet, csurf, sanitize-html), rate limiting, logging (winston), and database indexing. However, this effort was rushed, resulting in an unstable application with recurring authentication issues and incomplete integration of the new hardening measures. The latest functional change was the implementation of Edit and Delete endpoints for Jobdesks.
 
 **Last working item**:
--   Last item agent was working: The agent was attempting to fix a recurring WebSocket connection error reported by the user. The error  appears in the browser console, breaking real-time features like chat and notifications. The agent's first attempt was to add better error handling in . The agent was about to attempt a second, more robust fix.
--   Status: **IN PROGRESS**
--   Agent Testing Done: N
--   Which testing method agent to use? **Manual testing**. The agent should restart the server, open the web application, and check the browser's developer console for any WebSocket errors. If the error persists, the agent needs to debug the Socket.io server () and client (, ) configurations.
--   User Testing Done: Y (User reported the issue).
+-   Last item agent was working: Implementing the missing  (Edit) and  (Delete) endpoints. The previous agent correctly identified that these were missing, created the handlers in , and added the corresponding route matchers.
+-   Status: **USER VERIFICATION PENDING**
+-   Agent Testing Done: Y (Backend testing agent confirmed endpoints work).
+-   Which testing method agent to use? **Frontend testing agent**. The backend APIs exist, but the frontend UI in  needs to be verified to ensure the edit and delete buttons call these new endpoints correctly and that the UI updates as expected.
+-   User Testing Done: N
 
 **All Pending/In progress Issue list**:
--   Issue 1: Recurring WebSocket Connection Failure (P0)
--   Issue 2: User's Repetitive Message Loop (P1)
+-   Issue 1: Recurring 401/403 Authentication Errors After Server Restarts (P0)
+-   Issue 2: Kanban Board Drag-and-Drop is Buggy (P1)
+-   Issue 3: To-Do Converted to Log Status Mismatch (P1)
+-   Issue 4: Socket.IO Real-time Chat is Unstable (P2)
 
 **Issues Detail**:
--   **Issue 1: Recurring WebSocket Connection Failure**
-    -   **Description:** The application fails to establish a stable WebSocket connection, causing real-time features to break. The browser console shows . This is a critical bug.
-    -   **Attempted fixes:** The agent tried adding more error handling to . This did not resolve the issue.
+-   **Issue 1: Recurring 401/403 Authentication Errors After Server Restarts**
+    -   **Description:** After the agent changed the  or restarted the server, the user was flooded with  and  errors, making the app unusable. The agent's workaround was to ask the user to manually clear localStorage or log out/in. This is not a sustainable solution for a production environment.
+    -   **Attempted fixes:** Agent advised manual logout/login. This is a temporary workaround, not a fix.
     -   **Next debug checklist:**
-        1.  Review  to ensure the Socket.io server is correctly initialized and attached to the HTTP server.
-        2.  Review  and  to verify the client-side connection logic, especially the path and transports configuration.
-        3.  Check for any proxy or network configuration issues in the environment that might be blocking WebSocket connections.
-        4.  Ensure the Next.js custom server configuration in  () is correct and being used.
-        5.  Restart the  service with nextjs: ERROR (not running)
-nextjs: started and check logs ( GET /api/todos 200 in 30ms
- GET /api/chat/rooms 200 in 18ms
- GET /api/chat/rooms 200 in 9ms
- GET /api/jobdesks 200 in 17ms
- GET /api/jobdesks 200 in 6ms
-yarn run v1.22.22
-$ NODE_OPTIONS='--max-old-space-size=512' node server.js
-> Ready on http://0.0.0.0:3000
-> Socket.io enabled on port 3000
- ○ Compiling / ...
-Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
-  npx update-browserslist-db@latest
-  Why you should do it regularly: https://github.com/browserslist/update-db#readme
- ✓ Compiled / in 6.3s (1837 modules)
- GET / 200 in 5491ms
- GET / 200 in 7143ms
- ✓ Compiled in 584ms (911 modules)
- GET / 200 in 203ms
- GET /?x_request_source=preview 200 in 15ms
- ○ Compiling /api/[[...path]] ...
- ✓ Compiled /api/[[...path]] in 1239ms (1186 modules)
- GET /api/notifications 200 in 1990ms
- GET /api/jobdesks 200 in 1990ms
- GET /api/auth/me 200 in 2010ms
- GET /api/notifications 200 in 16ms
- GET /api/jobdesks 200 in 16ms
- GET /api/auth/me 200 in 12ms
- GET /api/todos 200 in 12ms
- GET /api/kpi?userId=collab-dash-2 200 in 18ms
- GET /api/todos 200 in 29ms
- GET /api/kpi?userId=collab-dash-2 200 in 62ms
- GET /api/jobdesks 200 in 41ms
- GET /api/jobdesks 200 in 12ms
- GET /api/chat/rooms 200 in 19ms
- GET /api/chat/rooms 200 in 6ms
- GET /api/todos 200 in 13ms
- GET /api/todos 200 in 5ms
- ○ Compiling /_not-found ...
- ✓ Compiled /_not-found in 796ms (2086 modules)
- GET /robots.txt 404 in 917ms
- GET / 200 in 106ms
- GET /?fbclid=IwZXh0bgNhZW0CMTEAc3J0YwZhcHBfaWQMMjU2MjgxMDQwNTU4AAEe_a1H9fHfWzx_4DQNnJrcHPXeVUpkjyWgmwgV9dIjfbmtKJIFiYPsNv2jOGg_aem_cDG48jX_ou8JtpkIyImVdA 200 in 16ms
- GET /api/todos 200 in 47ms
- GET /api/todos 200 in 6ms
- GET /api/chat/rooms 200 in 13ms
- GET /api/chat/rooms 200 in 6ms
- GET /_next/webpack-hmr 404 in 13ms
- GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 16ms
- GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 5ms
- GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 6ms
- GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 8ms
- GET /api/jobdesks 200 in 13ms
- GET /api/jobdesks 200 in 29ms
- GET /api/todos 200 in 13ms
- GET /api/jobdesks 200 in 8ms
- GET /api/kpi?userId=collab-dash-2 200 in 9ms
- GET /api/todos 200 in 5ms
- GET /api/jobdesks 200 in 5ms
- GET /api/kpi?userId=collab-dash-2 200 in 22ms
- GET /api/jobdesks 200 in 17ms
- GET /api/jobdesks 200 in 30ms
- GET /api/todos 200 in 17ms
- GET /api/kpi?userId=collab-dash-2 200 in 18ms
- GET /api/jobdesks 200 in 9ms
- GET /api/jobdesks 200 in 16ms
- GET /api/kpi?userId=collab-dash-2 200 in 19ms
- GET /api/todos 200 in 6ms
- GET / 200 in 17ms
- GET /?x_request_source=preview 200 in 14ms
- ✓ Compiled in 1375ms (1823 modules)
- ✓ Compiled in 1596ms (1823 modules)
- ✓ Compiled in 3.4s (1837 modules)
- ○ Compiling /api/[[...path]] ...
- ✓ Compiled /api/[[...path]] in 650ms (1186 modules)
- GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 811ms
- GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 797ms
- GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 17ms
- GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 19ms
- GET /api/chat/rooms 200 in 23ms
- GET /api/chat/rooms 200 in 6ms
- GET /api/todos 200 in 26ms
- GET /api/todos 200 in 5ms
- GET /api/jobdesks 200 in 20ms
- GET /api/jobdesks 200 in 6ms
- GET /api/jobdesks 200 in 26ms
- GET /api/kpi?userId=collab-dash-2 200 in 27ms
- GET /api/todos 200 in 28ms
- GET /api/jobdesks 200 in 20ms
- GET /api/kpi?userId=collab-dash-2 200 in 21ms
- GET /api/todos 200 in 23ms
- GET /api/jobdesks 200 in 18ms
- GET /api/jobdesks 200 in 6ms
- GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 20ms
- GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 7ms
- GET /api/daily-logs?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 8ms
- GET /api/kpi?userId=collab-dash-2&startDate=2025-11-30&endDate=2025-12-10 200 in 19ms
-yarn run v1.22.22
-$ NODE_OPTIONS='--max-old-space-size=512' node server.js
-yarn run v1.22.22
-$ NODE_OPTIONS='--max-old-space-size=512' node server.js) for any server-side errors during initialization.
-    -   **Why fix this issue and what will be achieved with the fix?** Fixing this will restore all real-time functionalities, including chat and notifications, which are core requirements of the application.
+        1.  In , modify the  helper function. Add a global error handler that intercepts  responses.
+        2.  When a 401 is caught, the handler should automatically:
+            a. Remove the invalid JWT token from .
+            b. Redirect the user to the login page ().
+        3.  Review  and  to ensure they also handle token expiration gracefully instead of failing silently or in a loop.
+    -   **Why fix this issue and what will be achieved with the fix?** This is the highest priority issue. Fixing it will make the application stable and provide a seamless user experience, preventing users from getting locked out after deployments or server restarts.
     -   **Status:** IN PROGRESS
     -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** Both. Backend for server logs, Frontend for browser console errors and feature functionality (chatting).
-    -   **Blocked on other issue:** None. This is the highest priority blocker.
-
--   **Issue 2: User's Repetitive Message Loop**
-    -   **Description:** The user repeatedly sends the same message: . This occurs even after the feature has been successfully implemented and verified by the user (keren banget). This is likely a platform or user-side issue, not a code bug.
-    -   **Attempted fixes:** The previous agent tried various strategies: ignoring the message, asking for clarification, and using  markers. The most effective strategy was to politely and firmly state that the feature is complete and then ask for confirmation to proceed with the *next* task.
-    -   **Next debug checklist:** This is not a technical issue to debug. The next agent should follow this protocol:
-        1.  When the message appears, do not try to re-implement the filter feature.
-        2.  Respond in Indonesian, politely confirming that the filter feature is **already complete and tested**.
-        3.  State what you are currently working on (e.g., Saya akan melanjutkan pengerjaan desain responsif sekarang).
-        4.  Ask for explicit confirmation to continue the current task (e.g., Apakah saya boleh melanjutkan?).
-    -   **Why fix this issue and what will be achieved with the fix?** Managing this behavior prevents the agent from getting stuck in a loop and allows development to proceed efficiently.
-    -   **Status:** RESOLVED (by providing a clear handling strategy).
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** N/A.
+    -   **Should Test frontend/backend/both after fix?** Frontend. The backend is behaving correctly by invalidating old tokens; the frontend must handle the result properly.
     -   **Blocked on other issue:** None.
 
+-   **Issue 2: Kanban Board Drag-and-Drop is Buggy**
+    -   **Description:** The user reported that dragging a task from the 'Draft' column directly into an empty 'Done' column does not update the task's status. The status only updates if the task is dropped onto another task.
+    -   **Attempted fixes:** The agent analyzed the logic in  and  in , made some code changes, and added a  to the droppable area. The user never confirmed if this fix was successful, and the agent's analysis was complex, suggesting the fix might be incomplete.
+    -   **Next debug checklist:**
+        1.  Review the  function in .
+        2.  Simplify the logic. The primary source of truth should be . If  is one of the column IDs ('draft', 'on-progress', 'done'), the dragged task's status should be updated to that column's status.
+        3.  Remove any conflicting logic from . State updates should only happen once at the end of the drag operation.
+    -   **Why fix this issue and what will be achieved with the fix?** This is a core UI interaction for the To-Do feature. Fixing it is essential for the Kanban board to be usable.
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** Frontend.
+
+-   **Issue 3: To-Do Converted to Log Status Mismatch**
+    -   **Description:** The backend API () sets a field named  on the todo document. However, the frontend  checks for a field named  to display the Tersimpan di Log Aktivitas badge. This data inconsistency means the badge will not display correctly after a page reload.
+    -   **Attempted fixes:** None. This was an oversight by the previous agent.
+    -   **Next debug checklist:**
+        1.  Standardize on one field name.  is more descriptive.
+        2.  In , find all instances of  and replace them with .
+        3.  Verify that the  API call in the same file also updates the local state correctly after conversion.
+    -   **Why fix this issue and what will be achieved with the fix?** To fix a data-UI inconsistency bug and ensure users get correct visual feedback.
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** Both.
+
+-   **Issue 4: Socket.IO Real-time Chat is Unstable**
+    -   **Description:** Throughout the logs, there are persistent  and  errors. The agent dismissed them as non-critical, but this indicates the real-time chat feature is likely broken or unstable.
+    -   **Attempted fixes:** The agent implemented a CORS policy fix in  but the errors persist, suggesting an authentication or token handling issue.
+    -   **Next debug checklist:**
+        1.  Review  and .
+        2.  The socket connection needs to re-authenticate when the JWT token is refreshed. The current logic likely attempts to connect with an old or missing token.
+        3.  Ensure the  middleware in  correctly verifies the token and handles auth errors.
+    -   **Why fix this issue and what will be achieved with the fix?** To restore a core feature of the application (real-time chat and notifications).
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** Both.
+
 **In progress Task List**:
--   Task 1: Make all pages fully responsive (P1)
--   Task 2: Implement KPI Report Download as PDF (P2)
+-   Task 1: Complete and Verify Production Hardening (P1)
 
 **Task Detail**:
--   **Task 1: Make all pages fully responsive**
-    -   **Where to resume:** The agent had just started by looking at . The work needs to be systematically applied to all components, including , , , , etc., using Tailwind CSS's responsive prefixes (e.g., , ). The mobile navigation (e.g., a hamburger menu) is a key part of this.
-    -   **What will be achieved with this?** The application will be usable on mobile phones, tablets, and desktops, as requested by the user.
-    -   **Status:** IN PROGRESS (approx. 5% complete)
-    -   **Should Test frontend/backend/both after fix?** Frontend. Use the screenshot tool at various screen widths to verify layouts.
-    -   **Blocked on something:** This task should be resumed after the critical WebSocket issue (Issue 1) is fixed.
-
--   **Task 2: Implement KPI Report Download as PDF**
-    -   **Where to resume:** The agent installed  and  and created a utility file . The next step is to integrate this into the  component, adding a Download PDF button that, when clicked, fetches the KPI data, formats it, and uses the  to create and trigger a download of the PDF file.
-    -   **What will be achieved with this?** SDM and Pengurus roles will be able to download KPI reports for analysis.
-    -   **Status:** IN PROGRESS (approx. 25% complete)
-    -   **Should Test frontend/backend/both after fix?** Frontend. Manually click the download button and verify the contents of the generated PDF.
-    -   **Blocked on something:** This task should be resumed after the critical WebSocket issue (Issue 1) is fixed.
+-   **Task 1: Complete and Verify Production Hardening**
+    -   **Where to resume:** The previous agent installed several packages (, , , ) and created utility files. However, the integration is incomplete.
+        1.  **Input Sanitization:** In , apply the  utility from  to **all** endpoints that receive string inputs from the user (e.g., creating/editing todos, jobdesks, chat messages, division names), not just login/register.
+        2.  **CSRF Protection:** The  package was installed but never implemented. It needs to be configured as middleware in  and integrated with the frontend forms.
+        3.  **Logging:** The  logger () was created, but most of the application still uses . Replace , , etc., with , ,  throughout the backend for structured, file-based logging.
+        4.  **Pagination:** A pagination helper was created () but not applied. Implement pagination for all list endpoints (, , , ) to prevent performance degradation.
+    -   **What will be achieved with this?** This will complete the user's request to make the application secure, performant, and maintainable, bringing it to a true production-ready state.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** Both. Extensive testing is needed after these cross-cutting changes.
+    -   **Blocked on something:** It's recommended to fix the P0 authentication issue first, as it will interfere with testing.
 
 **Upcoming and Future Tasks**
--   **Upcoming Tasks:**
-    -   **P0: Fix WebSocket Connection:** This is the highest priority from the pending issues list.
-    -   **P1: Complete Responsive Design:** Resume and finish the responsive UI task.
-    -   **P2: Complete KPI PDF Report:** Resume and finish the PDF generation task.
--   **Future Tasks:**
-    -   **P3: Migrate File Storage to Google Drive:** The user specified that file attachments should eventually be stored in Google Drive. This will require using the Google Drive API and an integration playbook.
-    -   **P4: Implement Reset Password via Email:** This feature was deferred from the initial MVP but is a standard requirement for production apps. It will require an email service integration (e.g., SendGrid, Resend).
+-   **Upcoming Tasks (from Production Roadmap):**
+    -   **P1: Implement Redis Caching:** For expensive or frequently accessed queries (KPI data, user sessions).
+    -   **P2: Implement Automated Testing (Jest):** Create a basic test suite for critical API endpoints like authentication and core data creation.
+    -   **P2: Refactor Monolithic API:** Break down the massive  into smaller, domain-specific files (e.g., , ).
+-   **Future Tasks (from original request):**
+    -   **P2: Migrate File Storage to Google Drive:** Requires using the Google Drive API.
+    -   **P3: Implement Reset Password via Email:** A standard feature for production apps.
+    -   **P3: Implement Email Notifications:** For new assignments, deadlines, etc., using a library like .
 
 **Completed work in this session**
--   **Initial MVP Scaffolding:**
-    -   Set up the entire application structure including Next.js pages, API routes, and MongoDB connection.
-    -   Implemented a custom server () for Socket.io integration.
-    -   Created and ran a database seeding script () to populate the database with test data for all user roles.
--   **User & Division Management (Enhancement 1):**
-    -   Created a User Management page () for CRUD operations on users (add, edit, enable/disable).
-    -   Enhanced the Division Management page () with edit, delete, and member assignment functionality.
-    -   Updated backend API () with corresponding endpoints.
--   **Jobdesk Assignment Filter (Enhancement 2):**
-    -   Implemented a comprehensive filtering system in the Add Jobdesk modal on .
-    -   Filters include search by name/email, filter by division, and filter by status.
--   **Jobdesk Attachment System (Enhancement 3, 4, 5):**
-    -   Implemented a full-featured attachment system on jobdesks.
-    -   Created a file upload endpoint () using .
-    -   Created a dedicated UI component ().
-    -   Added functionality to upload files, add links, view, download, and delete attachments based on user roles.
-    -   Added a View button for previewing PDFs and images in a modal.
-    -   Added the uploader's name to each attachment.
+- **Feature Implementation:**
+  - Implemented the full To-Do to Daily Log conversion feature (backend and frontend).
+  - Implemented the missing  (Edit) and  for Jobdesks.
+- **Bug Fixes:**
+  - Fixed a 401 error when creating To-Dos by adding an auth header to the  fetch.
+  - Fixed a 401 error and a controlled to uncontrolled warning when converting a To-Do to a log.
+  - Fixed an inclusive date-range bug in the KPI dashboard filter.
+- **Production Hardening (Started):**
+  - Generated and set a strong .
+  - Created database indexes for all major collections via a script ().
+  - Added and partially configured libraries for security (, , ), rate-limiting, and logging ().
+  - Added a health-check endpoint ().
+  - Created a  and .
 
 **Earlier issues found/mentioned but not fixed**
--   There are no unfixed bugs other than the main WebSocket issue currently being worked on. The user's repetitive message loop has been identified and a strategy to handle it is provided above.
+- The Kanban drag-and-drop bug and the recurring 401 errors are detailed in the **All Pending/In progress Issue list** as they are active problems. The Socket.IO instability also falls into this category.
 
 **Known issue recurrence from previous fork**
--   N/A. This is the first fork summary.
+- N/A
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Framework:** Next.js (as a full-stack framework with App Router)
+-   **Framework:** Next.js (App Router) with custom Express server ()
 -   **Database:** MongoDB
--   **Real-time:** Socket.io, integrated via a custom Node.js server ().
--   **Authentication:** JWT (JSON Web Tokens) stored in cookies, with role-based access control (RBAC).
--   **2FA:** Time-based One-Time Password (TOTP) using .
--   **Styling:** Tailwind CSS with shadcn/ui components.
--   **File Uploads:** Handled using  on a dedicated API route, storing files locally in .
--   **PDF Generation:**  and  for creating client-side PDF reports.
+-   **Real-time:** Socket.io
+-   **Styling:** Tailwind CSS, shadcn/ui
+-   **Security:** JWT, RBAC, , , , 
+-   **Performance:** Manual DB Indexing, Plans for Redis Caching
+-   **Logging:** 
+-   **API:** Monolithic API route ()
 
 **key DB schema**
+-   **todos:**  (Note: frontend might still be using . This is a bug.)
 -   **users:** 
--   **divisions:** 
 -   **jobdesks:** 
--   **attachments** (embedded in ): 
 -   **daily_logs:** 
--   **todos:** 
--   **chat_rooms:** 
--   **messages:** 
--   **notifications:** 
 
 **changes in tech stack**
--   The user's initial request for a Laravel/MySQL stack was pivoted to a Next.js/MongoDB full-stack application to leverage the existing environment and accelerate development.
+-   Added: , , , , .
 
 **All files of reference**
--   **/app/app/api/[[...path]]/route.js**: The single most important backend file, containing almost all API logic.
--   **/app/server.js**: Critical for the Socket.io real-time functionality. A likely source of the current WebSocket error.
--   **/app/lib/socket-client.js**: The client-side counterpart to , also critical for debugging the WebSocket issue.
--   **/app/components/DashboardApp.jsx**: The main layout component that orchestrates the entire dashboard UI.
--   **/app/components/pages/JobdeskPage.jsx**: A complex component that has been modified multiple times for filters and attachments.
--   **/app/components/AttachmentSection.jsx**: The dedicated component for the file attachment feature.
--   **/app/lib/api.js**: Centralized client-side functions for making API calls.
--   **/app/lib/pdfGenerator.js**: New utility for the pending PDF report feature.
--   **/app/components/pages/KPIPage.jsx**: The target for implementing the PDF download button.
+-   **/app/app/api/[[...path]]/route.js**: The monolithic backend. Contains logic for almost all features and recent security additions. It's the primary file for bug fixing and refactoring.
+-   **/app/components/pages/TodoPageKanban.jsx**: Contains the buggy drag-and-drop logic and the / field mismatch.
+-   **/app/lib/api.js**: The frontend API helper. Needs to be modified to handle 401 errors globally.
+-   **/app/server.js**: The custom server. Modified to include security middleware like . Needs  implementation.
+-   **/app/lib/sanitize.js, /app/lib/rateLimit.js, /app/lib/logger.js**: New utility files for hardening that are not fully integrated yet.
+-   **/app/PRODUCTION_READY_GUIDE.md**: New documentation created by the agent.
 
 **Areas that need refactoring**:
--   The main API file  is becoming very large (over 1500 lines). Future work should consider splitting this into multiple, more focused route files for better maintainability.
--   The file upload logic is currently saving to the local filesystem (). This is not scalable or persistent in many deployment environments and should be migrated to a cloud service like Google Drive (as requested) or AWS S3.
+-   **Monolithic API ():** Critically needs to be broken down into smaller, domain-specific routes (e.g., , ). The file is over 2200 lines long and is extremely difficult to maintain.
+-   **Incomplete Hardening:** The security and logging features were added but not integrated globally. This half-done state is a risk. All  calls should be replaced by the  logger, and sanitization should be applied to all inputs.
 
 **key api endpoints**
--   , , , 
--   ,  (GET, POST, PUT, DELETE)
--   ,  (GET, POST, PUT, DELETE)
--   ,  (GET, POST, PUT)
--    (POST, DELETE)
--    (POST for file uploads)
--   
--   
+-   : (New) Edits a jobdesk.
+-   : (New) Deletes a jobdesk.
+-   : (New) Health check endpoint.
+-   All other existing endpoints for , , , , etc.
 
 **Critical Info for New Agent**
-1.  **PRIORITY 1: FIX WEBSOCKETS.** The real-time functionality is completely broken due to a WebSocket connection error. This is the most critical issue to resolve before any other work. Debug  and .
-2.  **MANAGE USER LOOP:** The user will likely send a repetitive message about the jobdesk assignment filter. This feature is **100% complete and verified by the user.** Do not work on it again. Follow the protocol in the Issues Detail section to manage this behavior and continue with the real tasks.
-3.  **PENDING TASKS:** After fixing the WebSocket issue, the next priorities are completing the **Responsive Design** and the **KPI PDF Report** feature.
-4.  **TECH STACK:** The app uses a custom Node.js server () to run Next.js and Socket.io together. All server restarts must be done via nextjs: stopped
-nextjs: started.
+1.  **PRIORITY 1 (STABILITY):** The app is unstable due to a recurring authentication issue (P0). Your first task is to implement a global 401 error handler in  to automatically log the user out, as detailed in Issue 1. The application is unusable in its current state for anyone with an expired token.
+2.  **PRIORITY 2 (BUGS):** Address the two user-facing bugs: the faulty drag-and-drop in the Kanban board (Issue 2) and the / data mismatch (Issue 3).
+3.  **PRIORITY 3 (FINISH THE JOB):** The Production Hardening task is incomplete. Review the plan in In progress Task List and systematically apply sanitization, logging, CSRF, and pagination across the entire backend.
+4.  **LANGUAGE:** You **MUST** respond to the user in **Indonesian (Bahasa Indonesia)**.
 
 **documents created in this job**
--   /app/README.md
+-   
+-   
+-   
+-   
+-   
+-   
+-   
+-   
+-   
+-   
+-   
+-   
 
 **Last 10 User Messages and any pending user messages**
-1.  **User:** lanjutkan (continue) + reports a **WebSocket connection error**. (This is the critical issue).
-2.  **Agent:** Acknowledges the error and plans to fix it before continuing other tasks.
-3.  **User:** (Loop) Repeats request for filter on assign employee.
-4.  **Agent:** Re-confirms it will fix the WebSocket error and then continue with responsive design + PDF report.
-5.  **User:** (Loop) Repeats request for filter on assign employee.
-6.  **Agent:** (Loop) Repeats plan to fix WebSocket error.
-7.  **User:** (Loop) Repeats request for filter on assign employee.
-8.  **Agent:** (Loop) Repeats plan to fix WebSocket error.
-9.  **User:** (Loop) Repeats request for filter on assign employee.
-10. **Agent:** (Loop) Plans a more robust fix for the WebSocket error.
-
-**Pending User Message:** The last user message was another instance of the repetitive filter request. The agent's last action was to plan a better fix for the WebSocket error.
+1.  **User:** Reports KPI date filter is not inclusive. (FIXED)
+2.  **User:** Asks for a comprehensive review of the app for bugs, pros/cons, and deployment readiness. (Agent performed a review).
+3.  **User:** Asks agent to fix all found issues. (Agent started a production hardening sprint).
+4.  **User:** Reports the app is broken after the fixes. (Agent identified a port conflict).
+5.  **User:** Reports the app is still broken (401 errors). (Agent identified it's due to an old JWT token).
+6.  **User:** oke sudah ..keren banget (Ok, it's done.. very cool) - confirms the login workaround fixed the 401s. (COMPLETED - for that instance)
+7.  **User:** Asks what else is needed for 100% production readiness. (Agent provided a detailed roadmap).
+8.  **User:** Confirms requirements (100 users, mission-critical) and tells agent to finish now. (Agent started another sprint).
+9.  **User:** Reports the app is not running. (Agent debugged and fixed another port conflict).
+10. **User:** Reports mass 401/403 errors again, then asks if jobdesks can be edited/deleted. (Agent identified the auth issue is recurring and the edit/delete endpoints are missing).
+11. **User:** oke fix sekarang (ok fix now) - instructing agent to implement the missing edit/delete jobdesk endpoints. (This was the last working item).
 
 **Project Health Check:**
--   **Broken:** Real-time features (Chat, Notifications) due to the WebSocket connection error.
+-   **Broken:**
+    -   Authentication flow is not resilient to token expiry, causing widespread 401 errors.
+    -   Kanban board drag-and-drop is functionally broken.
+    -   Real-time chat is unstable due to socket connection/auth errors.
+    -   Converted to Log UI feedback is broken due to a data-field mismatch.
 -   **Mocked:** None.
 
 **3rd Party Integrations**
--   Socket.io (Real-time communication) - No key required.
--    /  (PDF Generation) - No key required.
--    (2FA/TOTP) - No key required.
--    (File Uploads) - No key required.
+-   Socket.io (Real-time communication)
+-    /  (PDF Generation)
+-    (2FA/TOTP)
+-    (File Uploads)
+-    /  (Drag and Drop)
+-   , , ,  (Security - partially integrated)
+-    (Logging - partially integrated)
 
 **Testing status**
--   Testing agent used after significant changes: NO
+-   Testing agent used after significant changes: YES (both backend and frontend agents were used).
 -   Troubleshoot agent used after agent stuck in loop: NO
 -   Test files created: []
--   Known regressions: Real-time features are currently non-functional due to the WebSocket error.
+-   Known regressions: The application's stability regressed after the production hardening sprint, leading to recurring authentication failures.
 
 **Credentials to test flow:**
 -   **Super Admin:**  / 
@@ -317,6 +232,9 @@ nextjs: started.
 -   **Karyawan (Employee):**  / 
 
 **What agent forgot to execute**
--   The agent correctly identified all user requests but was blocked from completing the last two (Responsive Design, PDF Reports) by the critical WebSocket error and the user's repetitive message loop. It did not forget tasks, but its progress was halted.
+- The agent failed to create a robust solution for the recurring  error, repeatedly offering a manual workaround instead of fixing the root cause on the frontend.
+- The agent did not fully integrate the security and logging libraries it installed. Sanitization, CSRF protection, and structured logging are only partially implemented, leaving the application vulnerable.
+- The agent did not get user verification for the Kanban drag-and-drop fix, leaving a core feature in a likely broken state.
+- The agent introduced a new bug ( vs. ) and did not catch it.
 
 </analysis>

@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'https://collab-dash-2.preview.emergentagent.com')
+BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'https://task-central-38.preview.emergentagent.com')
 API_BASE = f"{BASE_URL}/api"
 MONGO_URL = os.getenv('MONGO_URL', 'mongodb://localhost:27017/workspace_collaboration')
 

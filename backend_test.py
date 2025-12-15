@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://collab-dash-2.preview.emergentagent.com/api"
+BASE_URL = "https://task-central-38.preview.emergentagent.com/api"
 
 class JobdeskTester:
     def __init__(self):
