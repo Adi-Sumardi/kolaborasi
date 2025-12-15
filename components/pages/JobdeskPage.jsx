@@ -521,42 +521,58 @@ export default function JobdeskPage({ user }) {
                       <span className="sm:hidden">File</span>
                     </Button>
                     
-                    {/* Edit & Delete buttons - only for super_admin and pengurus */}
-                    {(user.role === 'super_admin' || user.role === 'pengurus') && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedJobdesk(job);
-                            setEditFormData({
-                              title: job.title,
-                              description: job.description || '',
-                              assignedTo: job.assignedTo || [],
-                              dueDate: job.dueDate ? new Date(job.dueDate).toISOString().split('T')[0] : ''
-                            });
-                            setShowEditModal(true);
-                          }}
-                          className="flex-1 sm:flex-none"
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          <span className="hidden sm:inline">Edit</span>
-                        </Button>
-                        {user.role === 'super_admin' && (
+                    {/* Settings dropdown - for super_admin, pengurus, and karyawan (for their own jobdesk) */}
+                    {(user.role === 'super_admin' || user.role === 'pengurus' || (user.role === 'karyawan' && job.assignedTo?.includes(user.id))) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setSelectedJobdesk(job);
-                              setShowDeleteDialog(true);
-                            }}
-                            className="flex-1 sm:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="flex-1 sm:flex-none"
                           >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            <span className="hidden sm:inline">Hapus</span>
+                            <Settings className="w-4 h-4 mr-1" />
+                            <span className="hidden sm:inline">Pengaturan</span>
+                            <span className="sm:hidden">⚙️</span>
                           </Button>
-                        )}
-                      </>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {/* Edit option - for super_admin, pengurus, and karyawan (their own jobdesk) */}
+                          {(user.role === 'super_admin' || user.role === 'pengurus' || (user.role === 'karyawan' && job.assignedTo?.includes(user.id))) && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedJobdesk(job);
+                                setEditFormData({
+                                  title: job.title,
+                                  description: job.description || '',
+                                  assignedTo: job.assignedTo || [],
+                                  dueDate: job.dueDate ? new Date(job.dueDate).toISOString().split('T')[0] : ''
+                                });
+                                setShowEditModal(true);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Edit Jobdesk
+                            </DropdownMenuItem>
+                          )}
+                          
+                          {/* Delete option - only for super_admin */}
+                          {user.role === 'super_admin' && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedJobdesk(job);
+                                  setShowDeleteDialog(true);
+                                }}
+                                className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Hapus Jobdesk
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                     
                     {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && job.status === 'pending' && (
