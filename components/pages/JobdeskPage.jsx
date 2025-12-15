@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { jobdeskAPI, userAPI, dailyLogAPI, divisionAPI } from '@/lib/api';
-import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip } from 'lucide-react';
+import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import AttachmentSection from '@/components/AttachmentSection';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function JobdeskPage({ user }) {
   const [jobdesks, setJobdesks] = useState([]);
@@ -20,10 +30,18 @@ export default function JobdeskPage({ user }) {
   const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [selectedJobdesk, setSelectedJobdesk] = useState(null);
   const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    assignedTo: [],
+    dueDate: ''
+  });
+  const [editFormData, setEditFormData] = useState({
     title: '',
     description: '',
     assignedTo: [],
