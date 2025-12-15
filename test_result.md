@@ -992,3 +992,47 @@ agent_communication:
       
       Please run backend testing agent to verify all endpoints work correctly.
       Frontend testing can be done after backend confirmation.
+  - agent: "main"
+    message: |
+      UI/UX IMPROVEMENTS COMPLETED PER USER REQUEST
+      
+      🎨 CHANGES IMPLEMENTED:
+      
+      1. ✅ Settings Dropdown Menu:
+         - Replaced direct Edit/Delete buttons with Settings dropdown
+         - Settings button appears next to "Lampiran" button
+         - Cleaner UI - actions hidden until needed
+         - Uses DropdownMenu component from shadcn/ui
+      
+      2. ✅ Role-Based Access Control Updated:
+         Settings Button Visibility:
+         - Super Admin: Can see Settings on ALL jobdesks
+         - Pengurus: Can see Settings on ALL jobdesks
+         - Karyawan: Can see Settings ONLY on jobdesks assigned to them
+         
+         Dropdown Menu Options:
+         - Edit Jobdesk: Available to super_admin, pengurus, and karyawan (for their own)
+         - Delete Jobdesk: Available ONLY to super_admin (with red styling)
+      
+      3. ✅ Backend Authorization Updated:
+         - handleUpdateJobdesk now allows karyawan to edit their assigned jobdesks
+         - Karyawan CANNOT change assignedTo field (restricted in backend)
+         - Super_admin and pengurus can change all fields
+      
+      4. ✅ Frontend Form Updated:
+         - Edit modal hides assignedTo section for karyawan
+         - Shows info message for karyawan about limitations
+         - Full edit form for super_admin and pengurus
+      
+      📋 VALIDATION:
+      - Karyawan can edit: title, description, dueDate
+      - Karyawan cannot edit: assignedTo
+      - Backend enforces this restriction
+      - Frontend UI prevents confusion
+      
+      🧪 READY FOR TESTING:
+      - Settings dropdown UI and visibility
+      - Karyawan edit functionality (limited fields)
+      - Super_admin/Pengurus edit functionality (all fields)
+      - Delete functionality (super_admin only)
+      - Real-time chat & notifications
