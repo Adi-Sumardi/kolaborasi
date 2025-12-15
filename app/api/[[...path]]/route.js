@@ -647,13 +647,22 @@ async function handleCreateJobdesk(request) {
     const client = await clientPromise;
     const db = client.db();
 
+    // Initialize progress tracking for each assigned user
+    const progress = assignedTo.map(userId => ({
+      userId,
+      status: 'pending', // pending, in_progress, completed
+      startedAt: null,
+      completedAt: null
+    }));
+
     const jobdesk = {
       id: uuidv4(),
       title,
       description: description || '',
       assignedTo,
       createdBy: user.userId,
-      status: 'pending',
+      status: 'pending', // Global status
+      progress, // Individual progress per user
       dueDate: dueDate ? new Date(dueDate) : null,
       submissionLink: submissionLink || null,
       createdAt: new Date(),
