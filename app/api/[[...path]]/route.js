@@ -635,7 +635,7 @@ async function handleCreateJobdesk(request) {
     }
 
     const body = await request.json();
-    const { title, description, assignedTo, dueDate } = body;
+    const { title, description, assignedTo, dueDate, submissionLink } = body;
 
     if (!title || !assignedTo || assignedTo.length === 0) {
       return NextResponse.json(
@@ -655,6 +655,7 @@ async function handleCreateJobdesk(request) {
       createdBy: user.userId,
       status: 'pending',
       dueDate: dueDate ? new Date(dueDate) : null,
+      submissionLink: submissionLink || null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
