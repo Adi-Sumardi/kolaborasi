@@ -459,8 +459,132 @@ backend:
           Code analysis confirms implementation meets all requirements including
           super_admin-only access and proper cascade delete behavior.
 
+frontend:
+  - task: "Jobdesk Edit & Delete UI Implementation"
+    implemented: true
+    working: "NA"
+    file: "/app/components/pages/JobdeskPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          JOBDESK EDIT & DELETE UI FULLY IMPLEMENTED
+          
+          🎯 IMPLEMENTATION COMPLETED:
+          
+          1. ✅ API Functions Added (lib/api.js):
+             - jobdeskAPI.update(id, data) - PUT /api/jobdesks/:id
+             - jobdeskAPI.delete(id) - DELETE /api/jobdesks/:id
+          
+          2. ✅ UI Components Added (JobdeskPage.jsx):
+             - Edit button for super_admin and pengurus roles
+             - Delete button for super_admin only (with red styling)
+             - Edit modal with full form (title, description, assignedTo, dueDate)
+             - Edit modal includes same filter functionality (search, division, status)
+             - Delete confirmation AlertDialog with warning message
+          
+          3. ✅ Handler Functions:
+             - handleEditJobdesk: Updates jobdesk via API, validates assignedTo
+             - handleDeleteJobdesk: Deletes jobdesk with confirmation
+             - Updated toggleUserSelection, selectAllFiltered, clearSelection to support edit mode
+          
+          4. ✅ State Management:
+             - editFormData state for edit form
+             - showEditModal and showDeleteDialog states
+             - Proper form reset on modal close
+          
+          5. ✅ Authorization UI:
+             - Edit: Visible only to super_admin and pengurus
+             - Delete: Visible only to super_admin
+             - Buttons styled with icons (Pencil, Trash2)
+          
+          READY FOR BACKEND TESTING to verify edit/delete functionality.
+
+backend:
+  - task: "Fix 401 Authentication Auto-Logout"
+    implemented: true
+    working: "NA"
+    file: "/app/lib/api.js"
+    stuck_count: 0
+    priority: "critical"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          CRITICAL BUG FIX: Global 401 Error Handler
+          
+          🔧 PROBLEM SOLVED:
+          Users were getting locked out after server restarts or JWT_SECRET changes.
+          They had to manually clear localStorage and re-login.
+          
+          ✅ SOLUTION IMPLEMENTED:
+          Modified apiRequest helper in /app/lib/api.js to automatically:
+          1. Detect 401 Unauthorized responses
+          2. Remove invalid token from localStorage
+          3. Remove user data from localStorage
+          4. Redirect to login page (/)
+          
+          📋 IMPACT:
+          - No more "stuck" with invalid tokens
+          - Seamless user experience during deployments
+          - Automatic cleanup of expired sessions
+          - Users are gracefully redirected to login
+          
+          This was a P0 critical bug that made the app unusable after restarts.
+          Now fixed and ready for testing.
+
+  - task: "Fix Socket.IO Authentication & Reconnection"
+    implemented: true
+    working: "NA"
+    file: "/app/lib/socket-client.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          SOCKET.IO AUTHENTICATION FIX
+          
+          🔧 ISSUES FIXED:
+          1. Socket was not re-authenticating when JWT token changed
+          2. Authentication errors were causing infinite reconnection loops
+          3. Socket stayed connected with old/invalid tokens
+          
+          ✅ IMPROVEMENTS:
+          1. Token Validation:
+             - Check if token exists before connecting
+             - Disconnect socket if no token available
+             - Compare socket token with current token
+             - Reconnect if tokens don't match
+          
+          2. Authentication Error Handling:
+             - Detect "Authentication error" and "jwt" errors
+             - Gracefully disconnect on auth failures
+             - Prevent retry with bad tokens
+             - Reduce console spam
+          
+          3. Token Change Detection:
+             - Disconnect and reconnect when token changes
+             - Ensures fresh authentication with new token
+          
+          📋 EXPECTED RESULTS:
+          - Real-time chat should work stably
+          - No more authentication error floods
+          - Socket reconnects properly after login/logout
+          - Notifications work reliably
+          
+          READY FOR TESTING real-time features (chat, notifications).
+
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Jobdesk Edit & Delete UI Implementation"
+    - "Fix 401 Authentication Auto-Logout"
+    - "Fix Socket.IO Authentication & Reconnection"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
