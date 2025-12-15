@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { jobdeskAPI, userAPI, dailyLogAPI, divisionAPI } from '@/lib/api';
-import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2, Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 export default function JobdeskPage({ user }) {
   const [jobdesks, setJobdesks] = useState([]);
