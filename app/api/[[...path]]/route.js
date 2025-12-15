@@ -740,7 +740,7 @@ async function handleUpdateJobdeskStatus(request, jobdeskId) {
 async function handleUpdateJobdesk(request, jobdeskId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -762,6 +762,22 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     const existingJobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
     if (!existingJobdesk) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    // Authorization check: super_admin, pengurus can edit any jobdesk
+    // karyawan can only edit jobdesks assigned to them
+    const isSuperAdminOrPengurus = hasPermission(user.role, ['super_admin', 'pengurus']);
+    const isAssignedKaryawan = user.role === 'karyawan' && existingJobdesk.assignedTo?.includes(user.id);
+    
+    if (!isSuperAdminOrPengurus && !isAssignedKaryawan) {
+      return NextResponse.json({ error: 'Unauthorized - You can only edit jobdesks assigned to you' }, { status: 403 });
+    }
+
+    // Karyawan cannot change assignedTo field - only super_admin and pengurus can
+    if (user.role === 'karyawan' && assignedTo) {
+      return NextResponse.json({ 
+        error: 'Karyawan cannot change assignedTo field' 
+      }, { status: 403 });
     }
 
     // Build update object
