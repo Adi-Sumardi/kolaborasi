@@ -767,10 +767,10 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     // Authorization check: super_admin, pengurus can edit any jobdesk
     // karyawan can only edit jobdesks assigned to them
     const isSuperAdminOrPengurus = hasPermission(user.role, ['super_admin', 'pengurus']);
-    const isAssignedKaryawan = user.role === 'karyawan' && existingJobdesk.assignedTo?.includes(user.id);
+    const isAssignedKaryawan = user.role === 'karyawan' && existingJobdesk.assignedTo?.includes(user.userId);
     
     console.log('Edit Jobdesk Authorization:', {
-      userId: user.id,
+      userId: user.userId,
       userRole: user.role,
       jobdeskId: jobdeskId,
       isSuperAdminOrPengurus,
