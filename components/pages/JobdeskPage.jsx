@@ -549,6 +549,21 @@ export default function JobdeskPage({ user }) {
                       <span>{job.assignedTo?.length || 0} karyawan</span>
                     </div>
                   </div>
+                  
+                  {/* Submission Link */}
+                  {job.submissionLink && (
+                    <a
+                      href={job.submissionLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 hover:underline bg-blue-50 px-3 py-2 rounded-lg"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span className="font-medium">Link Pengumpulan Tugas</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </a>
+                  )}
+                  
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
