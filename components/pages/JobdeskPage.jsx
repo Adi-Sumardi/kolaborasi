@@ -844,7 +844,19 @@ export default function JobdeskPage({ user }) {
               <p className="text-sm text-gray-500 mt-2">
                 {editFormData.assignedTo.length} karyawan dipilih
               </p>
-            </div>
+              </div>
+            )}
+            
+            {/* For karyawan - show info that they cannot change assignedTo */}
+            {user.role === 'karyawan' && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Info:</strong> Karyawan hanya bisa mengubah judul, deskripsi, dan tenggat waktu. 
+                  Untuk mengubah karyawan yang ditugaskan, hubungi admin atau pengurus.
+                </p>
+              </div>
+            )}
+            
             <div className="flex justify-end space-x-2">
               <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>
                 Batal
