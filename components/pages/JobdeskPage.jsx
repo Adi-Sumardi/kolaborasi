@@ -454,11 +454,11 @@ export default function JobdeskPage({ user }) {
                         </div>
                       ))
                     )}
-                    </div>
-                    <p className="text-sm text-gray-500 mt-2">
-                      {formData.assignedTo.length} karyawan dipilih
-                    </p>
                   </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {formData.assignedTo.length} karyawan dipilih
+                  </p>
+                </div>
                 )}
                 
                 {/* Info for karyawan */}
