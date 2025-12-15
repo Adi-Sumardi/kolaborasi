@@ -400,27 +400,36 @@ export default function KaryawanDashboard({ user }) {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {recentAttachments.map((attachment) => (
-                <div
-                  key={attachment.id}
-                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="bg-blue-100 p-2 rounded">
-                    <FileText className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">
-                      {attachment.type === 'link' ? attachment.linkUrl : attachment.fileName}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(attachment.createdAt).toLocaleDateString('id-ID')}
-                    </p>
-                  </div>
-                  <Badge variant={attachment.type === 'link' ? 'secondary' : 'outline'}>
-                    {attachment.type === 'link' ? 'Link' : 'File'}
-                  </Badge>
-                </div>
-              ))}
+              {recentAttachments.map((attachment) => {
+                const isLink = attachment.type === 'link';
+                const displayText = isLink ? attachment.url : attachment.fileName;
+                const fileUrl = isLink ? attachment.url : `/uploads/${attachment.fileName}`;
+                
+                return (
+                  <a
+                    key={attachment.id}
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer group"
+                  >
+                    <div className={`p-2 rounded ${isLink ? 'bg-purple-100' : 'bg-blue-100'} group-hover:scale-110 transition-transform`}>
+                      <FileText className={`w-5 h-5 ${isLink ? 'text-purple-600' : 'text-blue-600'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate group-hover:text-blue-600">
+                        {displayText}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(attachment.createdAt).toLocaleDateString('id-ID')}
+                      </p>
+                    </div>
+                    <Badge variant={isLink ? 'secondary' : 'outline'} className="flex-shrink-0">
+                      {isLink ? 'Link' : 'File'}
+                    </Badge>
+                  </a>
+                );
+              })}
             </div>
           )}
         </CardContent>
