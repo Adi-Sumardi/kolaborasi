@@ -2124,6 +2124,11 @@ export async function POST(request, { params }) {
       return handleCreateAttachment(request, jobdeskId);
     }
 
+    // Profile photo upload
+    if (path === 'profile/photo') {
+      return handleUploadProfilePhoto(request);
+    }
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
