@@ -330,6 +330,23 @@ export default function JobdeskPage({ user }) {
                   />
                 </div>
                 
+                {/* Submission Link - only for super_admin and pengurus */}
+                {(user.role === 'super_admin' || user.role === 'pengurus') && (
+                  <div>
+                    <Label htmlFor="submissionLink">Link Pengumpulan (Opsional)</Label>
+                    <Input
+                      id="submissionLink"
+                      type="url"
+                      placeholder="https://drive.google.com/... atau https://forms.gle/..."
+                      value={formData.submissionLink}
+                      onChange={(e) => setFormData({ ...formData, submissionLink: e.target.value })}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Link untuk karyawan mengumpulkan file (Google Drive, Google Form, dll)
+                    </p>
+                  </div>
+                )}
+                
                 {/* AssignTo section - only for super_admin and pengurus */}
                 {(user.role === 'super_admin' || user.role === 'pengurus') && (
                   <div>
