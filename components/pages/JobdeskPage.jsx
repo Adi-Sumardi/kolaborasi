@@ -114,7 +114,7 @@ export default function JobdeskPage({ user }) {
       await jobdeskAPI.create(jobdeskData);
       toast.success('Jobdesk berhasil dibuat!');
       setShowCreateModal(false);
-      setFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
+      setFormData({ title: '', description: '', assignedTo: [], dueDate: '', submissionLink: '' });
       loadData();
     } catch (error) {
       console.error('Failed to create jobdesk:', error);
