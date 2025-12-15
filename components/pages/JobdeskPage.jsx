@@ -508,7 +508,12 @@ export default function JobdeskPage({ user }) {
             </CardContent>
           </Card>
         ) : (
-          jobdesks.map(job => (
+          jobdesks.map(job => {
+            // Get user's personal status from progress array
+            const userProgress = job.progress?.find(p => p.userId === user.id);
+            const userStatus = userProgress?.status || job.status; // Fallback to global status for old data
+            
+            return (
             <Card key={job.id}>
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -516,21 +521,51 @@ export default function JobdeskPage({ user }) {
                     <CardTitle className="text-xl">{job.title}</CardTitle>
                     <p className="text-sm text-gray-600 mt-1">{job.description}</p>
                   </div>
-                  <div className="ml-4">
-                    {job.status === 'pending' && (
-                      <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-full">
-                        Pending
-                      </span>
-                    )}
-                    {job.status === 'in_progress' && (
-                      <span className="px-3 py-1 bg-yellow-200 text-yellow-700 text-sm rounded-full">
-                        Dalam Proses
-                      </span>
-                    )}
-                    {job.status === 'completed' && (
-                      <span className="px-3 py-1 bg-green-200 text-green-700 text-sm rounded-full">
-                        Selesai
-                      </span>
+                  <div className="ml-4 flex flex-col gap-2">
+                    {/* Show user's personal status for karyawan */}
+                    {user.role === 'karyawan' && job.assignedTo?.includes(user.id) ? (
+                      <>
+                        {userStatus === 'pending' && (
+                          <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-full">
+                            Belum Mulai
+                          </span>
+                        )}
+                        {userStatus === 'in_progress' && (
+                          <span className="px-3 py-1 bg-yellow-200 text-yellow-700 text-sm rounded-full">
+                            Sedang Dikerjakan
+                          </span>
+                        )}
+                        {userStatus === 'completed' && (
+                          <span className="px-3 py-1 bg-green-200 text-green-700 text-sm rounded-full">
+                            ✓ Selesai
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      // Show global status for admin/pengurus
+                      <>
+                        {job.status === 'pending' && (
+                          <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-full">
+                            Pending
+                          </span>
+                        )}
+                        {job.status === 'in_progress' && (
+                          <span className="px-3 py-1 bg-yellow-200 text-yellow-700 text-sm rounded-full">
+                            Dalam Proses
+                          </span>
+                        )}
+                        {job.status === 'completed' && (
+                          <span className="px-3 py-1 bg-green-200 text-green-700 text-sm rounded-full">
+                            Selesai
+                          </span>
+                        )}
+                        {/* Show progress count for admin/pengurus */}
+                        {job.progress && job.assignedTo?.length > 1 && (
+                          <span className="text-xs text-gray-500 text-center">
+                            {job.progress.filter(p => p.status === 'completed').length}/{job.assignedTo.length} selesai
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
