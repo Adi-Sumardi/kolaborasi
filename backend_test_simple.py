@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import uuid
 
 # Configuration
-BASE_URL = "https://task-central-38.preview.emergentagent.com/api"
+BASE_URL = "https://workspaces-2.preview.emergentagent.com/api"
 
 class SimpleBackendTester:
     def __init__(self):

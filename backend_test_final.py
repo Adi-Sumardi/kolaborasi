@@ -12,7 +12,7 @@ import uuid
 import time
 
 # Configuration
-BASE_URL = "https://task-central-38.preview.emergentagent.com/api"
+BASE_URL = "https://workspaces-2.preview.emergentagent.com/api"
 
 # Test credentials - using only working ones
 CREDENTIALS = {
