@@ -15,20 +15,31 @@ import { Badge } from '@/components/ui/badge';
 
 export default function KaryawanDashboard({ user }) {
   const [profileData, setProfileData] = useState(null);
+  const [jobdesks, setJobdesks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    loadProfileData();
+    loadData();
   }, []);
 
-  const loadProfileData = async () => {
+  const loadData = async () => {
     try {
-      const data = await profileAPI.getProfile(user.id);
-      setProfileData(data);
+      const [profile, jobdeskData] = await Promise.all([
+        profileAPI.getProfile(user.id),
+        jobdeskAPI.getAll()
+      ]);
+      
+      setProfileData(profile);
+      
+      // Filter jobdesks assigned to current user
+      const myJobdesks = jobdeskData.filter(j => 
+        j.assignedTo?.includes(user.id)
+      );
+      setJobdesks(myJobdesks);
     } catch (error) {
-      console.error('Failed to load profile:', error);
-      toast.error('Gagal memuat data profile');
+      console.error('Failed to load data:', error);
+      toast.error('Gagal memuat data');
     } finally {
       setLoading(false);
     }
