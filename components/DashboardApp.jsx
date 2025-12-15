@@ -143,7 +143,10 @@ export default function DashboardApp({ setIsLoggedIn }) {
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <DashboardHome user={currentUser} />;
+        // Show KaryawanDashboard for karyawan role, DashboardHome for others
+        return currentUser.role === 'karyawan' 
+          ? <KaryawanDashboard user={currentUser} />
+          : <DashboardHome user={currentUser} />;
       case 'jobdesk':
         return <JobdeskPage user={currentUser} />;
       case 'kpi':
@@ -159,7 +162,9 @@ export default function DashboardApp({ setIsLoggedIn }) {
       case 'settings':
         return <SettingsPage user={currentUser} />;
       default:
-        return <DashboardHome user={currentUser} />;
+        return currentUser.role === 'karyawan' 
+          ? <KaryawanDashboard user={currentUser} />
+          : <DashboardHome user={currentUser} />;
     }
   };
 
