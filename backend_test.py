@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for Jobdesk Edit and Delete Functionality
-Testing the current state of jobdesk CRUD operations
+Backend Testing Script for Jobdesk Edit and Delete Endpoints
+Tests authentication, authorization, validation, and cascade delete functionality
 """
 
 import requests
@@ -14,284 +14,384 @@ BASE_URL = "https://collab-dash-2.preview.emergentagent.com/api"
 
 # Test credentials
 CREDENTIALS = {
-    "super_admin": {"email": "admin@workspace.com", "password": "password123"},
-    "pengurus": {"email": "pengurus@workspace.com", "password": "password123"},
-    "karyawan": {"email": "karyawan1@workspace.com", "password": "password123"}
+    'super_admin': {'email': 'admin@workspace.com', 'password': 'password123'},
+    'pengurus': {'email': 'pengurus@workspace.com', 'password': 'password123'},
+    'karyawan': {'email': 'karyawan1@workspace.com', 'password': 'password123'}
 }
 
-class JobdeskAPITester:
+class JobdeskTester:
     def __init__(self):
         self.tokens = {}
-        self.test_results = []
+        self.test_jobdesk_id = None
+        self.original_jobdesk = None
         
-    def log_result(self, test_name, success, message, details=None):
-        """Log test result"""
-        status = "✅ PASS" if success else "❌ FAIL"
-        result = {
-            "test": test_name,
-            "status": status,
-            "message": message,
-            "details": details or {},
-            "timestamp": datetime.now().isoformat()
-        }
-        self.test_results.append(result)
-        print(f"{status}: {test_name} - {message}")
-        if details:
-            print(f"   Details: {details}")
-        print()
-
     def authenticate(self, role):
-        """Authenticate and get JWT token"""
+        """Authenticate and get token for a specific role"""
         try:
-            creds = CREDENTIALS[role]
-            response = requests.post(f"{BASE_URL}/auth/login", json=creds)
-            
+            response = requests.post(f"{BASE_URL}/auth/login", json=CREDENTIALS[role])
             if response.status_code == 200:
                 data = response.json()
-                token = data.get('token')
-                if token:
-                    self.tokens[role] = token
-                    self.log_result(f"Authentication - {role}", True, f"Successfully authenticated as {role}")
-                    return token
-                else:
-                    self.log_result(f"Authentication - {role}", False, "No token in response", {"response": data})
-                    return None
+                self.tokens[role] = data.get('token')
+                print(f"✅ Authentication successful for {role}")
+                return True
             else:
-                self.log_result(f"Authentication - {role}", False, f"Login failed with status {response.status_code}", {"response": response.text})
-                return None
-                
-        except Exception as e:
-            self.log_result(f"Authentication - {role}", False, f"Authentication error: {str(e)}")
-            return None
-
-    def get_headers(self, role):
-        """Get headers with auth token"""
-        token = self.tokens.get(role)
-        if not token:
-            return None
-        return {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-    def test_get_jobdesks(self, role="super_admin"):
-        """Test getting jobdesks list"""
-        try:
-            headers = self.get_headers(role)
-            if not headers:
-                self.log_result("Get Jobdesks", False, f"No auth token for {role}")
-                return None
-                
-            response = requests.get(f"{BASE_URL}/jobdesks", headers=headers)
-            
-            if response.status_code == 200:
-                data = response.json()
-                jobdesks = data.get('jobdesks', [])
-                self.log_result("Get Jobdesks", True, f"Retrieved {len(jobdesks)} jobdesks", {"count": len(jobdesks)})
-                return jobdesks
-            else:
-                self.log_result("Get Jobdesks", False, f"Failed with status {response.status_code}", {"response": response.text})
-                return None
-                
-        except Exception as e:
-            self.log_result("Get Jobdesks", False, f"Error: {str(e)}")
-            return None
-
-    def test_jobdesk_edit_endpoint(self, jobdesk_id, role="super_admin"):
-        """Test if jobdesk edit endpoint exists"""
-        try:
-            headers = self.get_headers(role)
-            if not headers:
-                self.log_result("Jobdesk Edit Endpoint Check", False, f"No auth token for {role}")
+                print(f"❌ Authentication failed for {role}: {response.status_code}")
                 return False
-                
-            # Test data for edit
-            edit_data = {
-                "title": "Updated Test Jobdesk Title",
-                "description": "Updated description for testing",
-                "priority": "high"
+        except Exception as e:
+            print(f"❌ Authentication error for {role}: {str(e)}")
+            return False
+    
+    def get_headers(self, role):
+        """Get headers with auth token for a role"""
+        if role not in self.tokens:
+            return {}
+        return {'Authorization': f'Bearer {self.tokens[role]}', 'Content-Type': 'application/json'}
+    
+    def get_jobdesks(self):
+        """Get list of jobdesks for testing"""
+        try:
+            headers = self.get_headers('super_admin')
+            response = requests.get(f"{BASE_URL}/jobdesks", headers=headers)
+            if response.status_code == 200:
+                jobdesks = response.json()
+                if jobdesks:
+                    # Use the first jobdesk for edit testing
+                    self.test_jobdesk_id = jobdesks[0]['id']
+                    self.original_jobdesk = jobdesks[0].copy()
+                    print(f"✅ Retrieved {len(jobdesks)} jobdesks, using {self.test_jobdesk_id} for testing")
+                    return True
+                else:
+                    print("❌ No jobdesks found for testing")
+                    return False
+            else:
+                print(f"❌ Failed to get jobdesks: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ Error getting jobdesks: {str(e)}")
+            return False
+    
+    def create_test_jobdesk(self):
+        """Create a test jobdesk specifically for deletion testing"""
+        try:
+            headers = self.get_headers('super_admin')
+            test_data = {
+                'title': 'TEST JOBDESK FOR DELETION',
+                'description': 'This jobdesk will be deleted during testing',
+                'priority': 'medium',
+                'dueDate': '2024-12-31T23:59:59.000Z',
+                'assignedTo': []
             }
             
-            response = requests.put(f"{BASE_URL}/jobdesks/{jobdesk_id}", headers=headers, json=edit_data)
-            
-            if response.status_code == 404:
-                self.log_result("Jobdesk Edit Endpoint Check", False, "Edit endpoint NOT IMPLEMENTED - returns 404", {"status_code": 404, "response": response.text})
-                return False
-            elif response.status_code == 200:
-                self.log_result("Jobdesk Edit Endpoint Check", True, "Edit endpoint exists and working", {"status_code": 200})
-                return True
-            elif response.status_code == 403:
-                self.log_result("Jobdesk Edit Endpoint Check", True, f"Edit endpoint exists but {role} lacks permission", {"status_code": 403})
-                return True
+            response = requests.post(f"{BASE_URL}/jobdesks", json=test_data, headers=headers)
+            if response.status_code == 201:
+                jobdesk = response.json().get('jobdesk')
+                print(f"✅ Created test jobdesk for deletion: {jobdesk['id']}")
+                return jobdesk['id']
             else:
-                self.log_result("Jobdesk Edit Endpoint Check", False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code, "response": response.text})
-                return False
-                
+                print(f"❌ Failed to create test jobdesk: {response.status_code} - {response.text}")
+                return None
         except Exception as e:
-            self.log_result("Jobdesk Edit Endpoint Check", False, f"Error: {str(e)}")
+            print(f"❌ Error creating test jobdesk: {str(e)}")
+            return None
+    
+    def test_edit_authorization(self):
+        """Test edit authorization for different roles"""
+        print("\n🔐 TESTING EDIT AUTHORIZATION")
+        
+        if not self.test_jobdesk_id:
+            print("❌ No test jobdesk available")
             return False
-
-    def test_jobdesk_delete_endpoint(self, jobdesk_id, role="super_admin"):
-        """Test if jobdesk delete endpoint exists"""
+        
+        test_data = {'title': 'Updated Title', 'description': 'Updated Description'}
+        
+        # Test A: Edit with super_admin (should succeed)
+        print("\n📝 Test A: Edit with super_admin")
         try:
-            headers = self.get_headers(role)
-            if not headers:
-                self.log_result("Jobdesk Delete Endpoint Check", False, f"No auth token for {role}")
-                return False
-                
-            response = requests.delete(f"{BASE_URL}/jobdesks/{jobdesk_id}", headers=headers)
-            
-            if response.status_code == 404:
-                self.log_result("Jobdesk Delete Endpoint Check", False, "Delete endpoint NOT IMPLEMENTED - returns 404", {"status_code": 404, "response": response.text})
-                return False
-            elif response.status_code == 200:
-                self.log_result("Jobdesk Delete Endpoint Check", True, "Delete endpoint exists and working", {"status_code": 200})
-                return True
-            elif response.status_code == 403:
-                self.log_result("Jobdesk Delete Endpoint Check", True, f"Delete endpoint exists but {role} lacks permission", {"status_code": 403})
-                return True
+            headers = self.get_headers('super_admin')
+            response = requests.put(f"{BASE_URL}/jobdesks/{self.test_jobdesk_id}", 
+                                  json=test_data, headers=headers)
+            if response.status_code == 200:
+                print("✅ super_admin can edit jobdesk (200 OK)")
+                result = response.json()
+                if result.get('jobdesk', {}).get('title') == 'Updated Title':
+                    print("✅ Changes saved correctly")
+                else:
+                    print("❌ Changes not saved correctly")
             else:
-                self.log_result("Jobdesk Delete Endpoint Check", False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code, "response": response.text})
+                print(f"❌ super_admin edit failed: {response.status_code} - {response.text}")
                 return False
-                
         except Exception as e:
-            self.log_result("Jobdesk Delete Endpoint Check", False, f"Error: {str(e)}")
+            print(f"❌ super_admin edit error: {str(e)}")
             return False
-
-    def test_jobdesk_status_update(self, jobdesk_id, role="super_admin"):
-        """Test the existing jobdesk status update endpoint"""
+        
+        # Test B: Edit with pengurus (should succeed)
+        print("\n📝 Test B: Edit with pengurus")
         try:
-            headers = self.get_headers(role)
-            if not headers:
-                self.log_result("Jobdesk Status Update", False, f"No auth token for {role}")
+            headers = self.get_headers('pengurus')
+            pengurus_data = {'title': 'Updated by Pengurus'}
+            response = requests.put(f"{BASE_URL}/jobdesks/{self.test_jobdesk_id}", 
+                                  json=pengurus_data, headers=headers)
+            if response.status_code == 200:
+                print("✅ pengurus can edit jobdesk (200 OK)")
+            else:
+                print(f"❌ pengurus edit failed: {response.status_code} - {response.text}")
                 return False
-                
-            # Test status update (this should work)
-            status_data = {"status": "in_progress"}
-            response = requests.put(f"{BASE_URL}/jobdesks/{jobdesk_id}/status", headers=headers, json=status_data)
+        except Exception as e:
+            print(f"❌ pengurus edit error: {str(e)}")
+            return False
+        
+        # Test C: Edit with karyawan (should fail)
+        print("\n📝 Test C: Edit with karyawan")
+        try:
+            headers = self.get_headers('karyawan')
+            response = requests.put(f"{BASE_URL}/jobdesks/{self.test_jobdesk_id}", 
+                                  json=test_data, headers=headers)
+            if response.status_code == 403:
+                print("✅ karyawan correctly forbidden from editing (403)")
+            else:
+                print(f"❌ karyawan edit should be forbidden but got: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ karyawan edit error: {str(e)}")
+            return False
+        
+        # Test D: Edit non-existent jobdesk
+        print("\n📝 Test D: Edit non-existent jobdesk")
+        try:
+            headers = self.get_headers('super_admin')
+            response = requests.put(f"{BASE_URL}/jobdesks/fake-id-12345", 
+                                  json=test_data, headers=headers)
+            if response.status_code == 404:
+                print("✅ Non-existent jobdesk correctly returns 404")
+            else:
+                print(f"❌ Non-existent jobdesk should return 404 but got: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ Non-existent jobdesk edit error: {str(e)}")
+            return False
+        
+        return True
+    
+    def test_delete_authorization(self):
+        """Test delete authorization for different roles"""
+        print("\n🗑️ TESTING DELETE AUTHORIZATION")
+        
+        # Create a test jobdesk for deletion
+        delete_test_id = self.create_test_jobdesk()
+        if not delete_test_id:
+            print("❌ Cannot create test jobdesk for deletion")
+            return False
+        
+        # Test A: Delete with karyawan (should fail)
+        print("\n🗑️ Test A: Delete with karyawan")
+        try:
+            headers = self.get_headers('karyawan')
+            response = requests.delete(f"{BASE_URL}/jobdesks/{delete_test_id}", headers=headers)
+            if response.status_code == 403:
+                print("✅ karyawan correctly forbidden from deleting (403)")
+            else:
+                print(f"❌ karyawan delete should be forbidden but got: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ karyawan delete error: {str(e)}")
+            return False
+        
+        # Test B: Delete with pengurus (should fail)
+        print("\n🗑️ Test B: Delete with pengurus")
+        try:
+            headers = self.get_headers('pengurus')
+            response = requests.delete(f"{BASE_URL}/jobdesks/{delete_test_id}", headers=headers)
+            if response.status_code == 403:
+                print("✅ pengurus correctly forbidden from deleting (403)")
+            else:
+                print(f"❌ pengurus delete should be forbidden but got: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ pengurus delete error: {str(e)}")
+            return False
+        
+        # Test C: Delete with super_admin (should succeed)
+        print("\n🗑️ Test C: Delete with super_admin")
+        try:
+            headers = self.get_headers('super_admin')
+            response = requests.delete(f"{BASE_URL}/jobdesks/{delete_test_id}", headers=headers)
+            if response.status_code == 200:
+                print("✅ super_admin can delete jobdesk (200 OK)")
+                result = response.json()
+                if result.get('deletedJobdeskId') == delete_test_id:
+                    print("✅ Correct jobdesk ID returned in response")
+                else:
+                    print("❌ Incorrect jobdesk ID in response")
+            else:
+                print(f"❌ super_admin delete failed: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"❌ super_admin delete error: {str(e)}")
+            return False
+        
+        # Test D: Delete non-existent jobdesk
+        print("\n🗑️ Test D: Delete non-existent jobdesk")
+        try:
+            headers = self.get_headers('super_admin')
+            response = requests.delete(f"{BASE_URL}/jobdesks/fake-id-12345", headers=headers)
+            if response.status_code == 404:
+                print("✅ Non-existent jobdesk correctly returns 404")
+            else:
+                print(f"❌ Non-existent jobdesk should return 404 but got: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ Non-existent jobdesk delete error: {str(e)}")
+            return False
+        
+        return True
+    
+    def test_cascade_delete_verification(self):
+        """Test cascade delete behavior"""
+        print("\n🔗 TESTING CASCADE DELETE VERIFICATION")
+        
+        # Create a jobdesk with related data for cascade testing
+        print("Creating jobdesk with related data for cascade testing...")
+        
+        try:
+            headers = self.get_headers('super_admin')
+            
+            # Create test jobdesk
+            jobdesk_data = {
+                'title': 'CASCADE DELETE TEST',
+                'description': 'Testing cascade delete functionality',
+                'priority': 'high',
+                'assignedTo': []
+            }
+            
+            response = requests.post(f"{BASE_URL}/jobdesks", json=jobdesk_data, headers=headers)
+            if response.status_code != 201:
+                print(f"❌ Failed to create cascade test jobdesk: {response.status_code}")
+                return False
+            
+            cascade_jobdesk_id = response.json().get('jobdesk', {}).get('id')
+            print(f"✅ Created cascade test jobdesk: {cascade_jobdesk_id}")
+            
+            # Delete the jobdesk and verify cascade behavior
+            print("Deleting jobdesk to test cascade behavior...")
+            response = requests.delete(f"{BASE_URL}/jobdesks/{cascade_jobdesk_id}", headers=headers)
             
             if response.status_code == 200:
-                self.log_result("Jobdesk Status Update", True, "Status update endpoint working", {"status_code": 200})
-                return True
+                print("✅ Cascade delete successful (200 OK)")
+                
+                # Verify jobdesk is deleted
+                response = requests.get(f"{BASE_URL}/jobdesks", headers=headers)
+                if response.status_code == 200:
+                    jobdesks = response.json()
+                    deleted_exists = any(j['id'] == cascade_jobdesk_id for j in jobdesks)
+                    if not deleted_exists:
+                        print("✅ Jobdesk successfully removed from database")
+                    else:
+                        print("❌ Jobdesk still exists in database after deletion")
+                        return False
+                else:
+                    print("❌ Could not verify jobdesk deletion")
+                    return False
+                
             else:
-                self.log_result("Jobdesk Status Update", False, f"Status update failed: {response.status_code}", {"status_code": response.status_code, "response": response.text})
+                print(f"❌ Cascade delete failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
-            self.log_result("Jobdesk Status Update", False, f"Error: {str(e)}")
+            print(f"❌ Cascade delete test error: {str(e)}")
+            return False
+        
+        return True
+    
+    def test_edit_validation(self):
+        """Test edit validation scenarios"""
+        print("\n✅ TESTING EDIT VALIDATION")
+        
+        if not self.test_jobdesk_id:
+            print("❌ No test jobdesk available")
+            return False
+        
+        headers = self.get_headers('super_admin')
+        
+        # Test empty update (should fail)
+        print("\n📝 Testing empty update")
+        try:
+            response = requests.put(f"{BASE_URL}/jobdesks/{self.test_jobdesk_id}", 
+                                  json={}, headers=headers)
+            if response.status_code == 400:
+                print("✅ Empty update correctly rejected (400)")
+            else:
+                print(f"❌ Empty update should be rejected but got: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ Empty update test error: {str(e)}")
+            return False
+        
+        # Test valid partial update
+        print("\n📝 Testing valid partial update")
+        try:
+            partial_data = {'description': 'Partially updated description'}
+            response = requests.put(f"{BASE_URL}/jobdesks/{self.test_jobdesk_id}", 
+                                  json=partial_data, headers=headers)
+            if response.status_code == 200:
+                print("✅ Partial update successful (200 OK)")
+            else:
+                print(f"❌ Partial update failed: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"❌ Partial update test error: {str(e)}")
+            return False
+        
+        return True
+    
+    def run_all_tests(self):
+        """Run all tests"""
+        print("🚀 STARTING JOBDESK EDIT AND DELETE ENDPOINT TESTING")
+        print("=" * 60)
+        
+        # Authenticate all roles
+        print("\n🔐 AUTHENTICATING TEST USERS")
+        for role in CREDENTIALS.keys():
+            if not self.authenticate(role):
+                print(f"❌ Failed to authenticate {role}, aborting tests")
+                return False
+        
+        # Get jobdesks for testing
+        if not self.get_jobdesks():
+            print("❌ Failed to get jobdesks, aborting tests")
+            return False
+        
+        # Run all test suites
+        test_results = []
+        
+        test_results.append(("Edit Authorization", self.test_edit_authorization()))
+        test_results.append(("Edit Validation", self.test_edit_validation()))
+        test_results.append(("Delete Authorization", self.test_delete_authorization()))
+        test_results.append(("Cascade Delete", self.test_cascade_delete_verification()))
+        
+        # Print summary
+        print("\n" + "=" * 60)
+        print("📊 TEST SUMMARY")
+        print("=" * 60)
+        
+        passed = 0
+        total = len(test_results)
+        
+        for test_name, result in test_results:
+            status = "✅ PASSED" if result else "❌ FAILED"
+            print(f"{test_name}: {status}")
+            if result:
+                passed += 1
+        
+        print(f"\nOverall: {passed}/{total} tests passed")
+        
+        if passed == total:
+            print("🎉 ALL TESTS PASSED - Jobdesk Edit and Delete endpoints are working correctly!")
+            return True
+        else:
+            print("⚠️ SOME TESTS FAILED - Check the detailed output above")
             return False
 
-    def test_authorization_levels(self, jobdesk_id):
-        """Test different authorization levels for jobdesk operations"""
-        roles_to_test = ["super_admin", "pengurus", "karyawan"]
-        
-        for role in roles_to_test:
-            print(f"\n--- Testing {role} permissions ---")
-            
-            # Authenticate
-            if not self.authenticate(role):
-                continue
-                
-            # Test edit endpoint
-            self.test_jobdesk_edit_endpoint(jobdesk_id, role)
-            
-            # Test delete endpoint  
-            self.test_jobdesk_delete_endpoint(jobdesk_id, role)
-            
-            # Test status update (should work for all authenticated users)
-            self.test_jobdesk_status_update(jobdesk_id, role)
-
-    def run_comprehensive_test(self):
-        """Run comprehensive jobdesk edit/delete testing"""
-        print("=" * 80)
-        print("JOBDESK EDIT AND DELETE FUNCTIONALITY TESTING")
-        print("=" * 80)
-        print()
-        
-        # Step 1: Authenticate as super admin
-        print("STEP 1: Authentication")
-        print("-" * 40)
-        if not self.authenticate("super_admin"):
-            print("❌ Cannot proceed without authentication")
-            return
-            
-        # Step 2: Get existing jobdesks
-        print("\nSTEP 2: Get Existing Jobdesks")
-        print("-" * 40)
-        jobdesks = self.test_get_jobdesks()
-        if not jobdesks or len(jobdesks) == 0:
-            print("❌ No jobdesks found for testing")
-            return
-            
-        # Use first jobdesk for testing
-        test_jobdesk = jobdesks[0]
-        jobdesk_id = test_jobdesk.get('id')
-        print(f"Using jobdesk for testing: {test_jobdesk.get('title', 'Unknown')} (ID: {jobdesk_id})")
-        
-        # Step 3: Test endpoint availability
-        print(f"\nSTEP 3: Test Endpoint Availability")
-        print("-" * 40)
-        edit_exists = self.test_jobdesk_edit_endpoint(jobdesk_id)
-        delete_exists = self.test_jobdesk_delete_endpoint(jobdesk_id)
-        
-        # Step 4: Test authorization levels if endpoints exist
-        if edit_exists or delete_exists:
-            print(f"\nSTEP 4: Test Authorization Levels")
-            print("-" * 40)
-            self.test_authorization_levels(jobdesk_id)
-        else:
-            print(f"\nSTEP 4: Authorization Testing Skipped")
-            print("-" * 40)
-            print("⚠️  Both edit and delete endpoints are not implemented")
-        
-        # Step 5: Test existing functionality
-        print(f"\nSTEP 5: Test Existing Functionality")
-        print("-" * 40)
-        self.test_jobdesk_status_update(jobdesk_id)
-        
-        # Summary
-        self.print_summary()
-
-    def print_summary(self):
-        """Print test summary"""
-        print("\n" + "=" * 80)
-        print("TEST SUMMARY")
-        print("=" * 80)
-        
-        total_tests = len(self.test_results)
-        passed_tests = len([r for r in self.test_results if "✅ PASS" in r["status"]])
-        failed_tests = total_tests - passed_tests
-        
-        print(f"Total Tests: {total_tests}")
-        print(f"Passed: {passed_tests}")
-        print(f"Failed: {failed_tests}")
-        print()
-        
-        # Group results by category
-        categories = {}
-        for result in self.test_results:
-            test_name = result["test"]
-            if "Authentication" in test_name:
-                category = "Authentication"
-            elif "Edit" in test_name:
-                category = "Edit Functionality"
-            elif "Delete" in test_name:
-                category = "Delete Functionality"
-            elif "Status" in test_name:
-                category = "Status Update"
-            else:
-                category = "Other"
-                
-            if category not in categories:
-                categories[category] = []
-            categories[category].append(result)
-        
-        for category, results in categories.items():
-            print(f"{category}:")
-            for result in results:
-                print(f"  {result['status']}: {result['message']}")
-            print()
-
 if __name__ == "__main__":
-    tester = JobdeskAPITester()
-    tester.run_comprehensive_test()
+    tester = JobdeskTester()
+    success = tester.run_all_tests()
+    sys.exit(0 if success else 1)
