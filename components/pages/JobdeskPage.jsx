@@ -668,7 +668,7 @@ export default function JobdeskPage({ user }) {
                       </DropdownMenu>
                     )}
                     
-                    {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && job.status === 'pending' && (
+                    {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && userStatus === 'pending' && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -679,7 +679,7 @@ export default function JobdeskPage({ user }) {
                         Mulai
                       </Button>
                     )}
-                    {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && job.status === 'in_progress' && (
+                    {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && userStatus === 'in_progress' && (
                       <>
                         <Button
                           size="sm"
