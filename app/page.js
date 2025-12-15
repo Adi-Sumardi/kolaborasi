@@ -11,6 +11,9 @@ import { authAPI, getToken, setToken, setUser, getUser } from '@/lib/api';
 import { toast } from 'sonner';
 import { Loader2, Users, BarChart3, MessageSquare, CheckSquare } from 'lucide-react';
 import DashboardApp from '@/components/DashboardApp';
+import InstallPrompt from '@/components/InstallPrompt';
+import OnlineStatus from '@/components/OnlineStatus';
+import { registerServiceWorker } from '@/lib/pwa-utils';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -21,6 +24,9 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
+    // Register Service Worker for PWA
+    registerServiceWorker();
+    
     // Check if already logged in
     const token = getToken();
     const user = getUser();
