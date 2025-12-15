@@ -840,11 +840,11 @@ export default function JobdeskPage({ user }) {
                     </div>
                   ))
                 )}
-                </div>
-                <p className="text-sm text-gray-500 mt-2">
-                  {editFormData.assignedTo.length} karyawan dipilih
-                </p>
               </div>
+              <p className="text-sm text-gray-500 mt-2">
+                {editFormData.assignedTo.length} karyawan dipilih
+              </p>
+            </div>
             )}
             
             {/* For karyawan - show info that they cannot change assignedTo */}
