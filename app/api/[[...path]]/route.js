@@ -2382,7 +2382,7 @@ async function handleGetUserProfile(request, userId) {
 
     // Get attachments uploaded by user
     const attachments = await db.collection('attachments')
-      .find({ createdBy: userId })
+      .find({ userId: userId })
       .sort({ createdAt: -1 })
       .limit(10)
       .toArray();
