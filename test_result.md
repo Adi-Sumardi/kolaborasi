@@ -703,8 +703,6 @@ backend:
 
 test_plan:
   current_focus:
-    - "Jobdesk Edit & Delete UI Implementation"
-    - "Fix 401 Authentication Auto-Logout"
     - "Fix Socket.IO Authentication & Reconnection"
   stuck_tasks: []
   test_all: false
