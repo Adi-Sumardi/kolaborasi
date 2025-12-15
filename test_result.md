@@ -703,7 +703,7 @@ backend:
 
 test_plan:
   current_focus:
-    - "Fix Socket.IO Authentication & Reconnection"
+    - "Jobdesk Edit & Delete UI Implementation"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
