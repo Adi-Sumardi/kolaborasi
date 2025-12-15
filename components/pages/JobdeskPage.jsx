@@ -458,7 +458,18 @@ export default function JobdeskPage({ user }) {
                   <p className="text-sm text-gray-500 mt-2">
                     {formData.assignedTo.length} karyawan dipilih
                   </p>
-                </div>
+                  </div>
+                )}
+                
+                {/* Info for karyawan */}
+                {user.role === 'karyawan' && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Info:</strong> Jobdesk ini akan otomatis di-assign ke Anda.
+                    </p>
+                  </div>
+                )}
+                
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
                     Batal
@@ -468,7 +479,6 @@ export default function JobdeskPage({ user }) {
               </form>
             </DialogContent>
           </Dialog>
-        )}
       </div>
 
       {/* Jobdesk List */}
