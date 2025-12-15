@@ -1,0 +1,317 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { profileAPI } from '@/lib/api';
+import { 
+  User, Briefcase, CheckCircle, Clock, FileText, 
+  Upload, Camera, Building2, Mail, Calendar, Award
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+
+export default function KaryawanDashboard({ user }) {
+  const [profileData, setProfileData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    loadProfileData();
+  }, []);
+
+  const loadProfileData = async () => {
+    try {
+      const data = await profileAPI.getProfile(user.id);
+      setProfileData(data);
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+      toast.error('Gagal memuat data profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Hanya file JPEG, PNG, dan WebP yang diperbolehkan');
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 5MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await profileAPI.uploadPhoto(file);
+      toast.success('Foto profile berhasil diupdate!');
+      
+      // Update profile data
+      setProfileData(prev => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          profilePhoto: result.photoUrl
+        }
+      }));
+      
+      // Update user in localStorage
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      storedUser.profilePhoto = result.photoUrl;
+      localStorage.setItem('user', JSON.stringify(storedUser));
+      
+      // Reload page to update navbar
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to upload photo:', error);
+      toast.error(error.message || 'Gagal mengupload foto');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Memuat dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profileData) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-600">Gagal memuat data profile</p>
+      </div>
+    );
+  }
+
+  const { profile, stats, recentAttachments } = profileData;
+  const completionRate = stats.total > 0 
+    ? Math.round((stats.completed / stats.total) * 100) 
+    : 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard Saya</h1>
+        <p className="text-gray-600 mt-1">Selamat datang kembali, {profile.name}!</p>
+      </div>
+
+      {/* Profile Card */}
+      <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+            {/* Profile Photo */}
+            <div className="relative group">
+              <Avatar className="w-32 h-32 border-4 border-white shadow-lg">
+                <AvatarImage src={profile.profilePhoto} alt={profile.name} />
+                <AvatarFallback className="bg-blue-300 text-blue-900 text-3xl font-bold">
+                  {profile.name?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              
+              {/* Upload Button Overlay */}
+              <label 
+                htmlFor="photo-upload" 
+                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              >
+                {uploading ? (
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                ) : (
+                  <Camera className="w-8 h-8 text-white" />
+                )}
+              </label>
+              <input
+                id="photo-upload"
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                onChange={handlePhotoUpload}
+                className="hidden"
+                disabled={uploading}
+              />
+            </div>
+
+            {/* Profile Info */}
+            <div className="flex-1 text-center md:text-left">
+              <h2 className="text-2xl font-bold">{profile.name}</h2>
+              <p className="text-blue-100 mt-1 flex items-center justify-center md:justify-start gap-2">
+                <Mail className="w-4 h-4" />
+                {profile.email}
+              </p>
+              
+              <div className="flex flex-wrap gap-3 mt-4 justify-center md:justify-start">
+                {profile.division && (
+                  <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                    <Building2 className="w-3 h-3 mr-1" />
+                    {profile.division.name}
+                  </Badge>
+                )}
+                <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                  <User className="w-3 h-3 mr-1" />
+                  Karyawan
+                </Badge>
+                <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                  <Calendar className="w-3 h-3 mr-1" />
+                  Bergabung {new Date(profile.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Completion Rate */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 text-center min-w-[140px]">
+              <Award className="w-8 h-8 mx-auto mb-2" />
+              <div className="text-3xl font-bold">{completionRate}%</div>
+              <div className="text-sm text-blue-100">Tingkat Penyelesaian</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Jobdesk</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
+              </div>
+              <div className="bg-blue-100 p-3 rounded-full">
+                <Briefcase className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Selesai</p>
+                <p className="text-3xl font-bold text-green-600 mt-1">{stats.completed}</p>
+              </div>
+              <div className="bg-green-100 p-3 rounded-full">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Dalam Progress</p>
+                <p className="text-3xl font-bold text-yellow-600 mt-1">{stats.in_progress}</p>
+              </div>
+              <div className="bg-yellow-100 p-3 rounded-full">
+                <Clock className="w-6 h-6 text-yellow-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Pending</p>
+                <p className="text-3xl font-bold text-gray-600 mt-1">{stats.pending}</p>
+              </div>
+              <div className="bg-gray-100 p-3 rounded-full">
+                <FileText className="w-6 h-6 text-gray-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Progress Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ringkasan Progress</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span>Penyelesaian Keseluruhan</span>
+              <span className="font-semibold">{completionRate}%</span>
+            </div>
+            <Progress value={completionRate} className="h-2" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-400">{stats.pending}</div>
+              <div className="text-xs text-gray-600">Belum Dimulai</div>
+            </div>
+            <div className="text-center border-x">
+              <div className="text-2xl font-bold text-yellow-600">{stats.in_progress}</div>
+              <div className="text-xs text-gray-600">Sedang Dikerjakan</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+              <div className="text-xs text-gray-600">Sudah Selesai</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Portfolio / Recent Attachments */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Portfolio & Lampiran</CardTitle>
+            <Badge variant="secondary">{recentAttachments.length} file</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recentAttachments.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Upload className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>Belum ada lampiran yang diupload</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recentAttachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="bg-blue-100 p-2 rounded">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">
+                      {attachment.type === 'link' ? attachment.linkUrl : attachment.fileName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(attachment.createdAt).toLocaleDateString('id-ID')}
+                    </p>
+                  </div>
+                  <Badge variant={attachment.type === 'link' ? 'secondary' : 'outline'}>
+                    {attachment.type === 'link' ? 'Link' : 'File'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
