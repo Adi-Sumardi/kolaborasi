@@ -2081,6 +2081,272 @@ async function handleUpdateUserPassword(request, userId) {
 }
 
 // ============================================
+// PWA ENDPOINTS
+// ============================================
+
+// Get VAPID public key for push notification subscription
+async function handleGetVapidKey(request) {
+  try {
+    const publicKey = getVapidPublicKey();
+    return NextResponse.json({ publicKey });
+  } catch (error) {
+    console.error('Get VAPID key error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get VAPID key' },
+      { status: 500 }
+    );
+  }
+}
+
+// Save push subscription for a user
+async function handleSavePushSubscription(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { subscription } = body;
+
+    if (!subscription || !subscription.endpoint) {
+      return NextResponse.json(
+        { error: 'Invalid subscription object' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Store or update subscription for user
+    await db.collection('push_subscriptions').updateOne(
+      { 
+        endpoint: subscription.endpoint 
+      },
+      {
+        $set: {
+          userId: user.userId,
+          subscription: subscription,
+          userAgent: request.headers.get('user-agent') || 'unknown',
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          id: uuidv4(),
+          createdAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log('[PWA] Push subscription saved for user:', user.userId);
+
+    return NextResponse.json({ 
+      message: 'Subscription saved successfully',
+      subscribed: true
+    });
+  } catch (error) {
+    console.error('Save push subscription error:', error);
+    return NextResponse.json(
+      { error: 'Failed to save subscription' },
+      { status: 500 }
+    );
+  }
+}
+
+// Remove push subscription
+async function handleRemovePushSubscription(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { endpoint } = body;
+
+    if (!endpoint) {
+      return NextResponse.json(
+        { error: 'Endpoint is required' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    await db.collection('push_subscriptions').deleteOne({ 
+      endpoint,
+      userId: user.userId 
+    });
+
+    console.log('[PWA] Push subscription removed for user:', user.userId);
+
+    return NextResponse.json({ 
+      message: 'Subscription removed successfully',
+      subscribed: false
+    });
+  } catch (error) {
+    console.error('Remove push subscription error:', error);
+    return NextResponse.json(
+      { error: 'Failed to remove subscription' },
+      { status: 500 }
+    );
+  }
+}
+
+// Send push notification to specific users (admin only)
+async function handleSendPushNotification(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { userIds, title, body: notifBody, url, data } = body;
+
+    if (!title || !notifBody) {
+      return NextResponse.json(
+        { error: 'Title and body are required' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Build query for target subscriptions
+    const query = {};
+    if (userIds && userIds.length > 0) {
+      query.userId = { $in: userIds };
+    }
+
+    const subscriptions = await db.collection('push_subscriptions')
+      .find(query)
+      .toArray();
+
+    if (subscriptions.length === 0) {
+      return NextResponse.json({ 
+        message: 'No subscriptions found',
+        sent: 0,
+        failed: 0
+      });
+    }
+
+    const payload = {
+      title,
+      body: notifBody,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-96x96.png',
+      tag: `workspace-${Date.now()}`,
+      data: {
+        url: url || '/',
+        ...data
+      },
+      requireInteraction: true
+    };
+
+    // Send notifications
+    const results = await sendBulkPushNotifications(subscriptions, payload);
+
+    // Remove expired subscriptions
+    const expiredEndpoints = [];
+    for (let i = 0; i < subscriptions.length; i++) {
+      // Check if subscription expired during sending
+      const sub = subscriptions[i];
+      try {
+        const result = await sendPushNotification(sub.subscription, payload);
+        if (result.expired) {
+          expiredEndpoints.push(sub.endpoint);
+        }
+      } catch (err) {
+        // Already handled in bulk send
+      }
+    }
+
+    if (expiredEndpoints.length > 0) {
+      await db.collection('push_subscriptions').deleteMany({
+        endpoint: { $in: expiredEndpoints }
+      });
+      console.log(`[PWA] Removed ${expiredEndpoints.length} expired subscriptions`);
+    }
+
+    return NextResponse.json({
+      message: 'Notifications sent',
+      sent: results.succeeded,
+      failed: results.failed
+    });
+  } catch (error) {
+    console.error('Send push notification error:', error);
+    return NextResponse.json(
+      { error: 'Failed to send notifications' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get offline data bundle for caching
+async function handleGetOfflineBundle(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Get user's jobdesks
+    const jobdesks = await db.collection('jobdesks')
+      .find({ assignedTo: user.userId })
+      .sort({ updatedAt: -1 })
+      .limit(50)
+      .toArray();
+
+    // Get user's recent chat messages (last 100 per room)
+    const chatRooms = await db.collection('chat_rooms')
+      .find({ members: user.userId })
+      .toArray();
+
+    const chatMessages = [];
+    for (const room of chatRooms) {
+      const messages = await db.collection('chat_messages')
+        .find({ roomId: room.id })
+        .sort({ timestamp: -1 })
+        .limit(100)
+        .toArray();
+      chatMessages.push(...messages);
+    }
+
+    // Get attachments for user's jobdesks
+    const jobdeskIds = jobdesks.map(j => j.id);
+    const attachments = await db.collection('attachments')
+      .find({ jobdeskId: { $in: jobdeskIds } })
+      .toArray();
+
+    // Get users list (for display names in chat, etc.)
+    const users = await db.collection('users')
+      .find({}, { projection: { password: 0, twoFactorSecret: 0 } })
+      .toArray();
+
+    return NextResponse.json({
+      jobdesks,
+      chatMessages,
+      attachments,
+      users,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Get offline bundle error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get offline bundle' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
