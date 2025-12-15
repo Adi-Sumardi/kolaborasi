@@ -2134,6 +2134,10 @@ export async function PUT(request, { params }) {
       const jobdeskId = path.split('/')[1];
       return handleUpdateJobdeskStatus(request, jobdeskId);
     }
+    if (path.match(/^jobdesks\/[^/]+$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleUpdateJobdesk(request, jobdeskId);
+    }
     
     // Todos
     if (path.match(/^todos\/[^/]+$/)) {
