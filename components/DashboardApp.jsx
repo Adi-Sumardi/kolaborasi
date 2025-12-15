@@ -26,7 +26,7 @@ import {
 import { toast } from 'sonner';
 import { initSocket, disconnectSocket } from '@/lib/socket-client';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
