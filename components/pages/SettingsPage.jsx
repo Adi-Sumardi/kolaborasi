@@ -7,8 +7,10 @@ import { authAPI } from '@/lib/api';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Shield, QrCode } from 'lucide-react';
+import { Shield, QrCode, Bell, Smartphone } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import NotificationSettings from '@/components/NotificationSettings';
 
 export default function SettingsPage({ user }) {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(user.twoFactorEnabled);
