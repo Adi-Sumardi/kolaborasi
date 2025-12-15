@@ -460,9 +460,7 @@ backend:
           super_admin-only access and proper cascade delete behavior.
 
 test_plan:
-  current_focus:
-    - "Jobdesk Edit API endpoint"
-    - "Jobdesk Delete API endpoint"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
