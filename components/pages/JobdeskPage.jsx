@@ -608,28 +608,64 @@ export default function JobdeskPage({ user }) {
                         )}
                       </>
                     ) : (
-                      // Show global status for admin/pengurus
+                      // Show effective status for admin/pengurus (based on progress)
                       <>
-                        {job.status === 'pending' && (
-                          <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-full">
-                            Pending
-                          </span>
-                        )}
-                        {job.status === 'in_progress' && (
-                          <span className="px-3 py-1 bg-yellow-200 text-yellow-700 text-sm rounded-full">
-                            Dalam Proses
-                          </span>
-                        )}
-                        {job.status === 'completed' && (
-                          <span className="px-3 py-1 bg-green-200 text-green-700 text-sm rounded-full">
-                            Selesai
-                          </span>
-                        )}
-                        {/* Show progress count for admin/pengurus */}
-                        {job.progress && job.assignedTo?.length > 1 && (
-                          <span className="text-xs text-gray-500 text-center">
-                            {job.progress.filter(p => p.status === 'completed').length}/{job.assignedTo.length} selesai
-                          </span>
+                        {(() => {
+                          const effectiveStatus = getEffectiveStatus(job);
+                          return (
+                            <>
+                              {effectiveStatus === 'pending' && (
+                                <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-full">
+                                  Pending
+                                </span>
+                              )}
+                              {effectiveStatus === 'in_progress' && (
+                                <span className="px-3 py-1 bg-yellow-200 text-yellow-700 text-sm rounded-full">
+                                  Dalam Proses
+                                </span>
+                              )}
+                              {effectiveStatus === 'completed' && (
+                                <span className="px-3 py-1 bg-green-200 text-green-700 text-sm rounded-full">
+                                  Selesai
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
+                        {/* Show progress count with HoverCard tooltip for admin/pengurus */}
+                        {job.progress && job.assignedTo?.length > 0 && (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <span className="text-xs text-blue-600 hover:text-blue-700 cursor-pointer bg-blue-50 px-2 py-1 rounded-full text-center font-medium">
+                                <Users className="w-3 h-3 inline mr-1" />
+                                {job.progress.filter(p => p.status === 'completed').length}/{job.assignedTo.length} selesai
+                              </span>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-72" align="end">
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                  <Users className="w-4 h-4 text-gray-500" />
+                                  <h4 className="text-sm font-semibold">Status Progress Karyawan</h4>
+                                </div>
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                  {getUserProgressDetails(job).map((detail, idx) => (
+                                    <div key={idx} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-gray-50">
+                                      <span className="text-sm text-gray-700 truncate max-w-[140px]" title={detail.name}>
+                                        {detail.name}
+                                      </span>
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusColor(detail.status)}`}>
+                                        {detail.status === 'completed' && '✓ '}
+                                        {getStatusLabel(detail.status)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="pt-2 border-t text-xs text-gray-500">
+                                  {job.progress.filter(p => p.status === 'completed').length} dari {job.assignedTo.length} karyawan selesai
+                                </div>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
                         )}
                       </>
                     )}
