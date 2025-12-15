@@ -663,6 +663,197 @@ export default function JobdeskPage({ user }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Jobdesk Modal */}
+      <Dialog open={showEditModal} onOpenChange={(open) => {
+        setShowEditModal(open);
+        if (!open) {
+          setSearchQuery('');
+          setDivisionFilter('all');
+          setStatusFilter('active');
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle>Edit Jobdesk</DialogTitle>
+            <DialogDescription>
+              Perbarui informasi jobdesk
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditJobdesk} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-title">Judul Jobdesk *</Label>
+              <Input
+                id="edit-title"
+                value={editFormData.title}
+                onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-description">Deskripsi</Label>
+              <Textarea
+                id="edit-description"
+                value={editFormData.description}
+                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-dueDate">Tenggat Waktu</Label>
+              <Input
+                id="edit-dueDate"
+                type="date"
+                value={editFormData.dueDate}
+                onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Assign ke Karyawan *</Label>
+                <div className="flex space-x-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => selectAllFiltered(true)}>
+                    Pilih Semua (Filter)
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => clearSelection(true)}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Filter Section */}
+              <div className="space-y-3 mb-3 p-3 bg-gray-50 rounded-lg border">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label htmlFor="edit-search" className="text-xs">Cari Nama/Email</Label>
+                    <Input
+                      id="edit-search"
+                      type="text"
+                      placeholder="Cari karyawan..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="edit-division-filter" className="text-xs">Filter Divisi</Label>
+                    <Select value={divisionFilter} onValueChange={setDivisionFilter}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Divisi</SelectItem>
+                        <SelectItem value="no_division">Tanpa Divisi</SelectItem>
+                        {divisions.map(div => (
+                          <SelectItem key={div.id} value={div.id}>
+                            {div.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="edit-status-filter" className="text-xs">Filter Status</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Status</SelectItem>
+                        <SelectItem value="active">Aktif</SelectItem>
+                        <SelectItem value="inactive">Nonaktif</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="border rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
+                {getFilteredUsers().length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    Tidak ada karyawan yang sesuai dengan filter
+                  </p>
+                ) : (
+                  getFilteredUsers().map(u => (
+                    <div key={u.id} className="flex items-center">
+                      <Checkbox
+                        id={`edit-user-${u.id}`}
+                        checked={editFormData.assignedTo.includes(u.id)}
+                        onCheckedChange={() => toggleUserSelection(u.id, true)}
+                      />
+                      <Label
+                        htmlFor={`edit-user-${u.id}`}
+                        className="ml-2 flex-1 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">{u.name}</div>
+                            <div className="text-xs text-gray-500">{u.email}</div>
+                            {u.divisionId && (
+                              <div className="text-xs text-blue-600">
+                                {divisions.find(d => d.id === u.divisionId)?.name}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {!u.divisionId && (
+                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                                No Div
+                              </span>
+                            )}
+                            {u.isActive === false && (
+                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                                Nonaktif
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </Label>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                {editFormData.assignedTo.length} karyawan dipilih
+              </p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>
+                Batal
+              </Button>
+              <Button type="submit">Simpan Perubahan</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Jobdesk?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Anda yakin ingin menghapus jobdesk <strong>{selectedJobdesk?.title}</strong>?
+              <br /><br />
+              <span className="text-red-600 font-medium">
+                Peringatan: Ini akan menghapus semua lampiran terkait dan memutus hubungan dengan to-do dan daily log.
+                Tindakan ini tidak dapat dibatalkan.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteJobdesk}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Ya, Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
