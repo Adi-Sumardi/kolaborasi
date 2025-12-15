@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 // Import page components
 import DashboardHome from './pages/DashboardHome';
+import KaryawanDashboard from './pages/KaryawanDashboard';
 import JobdeskPage from './pages/JobdeskPage';
 import KPIPage from './pages/KPIPage';
 import DivisionPage from './pages/DivisionPage';
