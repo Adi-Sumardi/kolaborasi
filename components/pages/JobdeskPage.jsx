@@ -71,6 +71,67 @@ export default function JobdeskPage({ user }) {
   const [divisionFilter, setDivisionFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
 
+  // Helper function to get effective status based on progress
+  // If any user completed, status should be 'in_progress' not 'pending'
+  const getEffectiveStatus = (job) => {
+    if (!job.progress || job.progress.length === 0) {
+      return job.status;
+    }
+    
+    const completedCount = job.progress.filter(p => p.status === 'completed').length;
+    const totalAssigned = job.assignedTo?.length || 0;
+    
+    // If all completed, status is completed
+    if (completedCount === totalAssigned && totalAssigned > 0) {
+      return 'completed';
+    }
+    
+    // If any completed or in_progress, status is in_progress (not pending)
+    const anyProgress = job.progress.some(p => p.status === 'completed' || p.status === 'in_progress');
+    if (anyProgress && job.status === 'pending') {
+      return 'in_progress';
+    }
+    
+    return job.status;
+  };
+
+  // Helper function to get user progress details for tooltip
+  const getUserProgressDetails = (job) => {
+    if (!job.progress || !job.assignedTo) return [];
+    
+    return job.assignedTo.map(userId => {
+      const userInfo = users.find(u => u.id === userId);
+      const progress = job.progress.find(p => p.userId === userId);
+      
+      return {
+        userId,
+        name: userInfo?.name || 'Unknown User',
+        status: progress?.status || 'pending',
+        updatedAt: progress?.updatedAt
+      };
+    });
+  };
+
+  // Helper function to get status label in Indonesian
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'completed': return 'Selesai';
+      case 'in_progress': return 'Dalam Proses';
+      case 'pending': return 'Pending';
+      default: return status;
+    }
+  };
+
+  // Helper function to get status color
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'completed': return 'text-green-600 bg-green-100';
+      case 'in_progress': return 'text-yellow-600 bg-yellow-100';
+      case 'pending': return 'text-gray-600 bg-gray-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
