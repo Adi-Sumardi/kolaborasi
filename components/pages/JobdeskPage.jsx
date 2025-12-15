@@ -129,13 +129,19 @@ export default function JobdeskPage({ user }) {
   const handleEditJobdesk = async (e) => {
     e.preventDefault();
 
-    if (editFormData.assignedTo.length === 0) {
+    // Only validate assignedTo for super_admin and pengurus
+    if ((user.role === 'super_admin' || user.role === 'pengurus') && editFormData.assignedTo.length === 0) {
       toast.error('Pilih minimal satu karyawan');
       return;
     }
 
     try {
-      await jobdeskAPI.update(selectedJobdesk.id, editFormData);
+      // For karyawan, remove assignedTo from the update payload
+      const updateData = user.role === 'karyawan' 
+        ? { title: editFormData.title, description: editFormData.description, dueDate: editFormData.dueDate }
+        : editFormData;
+      
+      await jobdeskAPI.update(selectedJobdesk.id, updateData);
       toast.success('Jobdesk berhasil diperbarui!');
       setShowEditModal(false);
       setEditFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
