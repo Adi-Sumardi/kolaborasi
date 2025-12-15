@@ -298,8 +298,85 @@ metadata:
   test_sequence: 0
   run_ui: true
 
+backend:
+  - task: "Jobdesk Edit API endpoint"
+    implemented: false
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          BACKEND TESTING COMPLETED - ENDPOINT NOT IMPLEMENTED
+          
+          ❌ CRITICAL FINDING: PUT /api/jobdesks/:id endpoint does NOT exist
+          
+          🔍 TESTING RESULTS:
+          - Tested PUT /api/jobdesks/{jobdeskId} with super_admin credentials
+          - Response: 404 Not Found with {"error":"Not found"}
+          - Code analysis confirms no handleUpdateJobdesk function exists
+          - Only handleUpdateJobdeskStatus exists for status updates only
+          
+          📋 CURRENT JOBDESK ENDPOINTS:
+          - GET /api/jobdesks (✅ working - retrieves jobdesks list)
+          - POST /api/jobdesks (✅ working - creates new jobdesk)
+          - PUT /api/jobdesks/:id/status (✅ working - updates status only)
+          - PUT /api/jobdesks/:id (❌ NOT IMPLEMENTED)
+          - DELETE /api/jobdesks/:id (❌ NOT IMPLEMENTED)
+          
+          🎯 REQUIRED IMPLEMENTATION:
+          The main agent needs to implement:
+          1. handleUpdateJobdesk function for general jobdesk editing
+          2. PUT route matcher for /^jobdesks\/[^/]+$/ in PUT handler
+          3. Authorization checks (super_admin and pengurus should be able to edit)
+          4. Validation for title, description, priority, dueDate, assignedTo fields
+          
+          Cannot test edit functionality until endpoint is implemented.
+
+  - task: "Jobdesk Delete API endpoint"
+    implemented: false
+    working: "NA"
+    file: "/app/app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          BACKEND TESTING COMPLETED - ENDPOINT NOT IMPLEMENTED
+          
+          ❌ CRITICAL FINDING: DELETE /api/jobdesks/:id endpoint does NOT exist
+          
+          🔍 TESTING RESULTS:
+          - Tested DELETE /api/jobdesks/{jobdeskId} with super_admin credentials
+          - Response: 404 Not Found with {"error":"Not found"}
+          - Code analysis confirms no handleDeleteJobdesk function exists
+          - DELETE handler only supports divisions, users, and attachments
+          
+          📋 CURRENT DELETE ENDPOINTS:
+          - DELETE /api/divisions/:id (✅ implemented)
+          - DELETE /api/users/:id (✅ implemented)
+          - DELETE /api/attachments/:id (✅ implemented)
+          - DELETE /api/jobdesks/:id (❌ NOT IMPLEMENTED)
+          
+          🎯 REQUIRED IMPLEMENTATION:
+          The main agent needs to implement:
+          1. handleDeleteJobdesk function for jobdesk deletion
+          2. DELETE route matcher for /^jobdesks\/[^/]+$/ in DELETE handler
+          3. Authorization checks (only super_admin should be able to delete)
+          4. Cascade deletion handling (related todos, daily_logs, attachments)
+          5. Soft delete vs hard delete decision
+          
+          Cannot test delete functionality until endpoint is implemented.
+
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Jobdesk Edit API endpoint"
+    - "Jobdesk Delete API endpoint"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
