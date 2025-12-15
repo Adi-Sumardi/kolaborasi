@@ -119,6 +119,40 @@ export default function JobdeskPage({ user }) {
     }
   };
 
+  const handleEditJobdesk = async (e) => {
+    e.preventDefault();
+
+    if (editFormData.assignedTo.length === 0) {
+      toast.error('Pilih minimal satu karyawan');
+      return;
+    }
+
+    try {
+      await jobdeskAPI.update(selectedJobdesk.id, editFormData);
+      toast.success('Jobdesk berhasil diperbarui!');
+      setShowEditModal(false);
+      setEditFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
+      setSelectedJobdesk(null);
+      loadData();
+    } catch (error) {
+      console.error('Failed to update jobdesk:', error);
+      toast.error(error.message || 'Gagal memperbarui jobdesk');
+    }
+  };
+
+  const handleDeleteJobdesk = async () => {
+    try {
+      await jobdeskAPI.delete(selectedJobdesk.id);
+      toast.success('Jobdesk berhasil dihapus!');
+      setShowDeleteDialog(false);
+      setSelectedJobdesk(null);
+      loadData();
+    } catch (error) {
+      console.error('Failed to delete jobdesk:', error);
+      toast.error(error.message || 'Gagal menghapus jobdesk');
+    }
+  };
+
   const handleCreateLog = async (e) => {
     e.preventDefault();
 
