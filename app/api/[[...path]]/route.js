@@ -736,6 +736,167 @@ async function handleUpdateJobdeskStatus(request, jobdeskId) {
   }
 }
 
+// Update jobdesk (general edit)
+async function handleUpdateJobdesk(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { title, description, assignedTo, dueDate, priority, status } = body;
+
+    // Validate at least one field to update
+    if (!title && !description && !assignedTo && !dueDate && !priority && !status) {
+      return NextResponse.json(
+        { error: 'At least one field must be provided for update' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if jobdesk exists
+    const existingJobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+    if (!existingJobdesk) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    // Build update object
+    const updateData = {
+      updatedAt: new Date()
+    };
+
+    if (title) updateData.title = sanitizeString(title);
+    if (description !== undefined) updateData.description = sanitizeString(description);
+    if (assignedTo && Array.isArray(assignedTo) && assignedTo.length > 0) {
+      updateData.assignedTo = assignedTo;
+      
+      // Send notifications to newly assigned users
+      const newAssignees = assignedTo.filter(userId => 
+        !existingJobdesk.assignedTo.includes(userId)
+      );
+      
+      for (const userId of newAssignees) {
+        const notification = {
+          id: uuidv4(),
+          userId,
+          type: 'jobdesk_assigned',
+          title: 'Jobdesk Baru',
+          message: `Anda mendapat jobdesk: ${title || existingJobdesk.title}`,
+          read: false,
+          createdAt: new Date()
+        };
+        
+        await db.collection('notifications').insertOne(notification);
+        
+        try {
+          sendNotification(userId, notification);
+        } catch (err) {
+          console.error('Socket notification error:', err);
+        }
+      }
+    }
+    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+    if (priority) updateData.priority = priority;
+    if (status && ['pending', 'in_progress', 'completed'].includes(status)) {
+      updateData.status = status;
+      if (status === 'completed') {
+        updateData.completedAt = new Date();
+      }
+    }
+
+    // Update jobdesk
+    await db.collection('jobdesks').updateOne(
+      { id: jobdeskId },
+      { $set: updateData }
+    );
+
+    // Get updated jobdesk
+    const updatedJobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+
+    return NextResponse.json({
+      message: 'Jobdesk updated successfully',
+      jobdesk: updatedJobdesk
+    });
+  } catch (error) {
+    console.error('Update jobdesk error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update jobdesk' },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete jobdesk
+async function handleDeleteJobdesk(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if jobdesk exists
+    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+    if (!jobdesk) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    // Delete related data (cascade delete)
+    // 1. Delete attachments
+    const attachments = await db.collection('attachments')
+      .find({ jobdeskId })
+      .toArray();
+    
+    // Delete attachment files from filesystem
+    const fs = require('fs');
+    const path = require('path');
+    for (const attachment of attachments) {
+      try {
+        const filePath = path.join(process.cwd(), 'public', attachment.url);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (err) {
+        console.error('Failed to delete attachment file:', err);
+      }
+    }
+    
+    await db.collection('attachments').deleteMany({ jobdeskId });
+
+    // 2. Update related todos (remove jobdeskId reference)
+    await db.collection('todos').updateMany(
+      { jobdeskId },
+      { $unset: { jobdeskId: "" } }
+    );
+
+    // 3. Update related daily_logs (remove jobdeskId reference)
+    await db.collection('daily_logs').updateMany(
+      { jobdeskId },
+      { $unset: { jobdeskId: "" } }
+    );
+
+    // 4. Delete the jobdesk
+    await db.collection('jobdesks').deleteOne({ id: jobdeskId });
+
+    return NextResponse.json({
+      message: 'Jobdesk deleted successfully',
+      deletedJobdeskId: jobdeskId
+    });
+  } catch (error) {
+    console.error('Delete jobdesk error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete jobdesk' },
+      { status: 500 }
+    );
+  }
+}
+
 // ============================================
 // DAILY LOG ENDPOINTS
 // ============================================
