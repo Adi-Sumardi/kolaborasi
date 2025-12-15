@@ -2453,6 +2453,11 @@ export async function POST(request, { params }) {
       return handleUploadProfilePhoto(request);
     }
 
+    // PWA endpoints
+    if (path === 'pwa/save-subscription') return handleSavePushSubscription(request);
+    if (path === 'pwa/remove-subscription') return handleRemovePushSubscription(request);
+    if (path === 'pwa/send-notification') return handleSendPushNotification(request);
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
