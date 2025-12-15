@@ -360,6 +360,22 @@ export default function KaryawanDashboard({ user }) {
                                 </Badge>
                               )}
                             </div>
+                            
+                            {/* Submission Link */}
+                            {job.submissionLink && (
+                              <div className="mt-3 pt-3 border-t">
+                                <a
+                                  href={job.submissionLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                                >
+                                  <Upload className="w-4 h-4" />
+                                  <span className="font-medium">Kumpulkan Tugas di sini</span>
+                                  <ChevronRight className="w-4 h-4" />
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
