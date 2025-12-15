@@ -2183,6 +2183,12 @@ export async function DELETE(request, { params }) {
       return handleDeleteUser(request, userId);
     }
     
+    // Jobdesks
+    if (path.match(/^jobdesks\/[^/]+$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleDeleteJobdesk(request, jobdeskId);
+    }
+    
     // Attachments
     if (path.match(/^attachments\/[^/]+$/)) {
       const attachmentId = path.split('/')[1];
