@@ -25,12 +25,17 @@ export default function KaryawanDashboard({ user }) {
 
   const loadData = async () => {
     try {
-      const [profile, jobdeskData] = await Promise.all([
+      const [profile, jobdeskResponse] = await Promise.all([
         profileAPI.getProfile(user.id),
         jobdeskAPI.getAll()
       ]);
       
       setProfileData(profile);
+      
+      // Handle response - it might be array or object with jobdesks property
+      const jobdeskData = Array.isArray(jobdeskResponse) 
+        ? jobdeskResponse 
+        : (jobdeskResponse?.jobdesks || []);
       
       // Filter jobdesks assigned to current user
       const myJobdesks = jobdeskData.filter(j => 
