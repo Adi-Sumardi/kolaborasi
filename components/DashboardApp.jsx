@@ -304,6 +304,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center space-x-2">
                     <Avatar className="w-8 h-8">
+                      <AvatarImage src={currentUser.profilePhoto} alt={currentUser.name} />
                       <AvatarFallback className="bg-blue-600 text-white">
                         {currentUser.name?.charAt(0).toUpperCase() || 'U'}
                       </AvatarFallback>
