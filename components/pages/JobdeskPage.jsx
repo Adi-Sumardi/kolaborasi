@@ -46,7 +46,8 @@ export default function JobdeskPage({ user }) {
     title: '',
     description: '',
     assignedTo: [],
-    dueDate: ''
+    dueDate: '',
+    submissionLink: ''
   });
   const [editFormData, setEditFormData] = useState({
     title: '',
