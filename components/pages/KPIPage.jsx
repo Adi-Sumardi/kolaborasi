@@ -46,7 +46,7 @@ export default function KPIPage({ user }) {
   const loadKPIData = async () => {
     try {
       const [kpi, logsRes] = await Promise.all([
-        kpiAPI.get({
+        kpiAPI.getData({
           userId: selectedUserId,
           startDate: dateRange.startDate,
           endDate: dateRange.endDate
