@@ -225,20 +225,6 @@ export default function SettingsPage({ user }) {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Informasi Aplikasi</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 text-sm text-gray-600">
-            <p><strong>Versi:</strong> 1.0.0</p>
-            <p><strong>Platform:</strong> Dashboard Ruang Kerja Kolaborasi</p>
-            <p><strong>Stack:</strong> Next.js + MongoDB + Socket.io</p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
