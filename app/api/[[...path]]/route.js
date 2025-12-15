@@ -2070,6 +2070,12 @@ export async function GET(request, { params }) {
       return handleGetAttachments(request, jobdeskId);
     }
 
+    // Profile
+    if (path.match(/^profile\/[^/]+$/)) {
+      const userId = path.split('/')[1];
+      return handleGetUserProfile(request, userId);
+    }
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
