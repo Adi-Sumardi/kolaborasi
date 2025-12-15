@@ -251,34 +251,131 @@ export default function KaryawanDashboard({ user }) {
         </Card>
       </div>
 
-      {/* Progress Overview */}
+      {/* Jobdesk List */}
       <Card>
         <CardHeader>
-          <CardTitle>Ringkasan Progress</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Daftar Jobdesk Saya</CardTitle>
+            <Badge variant="secondary">{jobdesks.length} tugas</Badge>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span>Penyelesaian Keseluruhan</span>
-              <span className="font-semibold">{completionRate}%</span>
+        <CardContent>
+          {jobdesks.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Briefcase className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">Belum ada jobdesk</p>
+              <p className="text-sm mt-2">Anda belum memiliki tugas yang ditugaskan</p>
             </div>
-            <Progress value={completionRate} className="h-2" />
-          </div>
+          ) : (
+            <div className="space-y-3">
+              {jobdesks.map((job) => {
+                const getStatusInfo = (status) => {
+                  switch (status) {
+                    case 'pending':
+                      return { label: 'Belum Dimulai', color: 'bg-gray-100 text-gray-700 border-gray-300' };
+                    case 'in_progress':
+                      return { label: 'Sedang Dikerjakan', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
+                    case 'completed':
+                      return { label: 'Selesai', color: 'bg-green-100 text-green-700 border-green-300' };
+                    default:
+                      return { label: status, color: 'bg-gray-100 text-gray-700 border-gray-300' };
+                  }
+                };
 
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-400">{stats.pending}</div>
-              <div className="text-xs text-gray-600">Belum Dimulai</div>
+                const statusInfo = getStatusInfo(job.status);
+                const isOverdue = job.dueDate && new Date(job.dueDate) < new Date() && job.status !== 'completed';
+
+                return (
+                  <div
+                    key={job.id}
+                    className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 p-2 rounded-lg ${
+                            job.status === 'completed' ? 'bg-green-100' :
+                            job.status === 'in_progress' ? 'bg-yellow-100' :
+                            'bg-gray-100'
+                          }`}>
+                            <Briefcase className={`w-5 h-5 ${
+                              job.status === 'completed' ? 'text-green-600' :
+                              job.status === 'in_progress' ? 'text-yellow-600' :
+                              'text-gray-600'
+                            }`} />
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
+                              {job.title}
+                            </h3>
+                            
+                            {job.description && (
+                              <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                                {job.description}
+                              </p>
+                            )}
+                            
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <Badge variant="outline" className={statusInfo.color}>
+                                {statusInfo.label}
+                              </Badge>
+                              
+                              {job.dueDate && (
+                                <div className={`flex items-center gap-1 ${
+                                  isOverdue ? 'text-red-600' : 'text-gray-500'
+                                }`}>
+                                  {isOverdue && <AlertCircle className="w-3 h-3" />}
+                                  <Calendar className="w-3 h-3" />
+                                  <span>
+                                    {new Date(job.dueDate).toLocaleDateString('id-ID', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+                                  {isOverdue && (
+                                    <span className="font-semibold">(Terlambat)</span>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {job.priority && (
+                                <Badge 
+                                  variant="secondary"
+                                  className={
+                                    job.priority === 'high' ? 'bg-red-100 text-red-700' :
+                                    job.priority === 'medium' ? 'bg-orange-100 text-orange-700' :
+                                    'bg-blue-100 text-blue-700'
+                                  }
+                                >
+                                  {job.priority === 'high' ? 'Prioritas Tinggi' :
+                                   job.priority === 'medium' ? 'Prioritas Sedang' :
+                                   'Prioritas Rendah'}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-shrink-0"
+                        onClick={() => {
+                          // TODO: Navigate to jobdesk detail or open modal
+                          toast.info('Fitur detail jobdesk coming soon!');
+                        }}
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="text-center border-x">
-              <div className="text-2xl font-bold text-yellow-600">{stats.in_progress}</div>
-              <div className="text-xs text-gray-600">Sedang Dikerjakan</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-              <div className="text-xs text-gray-600">Sudah Selesai</div>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
