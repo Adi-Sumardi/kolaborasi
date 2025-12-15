@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { profileAPI } from '@/lib/api';
+import { profileAPI, jobdeskAPI } from '@/lib/api';
 import { 
   User, Briefcase, CheckCircle, Clock, FileText, 
-  Upload, Camera, Building2, Mail, Calendar, Award
+  Upload, Camera, Building2, Mail, Calendar, Award,
+  ChevronRight, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 
 export default function KaryawanDashboard({ user }) {
