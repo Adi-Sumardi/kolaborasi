@@ -171,27 +171,48 @@ export default function JobdeskPage({ user }) {
     }
   };
 
-  const toggleUserSelection = (userId) => {
-    setFormData(prev => ({
-      ...prev,
-      assignedTo: prev.assignedTo.includes(userId)
-        ? prev.assignedTo.filter(id => id !== userId)
-        : [...prev.assignedTo, userId]
-    }));
+  const toggleUserSelection = (userId, isEditMode = false) => {
+    if (isEditMode) {
+      setEditFormData(prev => ({
+        ...prev,
+        assignedTo: prev.assignedTo.includes(userId)
+          ? prev.assignedTo.filter(id => id !== userId)
+          : [...prev.assignedTo, userId]
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        assignedTo: prev.assignedTo.includes(userId)
+          ? prev.assignedTo.filter(id => id !== userId)
+          : [...prev.assignedTo, userId]
+      }));
+    }
   };
 
-  const selectAllKaryawan = () => {
+  const selectAllKaryawan = (isEditMode = false) => {
     const karyawanIds = users.filter(u => u.role === 'karyawan').map(u => u.id);
-    setFormData(prev => ({ ...prev, assignedTo: karyawanIds }));
+    if (isEditMode) {
+      setEditFormData(prev => ({ ...prev, assignedTo: karyawanIds }));
+    } else {
+      setFormData(prev => ({ ...prev, assignedTo: karyawanIds }));
+    }
   };
   
-  const selectAllFiltered = () => {
+  const selectAllFiltered = (isEditMode = false) => {
     const filteredIds = getFilteredUsers().map(u => u.id);
-    setFormData(prev => ({ ...prev, assignedTo: filteredIds }));
+    if (isEditMode) {
+      setEditFormData(prev => ({ ...prev, assignedTo: filteredIds }));
+    } else {
+      setFormData(prev => ({ ...prev, assignedTo: filteredIds }));
+    }
   };
   
-  const clearSelection = () => {
-    setFormData(prev => ({ ...prev, assignedTo: [] }));
+  const clearSelection = (isEditMode = false) => {
+    if (isEditMode) {
+      setEditFormData(prev => ({ ...prev, assignedTo: [] }));
+    } else {
+      setFormData(prev => ({ ...prev, assignedTo: [] }));
+    }
   };
   
   // Filter function
