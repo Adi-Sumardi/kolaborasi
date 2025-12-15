@@ -98,13 +98,19 @@ export default function JobdeskPage({ user }) {
   const handleCreateJobdesk = async (e) => {
     e.preventDefault();
 
-    if (formData.assignedTo.length === 0) {
+    // For karyawan, auto-assign to themselves
+    const jobdeskData = user.role === 'karyawan' 
+      ? { ...formData, assignedTo: [user.id] }
+      : formData;
+
+    // Validation for admin/pengurus only
+    if ((user.role === 'super_admin' || user.role === 'pengurus') && jobdeskData.assignedTo.length === 0) {
       toast.error('Pilih minimal satu karyawan');
       return;
     }
 
     try {
-      await jobdeskAPI.create(formData);
+      await jobdeskAPI.create(jobdeskData);
       toast.success('Jobdesk berhasil dibuat!');
       setShowCreateModal(false);
       setFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
