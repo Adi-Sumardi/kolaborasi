@@ -513,6 +513,45 @@ export default function JobdeskPage({ user }) {
                       <span className="hidden sm:inline">Lampiran</span>
                       <span className="sm:hidden">File</span>
                     </Button>
+                    
+                    {/* Edit & Delete buttons - only for super_admin and pengurus */}
+                    {(user.role === 'super_admin' || user.role === 'pengurus') && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedJobdesk(job);
+                            setEditFormData({
+                              title: job.title,
+                              description: job.description || '',
+                              assignedTo: job.assignedTo || [],
+                              dueDate: job.dueDate ? new Date(job.dueDate).toISOString().split('T')[0] : ''
+                            });
+                            setShowEditModal(true);
+                          }}
+                          className="flex-1 sm:flex-none"
+                        >
+                          <Pencil className="w-4 h-4 mr-1" />
+                          <span className="hidden sm:inline">Edit</span>
+                        </Button>
+                        {user.role === 'super_admin' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedJobdesk(job);
+                              setShowDeleteDialog(true);
+                            }}
+                            className="flex-1 sm:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            <span className="hidden sm:inline">Hapus</span>
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    
                     {user.role === 'karyawan' && job.assignedTo?.includes(user.id) && job.status === 'pending' && (
                       <Button
                         size="sm"
