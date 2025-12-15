@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { sendNotification } from '@/lib/socket-server';
 import { sanitizeUserInput, sanitizeEmail, sanitizeString, validators } from '@/lib/sanitize';
 import { rateLimitMiddleware, getClientIP } from '@/lib/rateLimit';
+import { getVapidPublicKey, sendPushNotification, sendBulkPushNotifications } from '@/lib/push-notifications';
 import fs from 'fs/promises';
 import path from 'path';
 
