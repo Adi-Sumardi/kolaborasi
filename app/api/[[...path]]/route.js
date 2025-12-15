@@ -727,18 +727,61 @@ async function handleUpdateJobdeskStatus(request, jobdeskId) {
     const client = await clientPromise;
     const db = client.db();
 
+    // Get current jobdesk
+    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+    if (!jobdesk) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    // Check if user is assigned to this jobdesk
+    if (!jobdesk.assignedTo?.includes(user.userId)) {
+      return NextResponse.json({ error: 'Not assigned to this jobdesk' }, { status: 403 });
+    }
+
+    // Initialize progress array if not exists (for old jobdesks)
+    let progress = jobdesk.progress || jobdesk.assignedTo.map(userId => ({
+      userId,
+      status: 'pending',
+      startedAt: null,
+      completedAt: null
+    }));
+
+    // Update the specific user's status in progress array
+    progress = progress.map(p => {
+      if (p.userId === user.userId) {
+        return {
+          ...p,
+          status,
+          startedAt: status === 'in_progress' && !p.startedAt ? new Date() : p.startedAt,
+          completedAt: status === 'completed' ? new Date() : null
+        };
+      }
+      return p;
+    });
+
+    // Calculate global status based on all users' progress
+    const allCompleted = progress.every(p => p.status === 'completed');
+    const anyInProgress = progress.some(p => p.status === 'in_progress');
+    const globalStatus = allCompleted ? 'completed' : (anyInProgress ? 'in_progress' : 'pending');
+
+    // Update jobdesk with new progress and global status
     await db.collection('jobdesks').updateOne(
       { id: jobdeskId },
       {
         $set: {
-          status,
-          completedAt: status === 'completed' ? new Date() : null,
+          progress,
+          status: globalStatus,
+          completedAt: allCompleted ? new Date() : null,
           updatedAt: new Date()
         }
       }
     );
 
-    return NextResponse.json({ message: 'Jobdesk status updated' });
+    return NextResponse.json({ 
+      message: 'Status updated',
+      userStatus: status,
+      globalStatus 
+    });
   } catch (error) {
     console.error('Update jobdesk status error:', error);
     return NextResponse.json(
