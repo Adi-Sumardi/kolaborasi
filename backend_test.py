@@ -1,522 +1,297 @@
 #!/usr/bin/env python3
 """
-Backend API Testing Script for Update User Password Feature
-Tests PUT /api/users/:id/password endpoint thoroughly
+Backend API Testing for Jobdesk Edit and Delete Functionality
+Testing the current state of jobdesk CRUD operations
 """
 
 import requests
 import json
 import sys
-from pymongo import MongoClient
-import bcrypt
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+from datetime import datetime
 
 # Configuration
-BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'https://collab-dash-2.preview.emergentagent.com')
-API_BASE = f"{BASE_URL}/api"
-MONGO_URL = os.getenv('MONGO_URL', 'mongodb://localhost:27017/workspace_collaboration')
+BASE_URL = "https://collab-dash-2.preview.emergentagent.com/api"
 
 # Test credentials
-SUPER_ADMIN_CREDS = {
-    "email": "admin@workspace.com",
-    "password": "password123"
+CREDENTIALS = {
+    "super_admin": {"email": "admin@workspace.com", "password": "password123"},
+    "pengurus": {"email": "pengurus@workspace.com", "password": "password123"},
+    "karyawan": {"email": "karyawan1@workspace.com", "password": "password123"}
 }
 
-REGULAR_USER_CREDS = {
-    "email": "karyawan1@workspace.com", 
-    "password": "password123"
-}
-
-class PasswordUpdateTester:
+class JobdeskAPITester:
     def __init__(self):
-        self.session = requests.Session()
-        self.auth_token = None
-        self.user_id = None
-        self.test_jobdesk_id = None
-        self.test_todo_id = None
+        self.tokens = {}
+        self.test_results = []
         
-    def authenticate(self):
-        """Authenticate and get JWT token"""
-        print("🔐 Authenticating...")
-        
-        login_data = {
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
+    def log_result(self, test_name, success, message, details=None):
+        """Log test result"""
+        status = "✅ PASS" if success else "❌ FAIL"
+        result = {
+            "test": test_name,
+            "status": status,
+            "message": message,
+            "details": details or {},
+            "timestamp": datetime.now().isoformat()
         }
-        
+        self.test_results.append(result)
+        print(f"{status}: {test_name} - {message}")
+        if details:
+            print(f"   Details: {details}")
+        print()
+
+    def authenticate(self, role):
+        """Authenticate and get JWT token"""
         try:
-            response = self.session.post(f"{API_BASE}/auth/login", json=login_data)
+            creds = CREDENTIALS[role]
+            response = requests.post(f"{BASE_URL}/auth/login", json=creds)
             
             if response.status_code == 200:
                 data = response.json()
-                self.auth_token = data.get('token')
-                self.user_id = data.get('user', {}).get('id')
-                
-                # Set authorization header for future requests
-                self.session.headers.update({
-                    'Authorization': f'Bearer {self.auth_token}',
-                    'Content-Type': 'application/json'
-                })
-                
-                print(f"✅ Authentication successful - User ID: {self.user_id}")
-                return True
-            else:
-                print(f"❌ Authentication failed: {response.status_code} - {response.text}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Authentication error: {str(e)}")
-            return False
-    
-    def setup_test_data(self):
-        """Create test jobdesk and todo for testing"""
-        print("\n📝 Setting up test data...")
-        
-        # Create test jobdesk first
-        jobdesk_data = {
-            "title": "Test Jobdesk for Todo Conversion",
-            "description": "Test jobdesk for testing todo to log conversion",
-            "assignedTo": [self.user_id],
-            "dueDate": "2024-12-31"
-        }
-        
-        try:
-            response = self.session.post(f"{API_BASE}/jobdesks", json=jobdesk_data)
-            if response.status_code == 200:
-                self.test_jobdesk_id = response.json().get('jobdesk', {}).get('id')
-                print(f"✅ Test jobdesk created - ID: {self.test_jobdesk_id}")
-            else:
-                print(f"❌ Failed to create test jobdesk: {response.status_code} - {response.text}")
-                return False
-        except Exception as e:
-            print(f"❌ Error creating test jobdesk: {str(e)}")
-            return False
-        
-        # Create test todo with jobdesk
-        todo_data = {
-            "title": "Complete Project Documentation",
-            "description": "Write comprehensive documentation for the new feature implementation",
-            "priority": "high",
-            "status": "done",  # Set to done status for conversion
-            "jobdeskId": self.test_jobdesk_id,
-            "dueDate": "2024-12-25"
-        }
-        
-        try:
-            response = self.session.post(f"{API_BASE}/todos", json=todo_data)
-            if response.status_code == 200:
-                self.test_todo_id = response.json().get('todo', {}).get('id')
-                print(f"✅ Test todo created - ID: {self.test_todo_id}")
-                return True
-            else:
-                print(f"❌ Failed to create test todo: {response.status_code} - {response.text}")
-                return False
-        except Exception as e:
-            print(f"❌ Error creating test todo: {str(e)}")
-            return False
-    
-    def test_authentication_required(self):
-        """Test 1: Authentication Tests"""
-        print("\n🔒 Test 1: Authentication Required")
-        
-        # Test without auth token
-        session_no_auth = requests.Session()
-        session_no_auth.headers.update({'Content-Type': 'application/json'})
-        
-        try:
-            response = session_no_auth.post(
-                f"{API_BASE}/todos/{self.test_todo_id}/convert-to-log",
-                json={"hoursSpent": 4.5}
-            )
-            
-            if response.status_code == 401:
-                print("✅ PASS: Unauthorized request correctly rejected (401)")
-                return True
-            else:
-                print(f"❌ FAIL: Expected 401, got {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def test_validation_errors(self):
-        """Test 2: Validation Tests"""
-        print("\n✅ Test 2: Validation Tests")
-        
-        test_cases = [
-            {
-                "name": "Missing hoursSpent",
-                "data": {},
-                "expected_status": 400,
-                "expected_error": "Hours spent must be greater than 0"
-            },
-            {
-                "name": "Zero hoursSpent",
-                "data": {"hoursSpent": 0},
-                "expected_status": 400,
-                "expected_error": "Hours spent must be greater than 0"
-            },
-            {
-                "name": "Negative hoursSpent",
-                "data": {"hoursSpent": -2.5},
-                "expected_status": 400,
-                "expected_error": "Hours spent must be greater than 0"
-            }
-        ]
-        
-        all_passed = True
-        
-        for test_case in test_cases:
-            try:
-                response = self.session.post(
-                    f"{API_BASE}/todos/{self.test_todo_id}/convert-to-log",
-                    json=test_case["data"]
-                )
-                
-                if response.status_code == test_case["expected_status"]:
-                    response_data = response.json()
-                    if test_case["expected_error"] in response_data.get("error", ""):
-                        print(f"✅ PASS: {test_case['name']}")
-                    else:
-                        print(f"❌ FAIL: {test_case['name']} - Wrong error message")
-                        print(f"   Expected: {test_case['expected_error']}")
-                        print(f"   Got: {response_data.get('error', 'No error message')}")
-                        all_passed = False
+                token = data.get('token')
+                if token:
+                    self.tokens[role] = token
+                    self.log_result(f"Authentication - {role}", True, f"Successfully authenticated as {role}")
+                    return token
                 else:
-                    print(f"❌ FAIL: {test_case['name']} - Expected {test_case['expected_status']}, got {response.status_code}")
-                    all_passed = False
-                    
-            except Exception as e:
-                print(f"❌ ERROR in {test_case['name']}: {str(e)}")
-                all_passed = False
-        
-        return all_passed
-    
-    def test_nonexistent_todo(self):
-        """Test 3: Non-existent Todo ID"""
-        print("\n🔍 Test 3: Non-existent Todo ID")
-        
-        fake_todo_id = str(uuid.uuid4())
-        
+                    self.log_result(f"Authentication - {role}", False, "No token in response", {"response": data})
+                    return None
+            else:
+                self.log_result(f"Authentication - {role}", False, f"Login failed with status {response.status_code}", {"response": response.text})
+                return None
+                
+        except Exception as e:
+            self.log_result(f"Authentication - {role}", False, f"Authentication error: {str(e)}")
+            return None
+
+    def get_headers(self, role):
+        """Get headers with auth token"""
+        token = self.tokens.get(role)
+        if not token:
+            return None
+        return {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+    def test_get_jobdesks(self, role="super_admin"):
+        """Test getting jobdesks list"""
         try:
-            response = self.session.post(
-                f"{API_BASE}/todos/{fake_todo_id}/convert-to-log",
-                json={"hoursSpent": 3.0}
-            )
+            headers = self.get_headers(role)
+            if not headers:
+                self.log_result("Get Jobdesks", False, f"No auth token for {role}")
+                return None
+                
+            response = requests.get(f"{BASE_URL}/jobdesks", headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                jobdesks = data.get('jobdesks', [])
+                self.log_result("Get Jobdesks", True, f"Retrieved {len(jobdesks)} jobdesks", {"count": len(jobdesks)})
+                return jobdesks
+            else:
+                self.log_result("Get Jobdesks", False, f"Failed with status {response.status_code}", {"response": response.text})
+                return None
+                
+        except Exception as e:
+            self.log_result("Get Jobdesks", False, f"Error: {str(e)}")
+            return None
+
+    def test_jobdesk_edit_endpoint(self, jobdesk_id, role="super_admin"):
+        """Test if jobdesk edit endpoint exists"""
+        try:
+            headers = self.get_headers(role)
+            if not headers:
+                self.log_result("Jobdesk Edit Endpoint Check", False, f"No auth token for {role}")
+                return False
+                
+            # Test data for edit
+            edit_data = {
+                "title": "Updated Test Jobdesk Title",
+                "description": "Updated description for testing",
+                "priority": "high"
+            }
+            
+            response = requests.put(f"{BASE_URL}/jobdesks/{jobdesk_id}", headers=headers, json=edit_data)
             
             if response.status_code == 404:
-                response_data = response.json()
-                if "Todo not found" in response_data.get("error", ""):
-                    print("✅ PASS: Non-existent todo correctly returns 404")
-                    return True
-                else:
-                    print(f"❌ FAIL: Wrong error message: {response_data.get('error')}")
-                    return False
+                self.log_result("Jobdesk Edit Endpoint Check", False, "Edit endpoint NOT IMPLEMENTED - returns 404", {"status_code": 404, "response": response.text})
+                return False
+            elif response.status_code == 200:
+                self.log_result("Jobdesk Edit Endpoint Check", True, "Edit endpoint exists and working", {"status_code": 200})
+                return True
+            elif response.status_code == 403:
+                self.log_result("Jobdesk Edit Endpoint Check", True, f"Edit endpoint exists but {role} lacks permission", {"status_code": 403})
+                return True
             else:
-                print(f"❌ FAIL: Expected 404, got {response.status_code}")
+                self.log_result("Jobdesk Edit Endpoint Check", False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code, "response": response.text})
                 return False
                 
         except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def test_todo_without_jobdesk(self):
-        """Test 4: Todo without jobdeskId"""
-        print("\n📋 Test 4: Todo without jobdeskId")
-        
-        # Create todo without jobdesk
-        todo_data = {
-            "title": "Personal Task Without Jobdesk",
-            "description": "This task is not linked to any jobdesk",
-            "status": "done"
-        }
-        
-        try:
-            response = self.session.post(f"{API_BASE}/todos", json=todo_data)
-            if response.status_code != 200:
-                print(f"❌ Failed to create test todo: {response.status_code}")
-                return False
-            
-            todo_without_jobdesk_id = response.json().get('todo', {}).get('id')
-            
-            # Try to convert todo without jobdesk
-            response = self.session.post(
-                f"{API_BASE}/todos/{todo_without_jobdesk_id}/convert-to-log",
-                json={"hoursSpent": 2.0}
-            )
-            
-            if response.status_code == 400:
-                response_data = response.json()
-                if "Todo must have a jobdesk to convert" in response_data.get("error", ""):
-                    print("✅ PASS: Todo without jobdesk correctly rejected")
-                    return True
-                else:
-                    print(f"❌ FAIL: Wrong error message: {response_data.get('error')}")
-                    return False
-            else:
-                print(f"❌ FAIL: Expected 400, got {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def test_todo_not_done_status(self):
-        """Test 5: Todo with status not 'done'"""
-        print("\n⏳ Test 5: Todo with status not 'done'")
-        
-        # Create todo with pending status
-        todo_data = {
-            "title": "Pending Task with Jobdesk",
-            "description": "This task is still pending",
-            "status": "pending",
-            "jobdeskId": self.test_jobdesk_id
-        }
-        
-        try:
-            response = self.session.post(f"{API_BASE}/todos", json=todo_data)
-            if response.status_code != 200:
-                print(f"❌ Failed to create test todo: {response.status_code}")
-                return False
-            
-            pending_todo_id = response.json().get('todo', {}).get('id')
-            
-            # Try to convert pending todo
-            response = self.session.post(
-                f"{API_BASE}/todos/{pending_todo_id}/convert-to-log",
-                json={"hoursSpent": 1.5}
-            )
-            
-            if response.status_code == 400:
-                response_data = response.json()
-                if "Todo must be in done status to convert" in response_data.get("error", ""):
-                    print("✅ PASS: Pending todo correctly rejected")
-                    return True
-                else:
-                    print(f"❌ FAIL: Wrong error message: {response_data.get('error')}")
-                    return False
-            else:
-                print(f"❌ FAIL: Expected 400, got {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def test_successful_conversion(self):
-        """Test 6: Successful Conversion"""
-        print("\n🎯 Test 6: Successful Conversion")
-        
-        hours_spent = 4.5
-        
-        try:
-            # Perform conversion
-            response = self.session.post(
-                f"{API_BASE}/todos/{self.test_todo_id}/convert-to-log",
-                json={"hoursSpent": hours_spent}
-            )
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                
-                # Verify response structure
-                if "message" in response_data and "log" in response_data:
-                    log_data = response_data["log"]
-                    
-                    # Verify log data
-                    checks = [
-                        ("userId", self.user_id),
-                        ("jobdeskId", self.test_jobdesk_id),
-                        ("hoursSpent", hours_spent)
-                    ]
-                    
-                    all_checks_passed = True
-                    for field, expected_value in checks:
-                        if log_data.get(field) != expected_value:
-                            print(f"❌ FAIL: {field} mismatch - Expected: {expected_value}, Got: {log_data.get(field)}")
-                            all_checks_passed = False
-                    
-                    # Check notes format
-                    expected_notes_prefix = "**[From To-Do]** Complete Project Documentation"
-                    if not log_data.get("notes", "").startswith(expected_notes_prefix):
-                        print(f"❌ FAIL: Notes format incorrect")
-                        print(f"   Expected to start with: {expected_notes_prefix}")
-                        print(f"   Got: {log_data.get('notes', '')}")
-                        all_checks_passed = False
-                    
-                    if all_checks_passed:
-                        print("✅ PASS: Successful conversion with correct data")
-                        return True
-                    else:
-                        return False
-                else:
-                    print(f"❌ FAIL: Invalid response structure: {response_data}")
-                    return False
-            else:
-                print(f"❌ FAIL: Expected 200, got {response.status_code} - {response.text}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def test_already_converted_todo(self):
-        """Test 7: Already Converted Todo"""
-        print("\n🔄 Test 7: Already Converted Todo")
-        
-        try:
-            # Try to convert the same todo again
-            response = self.session.post(
-                f"{API_BASE}/todos/{self.test_todo_id}/convert-to-log",
-                json={"hoursSpent": 2.0}
-            )
-            
-            if response.status_code == 400:
-                response_data = response.json()
-                if "Todo already converted to log" in response_data.get("error", ""):
-                    print("✅ PASS: Already converted todo correctly rejected")
-                    return True
-                else:
-                    print(f"❌ FAIL: Wrong error message: {response_data.get('error')}")
-                    return False
-            else:
-                print(f"❌ FAIL: Expected 400, got {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def verify_database_entries(self):
-        """Test 8: Database Verification"""
-        print("\n🗄️ Test 8: Database Verification")
-        
-        try:
-            # Check daily logs
-            response = self.session.get(f"{API_BASE}/daily-logs")
-            if response.status_code == 200:
-                logs = response.json().get("logs", [])
-                
-                # Find our converted log
-                converted_log = None
-                for log in logs:
-                    if (log.get("jobdeskId") == self.test_jobdesk_id and 
-                        "**[From To-Do]**" in log.get("notes", "")):
-                        converted_log = log
-                        break
-                
-                if converted_log:
-                    print("✅ PASS: Daily log entry found in database")
-                    
-                    # Check todos to verify convertedToLog flag
-                    response = self.session.get(f"{API_BASE}/todos")
-                    if response.status_code == 200:
-                        todos = response.json().get("todos", [])
-                        
-                        converted_todo = None
-                        for todo in todos:
-                            if todo.get("id") == self.test_todo_id:
-                                converted_todo = todo
-                                break
-                        
-                        if converted_todo and converted_todo.get("convertedToLog"):
-                            print("✅ PASS: Todo convertedToLog flag updated correctly")
-                            return True
-                        else:
-                            print("❌ FAIL: Todo convertedToLog flag not updated")
-                            return False
-                    else:
-                        print(f"❌ FAIL: Could not fetch todos: {response.status_code}")
-                        return False
-                else:
-                    print("❌ FAIL: Converted log not found in database")
-                    return False
-            else:
-                print(f"❌ FAIL: Could not fetch daily logs: {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
-            return False
-    
-    def run_all_tests(self):
-        """Run all tests in sequence"""
-        print("🚀 Starting To-Do to Daily Log Conversion API Tests")
-        print("=" * 60)
-        
-        # Authenticate first
-        if not self.authenticate():
-            print("❌ Authentication failed. Cannot proceed with tests.")
-            return False
-        
-        # Setup test data
-        if not self.setup_test_data():
-            print("❌ Test data setup failed. Cannot proceed with tests.")
-            return False
-        
-        # Run all tests
-        test_results = []
-        
-        test_methods = [
-            ("Authentication Required", self.test_authentication_required),
-            ("Validation Tests", self.test_validation_errors),
-            ("Non-existent Todo", self.test_nonexistent_todo),
-            ("Todo without Jobdesk", self.test_todo_without_jobdesk),
-            ("Todo not Done Status", self.test_todo_not_done_status),
-            ("Successful Conversion", self.test_successful_conversion),
-            ("Already Converted Todo", self.test_already_converted_todo),
-            ("Database Verification", self.verify_database_entries)
-        ]
-        
-        for test_name, test_method in test_methods:
-            try:
-                result = test_method()
-                test_results.append((test_name, result))
-            except Exception as e:
-                print(f"❌ CRITICAL ERROR in {test_name}: {str(e)}")
-                test_results.append((test_name, False))
-        
-        # Print summary
-        print("\n" + "=" * 60)
-        print("📊 TEST SUMMARY")
-        print("=" * 60)
-        
-        passed = 0
-        failed = 0
-        
-        for test_name, result in test_results:
-            status = "✅ PASS" if result else "❌ FAIL"
-            print(f"{status}: {test_name}")
-            if result:
-                passed += 1
-            else:
-                failed += 1
-        
-        print(f"\nTotal Tests: {len(test_results)}")
-        print(f"Passed: {passed}")
-        print(f"Failed: {failed}")
-        
-        if failed == 0:
-            print("\n🎉 ALL TESTS PASSED! The To-Do to Daily Log conversion API is working correctly.")
-            return True
-        else:
-            print(f"\n⚠️  {failed} test(s) failed. Please review the issues above.")
+            self.log_result("Jobdesk Edit Endpoint Check", False, f"Error: {str(e)}")
             return False
 
-def main():
-    """Main function to run the tests"""
-    tester = TodoConversionTester()
-    success = tester.run_all_tests()
-    
-    if success:
-        exit(0)
-    else:
-        exit(1)
+    def test_jobdesk_delete_endpoint(self, jobdesk_id, role="super_admin"):
+        """Test if jobdesk delete endpoint exists"""
+        try:
+            headers = self.get_headers(role)
+            if not headers:
+                self.log_result("Jobdesk Delete Endpoint Check", False, f"No auth token for {role}")
+                return False
+                
+            response = requests.delete(f"{BASE_URL}/jobdesks/{jobdesk_id}", headers=headers)
+            
+            if response.status_code == 404:
+                self.log_result("Jobdesk Delete Endpoint Check", False, "Delete endpoint NOT IMPLEMENTED - returns 404", {"status_code": 404, "response": response.text})
+                return False
+            elif response.status_code == 200:
+                self.log_result("Jobdesk Delete Endpoint Check", True, "Delete endpoint exists and working", {"status_code": 200})
+                return True
+            elif response.status_code == 403:
+                self.log_result("Jobdesk Delete Endpoint Check", True, f"Delete endpoint exists but {role} lacks permission", {"status_code": 403})
+                return True
+            else:
+                self.log_result("Jobdesk Delete Endpoint Check", False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code, "response": response.text})
+                return False
+                
+        except Exception as e:
+            self.log_result("Jobdesk Delete Endpoint Check", False, f"Error: {str(e)}")
+            return False
+
+    def test_jobdesk_status_update(self, jobdesk_id, role="super_admin"):
+        """Test the existing jobdesk status update endpoint"""
+        try:
+            headers = self.get_headers(role)
+            if not headers:
+                self.log_result("Jobdesk Status Update", False, f"No auth token for {role}")
+                return False
+                
+            # Test status update (this should work)
+            status_data = {"status": "in_progress"}
+            response = requests.put(f"{BASE_URL}/jobdesks/{jobdesk_id}/status", headers=headers, json=status_data)
+            
+            if response.status_code == 200:
+                self.log_result("Jobdesk Status Update", True, "Status update endpoint working", {"status_code": 200})
+                return True
+            else:
+                self.log_result("Jobdesk Status Update", False, f"Status update failed: {response.status_code}", {"status_code": response.status_code, "response": response.text})
+                return False
+                
+        except Exception as e:
+            self.log_result("Jobdesk Status Update", False, f"Error: {str(e)}")
+            return False
+
+    def test_authorization_levels(self, jobdesk_id):
+        """Test different authorization levels for jobdesk operations"""
+        roles_to_test = ["super_admin", "pengurus", "karyawan"]
+        
+        for role in roles_to_test:
+            print(f"\n--- Testing {role} permissions ---")
+            
+            # Authenticate
+            if not self.authenticate(role):
+                continue
+                
+            # Test edit endpoint
+            self.test_jobdesk_edit_endpoint(jobdesk_id, role)
+            
+            # Test delete endpoint  
+            self.test_jobdesk_delete_endpoint(jobdesk_id, role)
+            
+            # Test status update (should work for all authenticated users)
+            self.test_jobdesk_status_update(jobdesk_id, role)
+
+    def run_comprehensive_test(self):
+        """Run comprehensive jobdesk edit/delete testing"""
+        print("=" * 80)
+        print("JOBDESK EDIT AND DELETE FUNCTIONALITY TESTING")
+        print("=" * 80)
+        print()
+        
+        # Step 1: Authenticate as super admin
+        print("STEP 1: Authentication")
+        print("-" * 40)
+        if not self.authenticate("super_admin"):
+            print("❌ Cannot proceed without authentication")
+            return
+            
+        # Step 2: Get existing jobdesks
+        print("\nSTEP 2: Get Existing Jobdesks")
+        print("-" * 40)
+        jobdesks = self.test_get_jobdesks()
+        if not jobdesks or len(jobdesks) == 0:
+            print("❌ No jobdesks found for testing")
+            return
+            
+        # Use first jobdesk for testing
+        test_jobdesk = jobdesks[0]
+        jobdesk_id = test_jobdesk.get('id')
+        print(f"Using jobdesk for testing: {test_jobdesk.get('title', 'Unknown')} (ID: {jobdesk_id})")
+        
+        # Step 3: Test endpoint availability
+        print(f"\nSTEP 3: Test Endpoint Availability")
+        print("-" * 40)
+        edit_exists = self.test_jobdesk_edit_endpoint(jobdesk_id)
+        delete_exists = self.test_jobdesk_delete_endpoint(jobdesk_id)
+        
+        # Step 4: Test authorization levels if endpoints exist
+        if edit_exists or delete_exists:
+            print(f"\nSTEP 4: Test Authorization Levels")
+            print("-" * 40)
+            self.test_authorization_levels(jobdesk_id)
+        else:
+            print(f"\nSTEP 4: Authorization Testing Skipped")
+            print("-" * 40)
+            print("⚠️  Both edit and delete endpoints are not implemented")
+        
+        # Step 5: Test existing functionality
+        print(f"\nSTEP 5: Test Existing Functionality")
+        print("-" * 40)
+        self.test_jobdesk_status_update(jobdesk_id)
+        
+        # Summary
+        self.print_summary()
+
+    def print_summary(self):
+        """Print test summary"""
+        print("\n" + "=" * 80)
+        print("TEST SUMMARY")
+        print("=" * 80)
+        
+        total_tests = len(self.test_results)
+        passed_tests = len([r for r in self.test_results if "✅ PASS" in r["status"]])
+        failed_tests = total_tests - passed_tests
+        
+        print(f"Total Tests: {total_tests}")
+        print(f"Passed: {passed_tests}")
+        print(f"Failed: {failed_tests}")
+        print()
+        
+        # Group results by category
+        categories = {}
+        for result in self.test_results:
+            test_name = result["test"]
+            if "Authentication" in test_name:
+                category = "Authentication"
+            elif "Edit" in test_name:
+                category = "Edit Functionality"
+            elif "Delete" in test_name:
+                category = "Delete Functionality"
+            elif "Status" in test_name:
+                category = "Status Update"
+            else:
+                category = "Other"
+                
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(result)
+        
+        for category, results in categories.items():
+            print(f"{category}:")
+            for result in results:
+                print(f"  {result['status']}: {result['message']}")
+            print()
 
 if __name__ == "__main__":
-    main()
+    tester = JobdeskAPITester()
+    tester.run_comprehensive_test()
