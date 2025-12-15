@@ -271,22 +271,22 @@ export default function JobdeskPage({ user }) {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Jobdesk</h1>
           <p className="text-sm sm:text-base text-gray-600 mt-1">Kelola tugas dan pekerjaan</p>
         </div>
-        {(user.role === 'super_admin' || user.role === 'pengurus') && (
-          <Dialog open={showCreateModal} onOpenChange={(open) => {
-            setShowCreateModal(open);
-            if (!open) {
-              // Reset filter saat modal ditutup
-              setSearchQuery('');
-              setDivisionFilter('all');
-              setStatusFilter('active');
-            }
-          }}>
-            <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Tambah Jobdesk
-              </Button>
-            </DialogTrigger>
+        <Dialog open={showCreateModal} onOpenChange={(open) => {
+          setShowCreateModal(open);
+          if (!open) {
+            // Reset form data saat modal ditutup
+            setFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
+            setSearchQuery('');
+            setDivisionFilter('all');
+            setStatusFilter('active');
+          }
+        }}>
+          <DialogTrigger asChild>
+            <Button className="w-full sm:w-auto">
+              <Plus className="w-4 h-4 mr-2" />
+              {user.role === 'karyawan' ? 'Tambah Jobdesk Saya' : 'Tambah Jobdesk'}
+            </Button>
+          </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
               <DialogHeader>
                 <DialogTitle>Tambah Jobdesk Baru</DialogTitle>
