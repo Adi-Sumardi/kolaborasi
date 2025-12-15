@@ -328,18 +328,21 @@ export default function JobdeskPage({ user }) {
                     onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                   />
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label>Assign ke Karyawan *</Label>
-                    <div className="flex space-x-2">
-                      <Button type="button" variant="outline" size="sm" onClick={selectAllFiltered}>
-                        Pilih Semua (Filter)
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={clearSelection}>
-                        Clear
-                      </Button>
+                
+                {/* AssignTo section - only for super_admin and pengurus */}
+                {(user.role === 'super_admin' || user.role === 'pengurus') && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label>Assign ke Karyawan *</Label>
+                      <div className="flex space-x-2">
+                        <Button type="button" variant="outline" size="sm" onClick={selectAllFiltered}>
+                          Pilih Semua (Filter)
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={clearSelection}>
+                          Clear
+                        </Button>
+                      </div>
                     </div>
-                  </div>
                   
                   {/* Filter Section */}
                   <div className="space-y-3 mb-3 p-3 bg-gray-50 rounded-lg border">
