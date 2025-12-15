@@ -2243,3 +2243,169 @@ export async function DELETE(request, { params }) {
   }
 }
 
+
+// ============================================
+// PROFILE MANAGEMENT
+// ============================================
+
+async function handleUploadProfilePhoto(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const formData = await request.formData();
+    const file = formData.get('photo');
+
+    if (!file) {
+      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Only JPEG, PNG, and WebP images are allowed' },
+        { status: 400 }
+      );
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'File size must be less than 5MB' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Get existing user to check for old photo
+    const existingUser = await db.collection('users').findOne({ id: user.userId });
+    
+    // Delete old photo if exists
+    if (existingUser?.profilePhoto) {
+      const oldPhotoPath = path.join(process.cwd(), 'public', existingUser.profilePhoto);
+      try {
+        await fs.unlink(oldPhotoPath);
+      } catch (err) {
+        console.log('Old photo not found or already deleted');
+      }
+    }
+
+    // Create uploads directory if not exists
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'profiles');
+    await fs.mkdir(uploadDir, { recursive: true });
+
+    // Generate unique filename
+    const ext = path.extname(file.name);
+    const filename = `${user.userId}-${Date.now()}${ext}`;
+    const filepath = path.join(uploadDir, filename);
+
+    // Save file
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await fs.writeFile(filepath, buffer);
+
+    // Update user profile photo in database
+    const photoUrl = `/uploads/profiles/${filename}`;
+    await db.collection('users').updateOne(
+      { id: user.userId },
+      { 
+        $set: { 
+          profilePhoto: photoUrl,
+          updatedAt: new Date()
+        } 
+      }
+    );
+
+    return NextResponse.json({
+      message: 'Profile photo updated successfully',
+      photoUrl
+    });
+  } catch (error) {
+    console.error('Upload profile photo error:', error);
+    return NextResponse.json(
+      { error: 'Failed to upload photo' },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleGetUserProfile(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // Users can only view their own profile, unless admin/pengurus
+    if (user.userId !== userId && !hasPermission(user.role, ['super_admin', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    const profile = await db.collection('users').findOne(
+      { id: userId },
+      { projection: { password: 0, twoFactorSecret: 0 } }
+    );
+
+    if (!profile) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Get jobdesk statistics
+    const jobdeskStats = await db.collection('jobdesks').aggregate([
+      { $match: { assignedTo: userId } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    const stats = {
+      total: 0,
+      pending: 0,
+      in_progress: 0,
+      completed: 0
+    };
+
+    jobdeskStats.forEach(stat => {
+      stats[stat._id] = stat.count;
+      stats.total += stat.count;
+    });
+
+    // Get attachments uploaded by user
+    const attachments = await db.collection('attachments')
+      .find({ createdBy: userId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .toArray();
+
+    // Get division info if exists
+    let division = null;
+    if (profile.divisionId) {
+      division = await db.collection('divisions').findOne({ id: profile.divisionId });
+    }
+
+    return NextResponse.json({
+      profile: {
+        ...profile,
+        division: division ? { id: division.id, name: division.name } : null
+      },
+      stats,
+      recentAttachments: attachments
+    });
+  } catch (error) {
+    console.error('Get user profile error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get profile' },
+      { status: 500 }
+    );
+  }
+}
