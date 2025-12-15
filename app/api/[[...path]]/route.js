@@ -2396,6 +2396,10 @@ export async function GET(request, { params }) {
       return handleGetUserProfile(request, userId);
     }
 
+    // PWA endpoints
+    if (path === 'pwa/vapid-key') return handleGetVapidKey(request);
+    if (path === 'pwa/offline-bundle') return handleGetOfflineBundle(request);
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
