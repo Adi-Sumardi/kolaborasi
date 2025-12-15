@@ -769,6 +769,15 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     const isSuperAdminOrPengurus = hasPermission(user.role, ['super_admin', 'pengurus']);
     const isAssignedKaryawan = user.role === 'karyawan' && existingJobdesk.assignedTo?.includes(user.id);
     
+    console.log('Edit Jobdesk Authorization:', {
+      userId: user.id,
+      userRole: user.role,
+      jobdeskId: jobdeskId,
+      isSuperAdminOrPengurus,
+      isAssignedKaryawan,
+      assignedTo: existingJobdesk.assignedTo
+    });
+    
     if (!isSuperAdminOrPengurus && !isAssignedKaryawan) {
       return NextResponse.json({ error: 'Unauthorized - You can only edit jobdesks assigned to you' }, { status: 403 });
     }
