@@ -708,7 +708,8 @@ export default function JobdeskPage({ user }) {
                 </div>
               </CardContent>
             </Card>
-          ))
+            );
+          })
         )}
       </div>
       
