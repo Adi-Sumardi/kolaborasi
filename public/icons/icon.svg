@@ -1,4 +1,7 @@
-<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" fill="#3b82f6" rx="80"/>
-  <text x="256" y="320" font-family="Arial, sans-serif" font-size="280" font-weight="bold" fill="white" text-anchor="middle">W</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#3b82f6"/>
+  <circle cx="256" cy="180" r="60" fill="white"/>
+  <path d="M160 340 Q256 280 352 340 Q352 420 256 420 Q160 420 160 340" fill="white"/>
+  <circle cx="200" cy="180" r="20" fill="white"/>
+  <circle cx="312" cy="180" r="20" fill="white"/>
 </svg>
