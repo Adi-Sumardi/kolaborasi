@@ -1412,6 +1412,43 @@ async function handleUpdateTodo(request, todoId) {
   }
 }
 
+// Delete todo
+async function handleDeleteTodo(request, todoId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const client = await clientPromise;
+    const db = client.db();
+
+    // Check if todo exists and belongs to user
+    const todo = await db.collection('todos').findOne({ 
+      id: todoId, 
+      userId: user.userId 
+    });
+
+    if (!todo) {
+      return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+    }
+
+    // Delete the todo
+    await db.collection('todos').deleteOne({ id: todoId });
+
+    return NextResponse.json({ 
+      message: 'Todo deleted successfully',
+      deletedId: todoId 
+    });
+  } catch (error) {
+    console.error('Delete todo error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete todo' },
+      { status: 500 }
+    );
+  }
+}
+
 // ============================================
 // CHAT ENDPOINTS
 // ============================================
