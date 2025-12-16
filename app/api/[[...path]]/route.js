@@ -2598,6 +2598,12 @@ export async function DELETE(request, { params }) {
       const attachmentId = path.split('/')[1];
       return handleDeleteAttachment(request, attachmentId);
     }
+    
+    // Todos
+    if (path.match(/^todos\/[^/]+$/)) {
+      const todoId = path.split('/')[1];
+      return handleDeleteTodo(request, todoId);
+    }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
