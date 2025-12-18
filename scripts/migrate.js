@@ -58,10 +58,14 @@ const migrations = [
     status VARCHAR(50) DEFAULT 'pending',
     priority VARCHAR(50) DEFAULT 'medium',
     due_date DATE,
+    submission_link TEXT,
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
   );`,
+
+  // Add submission_link column if not exists (for existing databases)
+  `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS submission_link TEXT;`,
 
   // Jobdesk assignments (many-to-many)
   `CREATE TABLE IF NOT EXISTS jobdesk_assignments (

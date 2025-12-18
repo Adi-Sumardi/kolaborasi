@@ -156,7 +156,7 @@ export default function SettingsPage({ user }) {
               <div className="space-y-2 text-sm text-gray-600">
                 <p><strong>Versi:</strong> 1.1.0 (PWA Enabled)</p>
                 <p><strong>Platform:</strong> Dashboard Ruang Kerja Kolaborasi</p>
-                <p><strong>Stack:</strong> Next.js + MongoDB + Socket.io</p>
+                <p><strong>Stack:</strong> Next.js + PostgreSQL + Socket.io</p>
               </div>
             </CardContent>
           </Card>

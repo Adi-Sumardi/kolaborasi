@@ -58,7 +58,8 @@ export default function JobdeskPage({ user }) {
     title: '',
     description: '',
     assignedTo: [],
-    dueDate: ''
+    dueDate: '',
+    submissionLink: ''
   });
   const [logData, setLogData] = useState({
     notes: '',
@@ -210,14 +211,14 @@ export default function JobdeskPage({ user }) {
 
     try {
       // For karyawan, remove assignedTo from the update payload
-      const updateData = user.role === 'karyawan' 
-        ? { title: editFormData.title, description: editFormData.description, dueDate: editFormData.dueDate }
+      const updateData = user.role === 'karyawan'
+        ? { title: editFormData.title, description: editFormData.description, dueDate: editFormData.dueDate, submissionLink: editFormData.submissionLink }
         : editFormData;
       
       await jobdeskAPI.update(selectedJobdesk.id, updateData);
       toast.success('Jobdesk berhasil diperbarui!');
       setShowEditModal(false);
-      setEditFormData({ title: '', description: '', assignedTo: [], dueDate: '' });
+      setEditFormData({ title: '', description: '', assignedTo: [], dueDate: '', submissionLink: '' });
       setSelectedJobdesk(null);
       loadData();
     } catch (error) {
@@ -740,7 +741,8 @@ export default function JobdeskPage({ user }) {
                                   title: job.title,
                                   description: job.description || '',
                                   assignedTo: job.assignedTo || [],
-                                  dueDate: job.dueDate ? new Date(job.dueDate).toISOString().split('T')[0] : ''
+                                  dueDate: job.dueDate ? new Date(job.dueDate).toISOString().split('T')[0] : '',
+                                  submissionLink: job.submissionLink || ''
                                 });
                                 setShowEditModal(true);
                               }}
@@ -927,7 +929,17 @@ export default function JobdeskPage({ user }) {
                 onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
               />
             </div>
-            
+            <div>
+              <Label htmlFor="edit-submissionLink">Link Pengumpulan (Opsional)</Label>
+              <Input
+                id="edit-submissionLink"
+                type="url"
+                placeholder="https://drive.google.com/..."
+                value={editFormData.submissionLink}
+                onChange={(e) => setEditFormData({ ...editFormData, submissionLink: e.target.value })}
+              />
+            </div>
+
             {/* AssignedTo field - only for super_admin and pengurus */}
             {(user.role === 'super_admin' || user.role === 'pengurus') && (
               <div>

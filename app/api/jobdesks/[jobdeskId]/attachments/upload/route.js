@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import clientPromise from '@/lib/mongodb';
+import { query } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { sendNotification } from '@/lib/socket-server';
 import fs from 'fs';
@@ -18,7 +18,7 @@ const verifyToken = (request) => {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
   }
-  
+
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -36,20 +36,28 @@ export async function POST(request, { params }) {
     }
 
     const jobdeskId = params.jobdeskId;
-    
-    const client = await clientPromise;
-    const db = client.db();
 
     // Check if user has access to this jobdesk
-    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
-    if (!jobdesk) {
+    const jobdeskResult = await query(
+      `SELECT j.*, ARRAY_AGG(ja.user_id) as assigned_to
+       FROM jobdesks j
+       LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id = $1
+       GROUP BY j.id`,
+      [jobdeskId]
+    );
+
+    if (jobdeskResult.rows.length === 0) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
+    const jobdesk = jobdeskResult.rows[0];
+    const assignedTo = jobdesk.assigned_to?.filter(id => id !== null) || [];
+
     // Check permission: only assigned karyawan can upload
-    if (!jobdesk.assignedTo?.includes(user.userId)) {
-      return NextResponse.json({ 
-        error: 'Only assigned karyawan can upload attachments' 
+    if (!assignedTo.includes(user.userId)) {
+      return NextResponse.json({
+        error: 'Only assigned karyawan can upload attachments'
       }, { status: 403 });
     }
 
@@ -63,8 +71,8 @@ export async function POST(request, { params }) {
     // Validate file size (10MB = 10 * 1024 * 1024 bytes)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      return NextResponse.json({ 
-        error: 'File size exceeds 10MB limit' 
+      return NextResponse.json({
+        error: 'File size exceeds 10MB limit'
       }, { status: 400 });
     }
 
@@ -84,61 +92,53 @@ export async function POST(request, { params }) {
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ 
-        error: 'File type not allowed. Allowed: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, ZIP, JPG, PNG, GIF' 
+      return NextResponse.json({
+        error: 'File type not allowed. Allowed: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, ZIP, JPG, PNG, GIF'
       }, { status: 400 });
     }
 
     // Generate unique filename
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    
+
     const fileExt = file.name.split('.').pop();
     const uniqueId = uuidv4();
     const fileName = `${uniqueId}.${fileExt}`;
     const originalFileName = file.name;
-    
+
     // Save to public/uploads/jobdesk-attachments
     const filePath = join(uploadDir, fileName);
-    
+
     await writeFile(filePath, buffer);
-    
+
     // Save to database
-    const attachment = {
-      id: uuidv4(),
-      jobdeskId,
-      userId: user.userId,
-      type: 'file',
-      fileName: originalFileName,
-      storedFileName: fileName,
-      fileSize: file.size,
-      fileType: file.type,
-      url: `/uploads/jobdesk-attachments/${fileName}`,
-      createdAt: new Date()
-    };
+    const attachmentResult = await query(
+      `INSERT INTO attachments (jobdesk_id, type, name, url, size, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [jobdeskId, 'file', originalFileName, `/uploads/jobdesk-attachments/${fileName}`, file.size, user.userId]
+    );
 
-    await db.collection('attachments').insertOne(attachment);
+    const attachment = attachmentResult.rows[0];
 
-    // Send notification to pengurus
-    const pengurusUsers = await db.collection('users').find({
-      role: { $in: ['pengurus', 'super_admin'] }
-    }).toArray();
+    // Send notification to pengurus and super_admin
+    const pengurusResult = await query(
+      `SELECT id FROM users WHERE role IN ('pengurus', 'super_admin')`
+    );
 
-    for (const pengurus of pengurusUsers) {
-      const notification = {
-        id: uuidv4(),
-        userId: pengurus.id,
-        type: 'attachment_added',
-        title: 'Lampiran Baru',
-        message: `${user.email} mengunggah file di jobdesk: ${jobdesk.title}`,
-        read: false,
-        createdAt: new Date()
-      };
-      
-      await db.collection('notifications').insertOne(notification);
-      
+    for (const pengurus of pengurusResult.rows) {
+      await query(
+        `INSERT INTO notifications (user_id, title, message, type)
+         VALUES ($1, $2, $3, $4)`,
+        [pengurus.id, 'Lampiran Baru', `${user.email} mengunggah file di jobdesk: ${jobdesk.title}`, 'attachment_added']
+      );
+
       try {
-        sendNotification(pengurus.id, notification);
+        sendNotification(pengurus.id, {
+          type: 'attachment_added',
+          title: 'Lampiran Baru',
+          message: `${user.email} mengunggah file di jobdesk: ${jobdesk.title}`
+        });
       } catch (err) {
         console.error('Socket notification error:', err);
       }
@@ -146,7 +146,16 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({
       message: 'File uploaded successfully',
-      attachment
+      attachment: {
+        id: attachment.id,
+        jobdeskId: attachment.jobdesk_id,
+        type: attachment.type,
+        name: attachment.name,
+        url: attachment.url,
+        size: attachment.size,
+        uploadedBy: attachment.uploaded_by,
+        createdAt: attachment.created_at
+      }
     });
   } catch (error) {
     console.error('Upload error:', error);

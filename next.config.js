@@ -5,7 +5,7 @@ const nextConfig = {
   },
   // External packages for Server Components (Next.js 14.x format)
   experimental: {
-    serverComponentsExternalPackages: ['mongodb'],
+    serverComponentsExternalPackages: ['pg'],
   },
   onDemandEntries: {
     maxInactiveAge: 10000,

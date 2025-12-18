@@ -652,6 +652,7 @@ async function handleGetJobdesks(request) {
       status: j.status,
       priority: j.priority,
       dueDate: j.due_date,
+      submissionLink: j.submission_link,
       createdBy: j.created_by,
       assignedTo: j.assigned_to ? j.assigned_to.filter(id => id !== null) : [],
       createdAt: j.created_at,
@@ -686,7 +687,7 @@ async function handleCreateJobdesk(request) {
     }
 
     const body = await request.json();
-    const { title, description, assignedTo, dueDate, priority } = body;
+    const { title, description, assignedTo, dueDate, priority, submissionLink } = body;
 
     if (!title || !assignedTo || assignedTo.length === 0) {
       return NextResponse.json(
@@ -699,10 +700,10 @@ async function handleCreateJobdesk(request) {
     const jobdesk = await transaction(async (client) => {
       // Create jobdesk
       const jobdeskResult = await client.query(
-        `INSERT INTO jobdesks (title, description, status, priority, due_date, created_by)
-         VALUES ($1, $2, 'pending', $3, $4, $5)
+        `INSERT INTO jobdesks (title, description, status, priority, due_date, submission_link, created_by)
+         VALUES ($1, $2, 'pending', $3, $4, $5, $6)
          RETURNING *`,
-        [title, description || '', priority || 'medium', dueDate ? new Date(dueDate) : null, user.userId]
+        [title, description || '', priority || 'medium', dueDate ? new Date(dueDate) : null, submissionLink || null, user.userId]
       );
 
       const newJobdesk = jobdeskResult.rows[0];
@@ -752,6 +753,7 @@ async function handleCreateJobdesk(request) {
         status: jobdesk.status,
         priority: jobdesk.priority,
         dueDate: jobdesk.due_date,
+        submissionLink: jobdesk.submission_link,
         assignedTo: jobdesk.assignedTo,
         createdBy: jobdesk.created_by,
         createdAt: jobdesk.created_at
@@ -822,7 +824,7 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     }
 
     const body = await request.json();
-    const { title, description, assignedTo, dueDate, priority, status } = body;
+    const { title, description, assignedTo, dueDate, priority, status, submissionLink } = body;
 
     // Check if jobdesk exists
     const existingResult = await query(
@@ -880,6 +882,10 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     if (status && ['pending', 'in_progress', 'completed'].includes(status)) {
       updates.push(`status = $${paramIndex++}`);
       values.push(status);
+    }
+    if (submissionLink !== undefined) {
+      updates.push(`submission_link = $${paramIndex++}`);
+      values.push(submissionLink || null);
     }
 
     if (updates.length > 0) {
@@ -948,6 +954,7 @@ async function handleUpdateJobdesk(request, jobdeskId) {
         status: updatedJobdesk.status,
         priority: updatedJobdesk.priority,
         dueDate: updatedJobdesk.due_date,
+        submissionLink: updatedJobdesk.submission_link,
         assignedTo: updatedJobdesk.assigned_to.filter(id => id !== null),
         createdBy: updatedJobdesk.created_by,
         createdAt: updatedJobdesk.created_at,

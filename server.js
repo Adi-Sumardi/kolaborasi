@@ -108,9 +108,13 @@ app.prepare().then(() => {
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   // Initialize Socket.IO
+  const allowedOrigins = dev
+    ? ['http://localhost:3000', 'http://0.0.0.0:3000', 'http://127.0.0.1:3000']
+    : [process.env.NEXT_PUBLIC_BASE_URL].filter(Boolean);
+
   const io = new Server(server, {
     cors: {
-      origin: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true
     },
