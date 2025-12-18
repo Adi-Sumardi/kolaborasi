@@ -2188,11 +2188,20 @@ async function handleDeleteUser(request, userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Soft delete
-    await query(
-      'UPDATE users SET is_active = FALSE WHERE id = $1',
+    // Prevent deleting yourself
+    if (user.userId === userId) {
+      return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 });
+    }
+
+    // Hard delete - permanently remove user from database
+    const result = await query(
+      'DELETE FROM users WHERE id = $1 RETURNING id',
       [userId]
     );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {
