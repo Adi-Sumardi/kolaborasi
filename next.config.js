@@ -13,7 +13,7 @@ const nextConfig = {
   },
   async headers() {
     // Get allowed origins from environment or use default for production
-    const allowedOrigins = process.env.CORS_ORIGINS || 'https://kolaborasi.adilabs.id';
+    const allowedOrigins = process.env.CORS_ORIGINS || 'https://kolaborasi.yapinet.id';
 
     return [
       {

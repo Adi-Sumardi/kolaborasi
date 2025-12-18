@@ -2,8 +2,8 @@
 
 # =====================================================
 # AUTO DEPLOY SCRIPT FOR WORKSPACE COLLABORATION APP
-# Target: Biznet Gio VPS + PostgreSQL
-# Domain: kolaborasi.adilabs.id
+# Target: yapinet.id VPS + PostgreSQL
+# Domain: kolaborasi.yapinet.id
 # Stack: Next.js + PostgreSQL + Socket.io
 # Updated: December 2024
 # =====================================================
@@ -21,15 +21,15 @@ NC='\033[0m' # No Color
 # Configuration - UPDATE THESE!
 APP_NAME="kolaborasi"
 APP_DIR="/var/www/${APP_NAME}"
-DOMAIN="kolaborasi.adilabs.id"
+DOMAIN="kolaborasi.yapinet.id"
 REPO_URL="https://github.com/Adi-Sumardi/kolaborasi.git"
-BRANCH="master"
+BRANCH="yapinet"
 NODE_VERSION="20"
 PM2_INSTANCES="2"  # Number of PM2 instances (use "max" for all CPUs)
 
 # Database Configuration
-DB_NAME="workspace_collaboration"
-DB_USER="workspace"
+DB_NAME="workspace_yapinet"
+DB_USER="workspace_yapinet"
 DB_PASS=""  # Will be generated if empty
 
 # Functions
@@ -71,7 +71,7 @@ echo -e "${CYAN}║                                                            �
 echo -e "${CYAN}║   🚀 WORKSPACE COLLABORATION - AUTO DEPLOY SCRIPT         ║${NC}"
 echo -e "${CYAN}║                                                            ║${NC}"
 echo -e "${CYAN}║   Stack: Next.js + PostgreSQL + Socket.io                 ║${NC}"
-echo -e "${CYAN}║   Target: Biznet Gio VPS                                  ║${NC}"
+echo -e "${CYAN}║   Target: yapinet.id VPS                                  ║${NC}"
 echo -e "${CYAN}║                                                            ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -352,7 +352,7 @@ upstream kolaborasi_upstream {
 server {
     listen 80;
     listen [::]:80;
-    server_name kolaborasi.adilabs.id;
+    server_name kolaborasi.yapinet.id;
 
     # Allow certbot challenge
     location /.well-known/acme-challenge/ {
@@ -368,7 +368,7 @@ server {
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name kolaborasi.adilabs.id;
+    server_name kolaborasi.yapinet.id;
 
     # SSL Configuration (will be configured by certbot)
     ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;

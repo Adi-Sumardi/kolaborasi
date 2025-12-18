@@ -18,7 +18,7 @@ NC='\033[0m'
 # Configuration
 APP_NAME="kolaborasi"
 APP_DIR="/var/www/${APP_NAME}"
-BRANCH="master"
+BRANCH="yapinet"
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
