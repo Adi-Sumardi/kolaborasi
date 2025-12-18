@@ -6,37 +6,24 @@
 # VPS IP: 103.31.204.211
 # =====================================================
 
-set -e
-
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║   🚀 KOLABORASI.YAPINET.ID - QUICK INSTALLER              ║"
+echo "║   🚀 KOLABORASI.YAPINET.ID - DEPLOYMENT GUIDE             ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
-
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    echo "❌ Please run with sudo: sudo bash install-yapinet.sh"
-    exit 1
-fi
-
-# Install git and curl if not available
-apt-get update -qq
-apt-get install -y -qq git curl
-
-# Create temp directory
-TEMP_DIR=$(mktemp -d)
-cd $TEMP_DIR
-
-echo "📥 Downloading deploy script from yapinet branch..."
-curl -sSL -o deploy.sh https://raw.githubusercontent.com/Adi-Sumardi/kolaborasi/yapinet/scripts/deploy.sh
-
-echo "🚀 Starting deployment..."
-bash deploy.sh
-
-# Cleanup
-rm -rf $TEMP_DIR
-
+echo "Jalankan 2 tahap berikut di VPS:"
 echo ""
-echo "✅ Installation complete!"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Tahap 1: Persiapan Awal"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "sudo apt update && sudo apt upgrade -y && sudo apt install -y git curl"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Tahap 2: Clone & Jalankan Deploy Script"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "sudo git clone -b yapinet https://github.com/Adi-Sumardi/kolaborasi.git /tmp/kolaborasi && cd /tmp/kolaborasi && sudo chmod +x scripts/deploy.sh && sudo bash scripts/deploy.sh"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
