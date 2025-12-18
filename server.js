@@ -9,7 +9,7 @@ const compression = require('compression');
 // ===========================================
 // ENVIRONMENT VALIDATION
 // ===========================================
-const requiredEnvVars = ['MONGO_URL', 'JWT_SECRET'];
+const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {

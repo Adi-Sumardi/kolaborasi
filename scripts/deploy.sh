@@ -87,6 +87,35 @@ else
     log_info "Nginx already installed"
 fi
 
+# Step 4b: Install PostgreSQL if not present
+if ! command -v psql &> /dev/null; then
+    log_info "Installing PostgreSQL..."
+    apt-get install -y postgresql postgresql-contrib
+    systemctl enable postgresql
+    systemctl start postgresql
+    log_success "PostgreSQL installed"
+
+    # Create database and user
+    log_info "Setting up PostgreSQL database..."
+    sudo -u postgres psql -c "CREATE USER workspace WITH PASSWORD 'workspace_secure_password';" 2>/dev/null || true
+    sudo -u postgres psql -c "CREATE DATABASE workspace_collaboration OWNER workspace;" 2>/dev/null || true
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE workspace_collaboration TO workspace;" 2>/dev/null || true
+    log_success "PostgreSQL database configured"
+
+    echo ""
+    log_warning "PostgreSQL installed with default credentials!"
+    echo "  Database: workspace_collaboration"
+    echo "  User: workspace"
+    echo "  Password: workspace_secure_password"
+    echo ""
+    echo "  Connection string: postgresql://workspace:workspace_secure_password@localhost:5432/workspace_collaboration"
+    echo ""
+    echo "  IMPORTANT: Change the password in production!"
+    echo ""
+else
+    log_info "PostgreSQL already installed"
+fi
+
 # Step 5: Create app directory
 log_info "Setting up application directory..."
 mkdir -p ${APP_DIR}
@@ -111,7 +140,7 @@ if [ ! -f "${APP_DIR}/.env" ]; then
     log_warning "Please edit ${APP_DIR}/.env with your production values!"
     echo ""
     echo "Required environment variables:"
-    echo "  - MONGO_URL: Your MongoDB connection string"
+    echo "  - DATABASE_URL: Your PostgreSQL connection string"
     echo "  - JWT_SECRET: A secure random string (min 32 chars)"
     echo "  - NEXT_PUBLIC_BASE_URL: https://kolaborasi.adilabs.id"
     echo "  - CORS_ORIGINS: https://kolaborasi.adilabs.id"
@@ -122,8 +151,8 @@ fi
 
 # Validate required env vars
 source ${APP_DIR}/.env 2>/dev/null || true
-if [ -z "$MONGO_URL" ] || [ -z "$JWT_SECRET" ]; then
-    log_error "MONGO_URL and JWT_SECRET must be set in .env"
+if [ -z "$DATABASE_URL" ] || [ -z "$JWT_SECRET" ]; then
+    log_error "DATABASE_URL and JWT_SECRET must be set in .env"
     exit 1
 fi
 
@@ -137,9 +166,13 @@ log_info "Building application..."
 npm run build
 log_success "Build completed"
 
-# Step 10: Create database indexes
-log_info "Creating database indexes..."
-node scripts/createIndexes.js || log_warning "Index creation skipped (may already exist)"
+# Step 10: Run database migrations
+log_info "Running database migrations..."
+npm run db:migrate || log_warning "Migration skipped (tables may already exist)"
+
+# Step 10b: Seed database (optional, skip if data exists)
+log_info "Seeding database..."
+npm run db:seed || log_warning "Seeding skipped (data may already exist)"
 
 # Step 11: Setup PM2
 log_info "Setting up PM2 process..."

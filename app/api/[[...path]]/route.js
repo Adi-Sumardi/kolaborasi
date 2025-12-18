@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
+import { query, transaction } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
-import { v4 as uuidv4 } from 'uuid';
 import { sendNotification } from '@/lib/socket-server';
 import { sanitizeUserInput, sanitizeEmail, sanitizeString, validators, validatePasswordStrength } from '@/lib/sanitize';
 import { rateLimitMiddleware, getClientIP } from '@/lib/rateLimit';
@@ -18,7 +17,7 @@ const verifyToken = (request) => {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
   }
-  
+
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -56,12 +55,12 @@ async function handleCreateUser(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if user already exists
-    const existingUser = await db.collection('users').findOne({ email });
-    if (existingUser) {
+    const existingUser = await query(
+      'SELECT id FROM users WHERE email = $1',
+      [email]
+    );
+    if (existingUser.rows.length > 0) {
       return NextResponse.json(
         { error: 'Email already registered' },
         { status: 400 }
@@ -77,21 +76,14 @@ async function handleCreateUser(request) {
       length: 32
     });
 
-    const user = {
-      id: uuidv4(),
-      email,
-      password: hashedPassword,
-      name,
-      role,
-      divisionId: divisionId || null,
-      isActive: true,
-      twoFactorSecret: secret.base32,
-      twoFactorEnabled: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    const result = await query(
+      `INSERT INTO users (email, password, name, role, division_id, two_factor_secret)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, name, role, division_id, is_active`,
+      [email, hashedPassword, name, role, divisionId || null, secret.base32]
+    );
 
-    await db.collection('users').insertOne(user);
+    const user = result.rows[0];
 
     return NextResponse.json({
       message: 'User created successfully',
@@ -100,8 +92,8 @@ async function handleCreateUser(request) {
         email: user.email,
         name: user.name,
         role: user.role,
-        divisionId: user.divisionId,
-        isActive: user.isActive
+        divisionId: user.division_id,
+        isActive: user.is_active
       }
     });
   } catch (error) {
@@ -143,12 +135,12 @@ async function handleRegister(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if user already exists
-    const existingUser = await db.collection('users').findOne({ email });
-    if (existingUser) {
+    const existingUser = await query(
+      'SELECT id FROM users WHERE email = $1',
+      [email]
+    );
+    if (existingUser.rows.length > 0) {
       return NextResponse.json(
         { error: 'Email already registered' },
         { status: 400 }
@@ -164,24 +156,16 @@ async function handleRegister(request) {
       length: 32
     });
 
-    const user = {
-      id: uuidv4(),
-      email,
-      password: hashedPassword,
-      name,
-      role,
-      divisionId: divisionId || null,
-      twoFactorSecret: secret.base32,
-      twoFactorEnabled: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    await db.collection('users').insertOne(user);
+    const result = await query(
+      `INSERT INTO users (email, password, name, role, division_id, two_factor_secret)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [email, hashedPassword, name, role, divisionId || null, secret.base32]
+    );
 
     return NextResponse.json({
       message: 'User registered successfully',
-      userId: user.id
+      userId: result.rows[0].id
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -199,11 +183,11 @@ async function handleLogin(request) {
     const rateLimit = rateLimitMiddleware(request, 'login');
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { 
+        {
           error: 'Too many login attempts. Please try again later.',
-          retryAfter: rateLimit.retryAfter 
+          retryAfter: rateLimit.retryAfter
         },
-        { 
+        {
           status: 429,
           headers: {
             'Retry-After': rateLimit.retryAfter.toString(),
@@ -213,13 +197,13 @@ async function handleLogin(request) {
         }
       );
     }
-    
+
     const body = await request.json();
     let { email, password, twoFactorCode, rememberMe } = body;
 
     // Sanitize inputs
     email = sanitizeEmail(email);
-    
+
     if (!email || !password || !validators.email(email)) {
       return NextResponse.json(
         { error: 'Email and password required' },
@@ -227,16 +211,19 @@ async function handleLogin(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
 
-    const user = await db.collection('users').findOne({ email });
-    if (!user) {
+    if (result.rows.length === 0) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
+
+    const user = result.rows[0];
 
     // Verify password
     const validPassword = await bcrypt.compare(password, user.password);
@@ -248,7 +235,7 @@ async function handleLogin(request) {
     }
 
     // If 2FA is enabled, verify code
-    if (user.twoFactorEnabled) {
+    if (user.two_factor_enabled) {
       if (!twoFactorCode) {
         return NextResponse.json(
           { require2FA: true },
@@ -257,7 +244,7 @@ async function handleLogin(request) {
       }
 
       const verified = speakeasy.totp.verify({
-        secret: user.twoFactorSecret,
+        secret: user.two_factor_secret,
         encoding: 'base32',
         token: twoFactorCode,
         window: 2
@@ -284,9 +271,9 @@ async function handleLogin(request) {
     );
 
     // Update last login
-    await db.collection('users').updateOne(
-      { id: user.id },
-      { $set: { lastLogin: new Date() } }
+    await query(
+      'UPDATE users SET updated_at = NOW() WHERE id = $1',
+      [user.id]
     );
 
     return NextResponse.json({
@@ -296,8 +283,8 @@ async function handleLogin(request) {
         email: user.email,
         name: user.name,
         role: user.role,
-        divisionId: user.divisionId,
-        twoFactorEnabled: user.twoFactorEnabled
+        divisionId: user.division_id,
+        twoFactorEnabled: user.two_factor_enabled
       }
     });
   } catch (error) {
@@ -317,27 +304,27 @@ async function handleGet2FAQRCode(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      'SELECT email, two_factor_secret FROM users WHERE id = $1',
+      [user.userId]
+    );
 
-    const userDoc = await db.collection('users').findOne({ id: user.userId });
-    if (!userDoc) {
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const userDoc = result.rows[0];
+
     const otpauthUrl = speakeasy.otpauthURL({
-      secret: userDoc.twoFactorSecret,
+      secret: userDoc.two_factor_secret,
       label: userDoc.email,
       issuer: 'Workspace Collaboration'
     });
 
     const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
 
-    // Only return QR code, not the raw secret (security best practice)
-    // User can scan QR code with authenticator app
     return NextResponse.json({
       qrCode: qrCodeUrl
-      // Note: Secret is intentionally not exposed to prevent backup/export
     });
   } catch (error) {
     console.error('Get 2FA QR Code error:', error);
@@ -366,17 +353,20 @@ async function handleEnable2FA(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      'SELECT two_factor_secret FROM users WHERE id = $1',
+      [user.userId]
+    );
 
-    const userDoc = await db.collection('users').findOne({ id: user.userId });
-    if (!userDoc) {
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const userDoc = result.rows[0];
+
     // Verify the code
     const verified = speakeasy.totp.verify({
-      secret: userDoc.twoFactorSecret,
+      secret: userDoc.two_factor_secret,
       encoding: 'base32',
       token: code,
       window: 2
@@ -390,9 +380,9 @@ async function handleEnable2FA(request) {
     }
 
     // Enable 2FA
-    await db.collection('users').updateOne(
-      { id: user.userId },
-      { $set: { twoFactorEnabled: true, updatedAt: new Date() } }
+    await query(
+      'UPDATE users SET two_factor_enabled = TRUE WHERE id = $1',
+      [user.userId]
     );
 
     return NextResponse.json({ message: '2FA enabled successfully' });
@@ -413,28 +403,30 @@ async function handleGetMe(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `SELECT u.id, u.email, u.name, u.role, u.division_id, u.two_factor_enabled, u.profile_photo,
+              d.name as division_name
+       FROM users u
+       LEFT JOIN divisions d ON u.division_id = d.id
+       WHERE u.id = $1`,
+      [user.userId]
+    );
 
-    const userDoc = await db.collection('users').findOne({ id: user.userId });
-    if (!userDoc) {
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Get division info if exists
-    let division = null;
-    if (userDoc.divisionId) {
-      division = await db.collection('divisions').findOne({ id: userDoc.divisionId });
-    }
+    const userDoc = result.rows[0];
 
     return NextResponse.json({
       id: userDoc.id,
       email: userDoc.email,
       name: userDoc.name,
       role: userDoc.role,
-      divisionId: userDoc.divisionId,
-      division: division ? { id: division.id, name: division.name } : null,
-      twoFactorEnabled: userDoc.twoFactorEnabled
+      divisionId: userDoc.division_id,
+      division: userDoc.division_id ? { id: userDoc.division_id, name: userDoc.division_name } : null,
+      twoFactorEnabled: userDoc.two_factor_enabled,
+      profilePhoto: userDoc.profile_photo
     });
   } catch (error) {
     console.error('Get me error:', error);
@@ -457,28 +449,25 @@ async function handleGetDivisions(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    const divisions = await db.collection('divisions')
-      .find({})
-      .sort({ name: 1 })
-      .toArray();
-
-    // Get member count for each division
-    const divisionsWithCount = await Promise.all(
-      divisions.map(async (div) => {
-        const memberCount = await db.collection('users').countDocuments({
-          divisionId: div.id
-        });
-        return {
-          ...div,
-          memberCount
-        };
-      })
+    const result = await query(
+      `SELECT d.*, COUNT(u.id) as member_count
+       FROM divisions d
+       LEFT JOIN users u ON u.division_id = d.id
+       GROUP BY d.id
+       ORDER BY d.name ASC`
     );
 
-    return NextResponse.json({ divisions: divisionsWithCount });
+    const divisions = result.rows.map(div => ({
+      id: div.id,
+      name: div.name,
+      description: div.description,
+      createdBy: div.created_by,
+      createdAt: div.created_at,
+      updatedAt: div.updated_at,
+      memberCount: parseInt(div.member_count)
+    }));
+
+    return NextResponse.json({ divisions });
   } catch (error) {
     console.error('Get divisions error:', error);
     return NextResponse.json(
@@ -506,23 +495,25 @@ async function handleCreateDivision(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `INSERT INTO divisions (name, description, created_by)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [name, description || '', user.userId]
+    );
 
-    const division = {
-      id: uuidv4(),
-      name,
-      description: description || '',
-      createdBy: user.userId,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    await db.collection('divisions').insertOne(division);
+    const division = result.rows[0];
 
     return NextResponse.json({
       message: 'Division created successfully',
-      division
+      division: {
+        id: division.id,
+        name: division.name,
+        description: division.description,
+        createdBy: division.created_by,
+        createdAt: division.created_at,
+        updatedAt: division.updated_at
+      }
     });
   } catch (error) {
     console.error('Create division error:', error);
@@ -551,18 +542,9 @@ async function handleUpdateDivision(request, divisionId) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    await db.collection('divisions').updateOne(
-      { id: divisionId },
-      {
-        $set: {
-          name,
-          description: description || '',
-          updatedAt: new Date()
-        }
-      }
+    await query(
+      `UPDATE divisions SET name = $1, description = $2 WHERE id = $3`,
+      [name, description || '', divisionId]
     );
 
     return NextResponse.json({ message: 'Division updated successfully' });
@@ -583,17 +565,14 @@ async function handleDeleteDivision(request, divisionId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Remove division from all users
-    await db.collection('users').updateMany(
-      { divisionId },
-      { $set: { divisionId: null, updatedAt: new Date() } }
+    await query(
+      'UPDATE users SET division_id = NULL WHERE division_id = $1',
+      [divisionId]
     );
 
     // Delete the division
-    await db.collection('divisions').deleteOne({ id: divisionId });
+    await query('DELETE FROM divisions WHERE id = $1', [divisionId]);
 
     return NextResponse.json({ message: 'Division deleted successfully' });
   } catch (error) {
@@ -621,27 +600,63 @@ async function handleGetJobdesks(request) {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    let query = {};
+    let countQuery, dataQuery;
+    let params = [];
 
     // Karyawan only see their own jobdesks
     if (user.role === 'karyawan') {
-      query = { assignedTo: { $in: [user.userId] } };
+      countQuery = `
+        SELECT COUNT(DISTINCT j.id) as total
+        FROM jobdesks j
+        JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+        WHERE ja.user_id = $1
+      `;
+      dataQuery = `
+        SELECT j.*,
+               ARRAY_AGG(ja.user_id) as assigned_to
+        FROM jobdesks j
+        JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+        WHERE j.id IN (
+          SELECT jobdesk_id FROM jobdesk_assignments WHERE user_id = $1
+        )
+        GROUP BY j.id
+        ORDER BY j.created_at DESC
+        LIMIT $2 OFFSET $3
+      `;
+      params = [user.userId, limit, offset];
+    } else {
+      countQuery = 'SELECT COUNT(*) as total FROM jobdesks';
+      dataQuery = `
+        SELECT j.*,
+               ARRAY_AGG(ja.user_id) as assigned_to
+        FROM jobdesks j
+        LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+        GROUP BY j.id
+        ORDER BY j.created_at DESC
+        LIMIT $1 OFFSET $2
+      `;
+      params = [limit, offset];
     }
 
-    // Get total count for pagination metadata
-    const totalCount = await db.collection('jobdesks').countDocuments(query);
+    const countResult = await query(countQuery, user.role === 'karyawan' ? [user.userId] : []);
+    const totalCount = parseInt(countResult.rows[0].total);
 
-    const jobdesks = await db.collection('jobdesks')
-      .find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
+    const result = await query(dataQuery, params);
+
+    const jobdesks = result.rows.map(j => ({
+      id: j.id,
+      title: j.title,
+      description: j.description,
+      status: j.status,
+      priority: j.priority,
+      dueDate: j.due_date,
+      createdBy: j.created_by,
+      assignedTo: j.assigned_to ? j.assigned_to.filter(id => id !== null) : [],
+      createdAt: j.created_at,
+      updatedAt: j.updated_at
+    }));
 
     return NextResponse.json({
       jobdesks,
@@ -650,7 +665,7 @@ async function handleGetJobdesks(request) {
         limit,
         totalCount,
         totalPages: Math.ceil(totalCount / limit),
-        hasMore: skip + jobdesks.length < totalCount
+        hasMore: offset + jobdesks.length < totalCount
       }
     });
   } catch (error) {
@@ -671,7 +686,7 @@ async function handleCreateJobdesk(request) {
     }
 
     const body = await request.json();
-    const { title, description, assignedTo, dueDate, submissionLink } = body;
+    const { title, description, assignedTo, dueDate, priority } = body;
 
     if (!title || !assignedTo || assignedTo.length === 0) {
       return NextResponse.json(
@@ -680,58 +695,67 @@ async function handleCreateJobdesk(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    // Use transaction to create jobdesk and assignments
+    const jobdesk = await transaction(async (client) => {
+      // Create jobdesk
+      const jobdeskResult = await client.query(
+        `INSERT INTO jobdesks (title, description, status, priority, due_date, created_by)
+         VALUES ($1, $2, 'pending', $3, $4, $5)
+         RETURNING *`,
+        [title, description || '', priority || 'medium', dueDate ? new Date(dueDate) : null, user.userId]
+      );
 
-    // Initialize progress tracking for each assigned user
-    const progress = assignedTo.map(userId => ({
-      userId,
-      status: 'pending', // pending, in_progress, completed
-      startedAt: null,
-      completedAt: null
-    }));
+      const newJobdesk = jobdeskResult.rows[0];
 
-    const jobdesk = {
-      id: uuidv4(),
-      title,
-      description: description || '',
-      assignedTo,
-      createdBy: user.userId,
-      status: 'pending', // Global status
-      progress, // Individual progress per user
-      dueDate: dueDate ? new Date(dueDate) : null,
-      submissionLink: submissionLink || null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    await db.collection('jobdesks').insertOne(jobdesk);
-
-    // Send notifications to assigned users
-    for (const userId of assignedTo) {
-      const notification = {
-        id: uuidv4(),
-        userId,
-        type: 'jobdesk_assigned',
-        title: 'Jobdesk Baru',
-        message: `Anda mendapat jobdesk baru: ${title}`,
-        read: false,
-        createdAt: new Date()
-      };
-      
-      await db.collection('notifications').insertOne(notification);
-      
-      // Send real-time notification via Socket.io
-      try {
-        sendNotification(userId, notification);
-      } catch (err) {
-        console.error('Socket notification error:', err);
+      // Create assignments
+      for (const userId of assignedTo) {
+        await client.query(
+          `INSERT INTO jobdesk_assignments (jobdesk_id, user_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [newJobdesk.id, userId]
+        );
       }
-    }
+
+      // Create notifications
+      for (const userId of assignedTo) {
+        await client.query(
+          `INSERT INTO notifications (user_id, title, message, type)
+           VALUES ($1, $2, $3, $4)`,
+          [userId, 'Jobdesk Baru', `Anda mendapat jobdesk baru: ${title}`, 'jobdesk_assigned']
+        );
+
+        // Send real-time notification
+        try {
+          sendNotification(userId, {
+            type: 'jobdesk_assigned',
+            title: 'Jobdesk Baru',
+            message: `Anda mendapat jobdesk baru: ${title}`
+          });
+        } catch (err) {
+          console.error('Socket notification error:', err);
+        }
+      }
+
+      return {
+        ...newJobdesk,
+        assignedTo
+      };
+    });
 
     return NextResponse.json({
       message: 'Jobdesk created successfully',
-      jobdesk
+      jobdesk: {
+        id: jobdesk.id,
+        title: jobdesk.title,
+        description: jobdesk.description,
+        status: jobdesk.status,
+        priority: jobdesk.priority,
+        dueDate: jobdesk.due_date,
+        assignedTo: jobdesk.assignedTo,
+        createdBy: jobdesk.created_by,
+        createdAt: jobdesk.created_at
+      }
     });
   } catch (error) {
     console.error('Create jobdesk error:', error);
@@ -760,63 +784,25 @@ async function handleUpdateJobdeskStatus(request, jobdeskId) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    // Get current jobdesk
-    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
-    if (!jobdesk) {
-      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
-    }
-
     // Check if user is assigned to this jobdesk
-    if (!jobdesk.assignedTo?.includes(user.userId)) {
+    const assignmentResult = await query(
+      'SELECT * FROM jobdesk_assignments WHERE jobdesk_id = $1 AND user_id = $2',
+      [jobdeskId, user.userId]
+    );
+
+    if (assignmentResult.rows.length === 0) {
       return NextResponse.json({ error: 'Not assigned to this jobdesk' }, { status: 403 });
     }
 
-    // Initialize progress array if not exists (for old jobdesks)
-    let progress = jobdesk.progress || jobdesk.assignedTo.map(userId => ({
-      userId,
-      status: 'pending',
-      startedAt: null,
-      completedAt: null
-    }));
-
-    // Update the specific user's status in progress array
-    progress = progress.map(p => {
-      if (p.userId === user.userId) {
-        return {
-          ...p,
-          status,
-          startedAt: status === 'in_progress' && !p.startedAt ? new Date() : p.startedAt,
-          completedAt: status === 'completed' ? new Date() : null
-        };
-      }
-      return p;
-    });
-
-    // Calculate global status based on all users' progress
-    const allCompleted = progress.every(p => p.status === 'completed');
-    const anyInProgress = progress.some(p => p.status === 'in_progress');
-    const globalStatus = allCompleted ? 'completed' : (anyInProgress ? 'in_progress' : 'pending');
-
-    // Update jobdesk with new progress and global status
-    await db.collection('jobdesks').updateOne(
-      { id: jobdeskId },
-      {
-        $set: {
-          progress,
-          status: globalStatus,
-          completedAt: allCompleted ? new Date() : null,
-          updatedAt: new Date()
-        }
-      }
+    // Update jobdesk status
+    await query(
+      'UPDATE jobdesks SET status = $1 WHERE id = $2',
+      [status, jobdeskId]
     );
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Status updated',
-      userStatus: status,
-      globalStatus 
+      status
     });
   } catch (error) {
     console.error('Update jobdesk status error:', error);
@@ -838,104 +824,135 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     const body = await request.json();
     const { title, description, assignedTo, dueDate, priority, status } = body;
 
-    // Validate at least one field to update
-    if (!title && !description && !assignedTo && !dueDate && !priority && !status) {
-      return NextResponse.json(
-        { error: 'At least one field must be provided for update' },
-        { status: 400 }
-      );
-    }
-
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if jobdesk exists
-    const existingJobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
-    if (!existingJobdesk) {
+    const existingResult = await query(
+      `SELECT j.*, ARRAY_AGG(ja.user_id) as assigned_to
+       FROM jobdesks j
+       LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id = $1
+       GROUP BY j.id`,
+      [jobdeskId]
+    );
+
+    if (existingResult.rows.length === 0) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
-    // Authorization check: super_admin, pengurus can edit any jobdesk
-    // karyawan can only edit jobdesks assigned to them
+    const existingJobdesk = existingResult.rows[0];
+    const currentAssignees = existingJobdesk.assigned_to.filter(id => id !== null);
+
+    // Authorization check
     const isSuperAdminOrPengurus = hasPermission(user.role, ['super_admin', 'pengurus']);
-    const isAssignedKaryawan = user.role === 'karyawan' && existingJobdesk.assignedTo?.includes(user.userId);
-    
-    console.log('Edit Jobdesk Authorization:', {
-      userId: user.userId,
-      userRole: user.role,
-      jobdeskId: jobdeskId,
-      isSuperAdminOrPengurus,
-      isAssignedKaryawan,
-      assignedTo: existingJobdesk.assignedTo
-    });
-    
+    const isAssignedKaryawan = user.role === 'karyawan' && currentAssignees.includes(user.userId);
+
     if (!isSuperAdminOrPengurus && !isAssignedKaryawan) {
       return NextResponse.json({ error: 'Unauthorized - You can only edit jobdesks assigned to you' }, { status: 403 });
     }
 
-    // Karyawan cannot change assignedTo field - only super_admin and pengurus can
+    // Karyawan cannot change assignedTo field
     if (user.role === 'karyawan' && assignedTo) {
-      return NextResponse.json({ 
-        error: 'Karyawan cannot change assignedTo field' 
+      return NextResponse.json({
+        error: 'Karyawan cannot change assignedTo field'
       }, { status: 403 });
     }
 
-    // Build update object
-    const updateData = {
-      updatedAt: new Date()
-    };
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
 
-    if (title) updateData.title = sanitizeString(title);
-    if (description !== undefined) updateData.description = sanitizeString(description);
-    if (assignedTo && Array.isArray(assignedTo) && assignedTo.length > 0) {
-      updateData.assignedTo = assignedTo;
-      
-      // Send notifications to newly assigned users
-      const newAssignees = assignedTo.filter(userId => 
-        !existingJobdesk.assignedTo.includes(userId)
+    if (title) {
+      updates.push(`title = $${paramIndex++}`);
+      values.push(sanitizeString(title));
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      values.push(sanitizeString(description));
+    }
+    if (dueDate !== undefined) {
+      updates.push(`due_date = $${paramIndex++}`);
+      values.push(dueDate ? new Date(dueDate) : null);
+    }
+    if (priority) {
+      updates.push(`priority = $${paramIndex++}`);
+      values.push(priority);
+    }
+    if (status && ['pending', 'in_progress', 'completed'].includes(status)) {
+      updates.push(`status = $${paramIndex++}`);
+      values.push(status);
+    }
+
+    if (updates.length > 0) {
+      values.push(jobdeskId);
+      await query(
+        `UPDATE jobdesks SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+        values
       );
-      
+    }
+
+    // Handle assignedTo changes (only for super_admin/pengurus)
+    if (assignedTo && Array.isArray(assignedTo) && assignedTo.length > 0 && isSuperAdminOrPengurus) {
+      // Find new assignees
+      const newAssignees = assignedTo.filter(userId => !currentAssignees.includes(userId));
+
+      // Remove old assignments and add new ones
+      await query('DELETE FROM jobdesk_assignments WHERE jobdesk_id = $1', [jobdeskId]);
+
+      for (const userId of assignedTo) {
+        await query(
+          `INSERT INTO jobdesk_assignments (jobdesk_id, user_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [jobdeskId, userId]
+        );
+      }
+
+      // Notify new assignees
       for (const userId of newAssignees) {
-        const notification = {
-          id: uuidv4(),
-          userId,
-          type: 'jobdesk_assigned',
-          title: 'Jobdesk Baru',
-          message: `Anda mendapat jobdesk: ${title || existingJobdesk.title}`,
-          read: false,
-          createdAt: new Date()
-        };
-        
-        await db.collection('notifications').insertOne(notification);
-        
+        await query(
+          `INSERT INTO notifications (user_id, title, message, type)
+           VALUES ($1, $2, $3, $4)`,
+          [userId, 'Jobdesk Baru', `Anda mendapat jobdesk: ${title || existingJobdesk.title}`, 'jobdesk_assigned']
+        );
+
         try {
-          sendNotification(userId, notification);
+          sendNotification(userId, {
+            type: 'jobdesk_assigned',
+            title: 'Jobdesk Baru',
+            message: `Anda mendapat jobdesk: ${title || existingJobdesk.title}`
+          });
         } catch (err) {
           console.error('Socket notification error:', err);
         }
       }
     }
-    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
-    if (priority) updateData.priority = priority;
-    if (status && ['pending', 'in_progress', 'completed'].includes(status)) {
-      updateData.status = status;
-      if (status === 'completed') {
-        updateData.completedAt = new Date();
-      }
-    }
-
-    // Update jobdesk
-    await db.collection('jobdesks').updateOne(
-      { id: jobdeskId },
-      { $set: updateData }
-    );
 
     // Get updated jobdesk
-    const updatedJobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
+    const updatedResult = await query(
+      `SELECT j.*, ARRAY_AGG(ja.user_id) as assigned_to
+       FROM jobdesks j
+       LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id = $1
+       GROUP BY j.id`,
+      [jobdeskId]
+    );
+
+    const updatedJobdesk = updatedResult.rows[0];
 
     return NextResponse.json({
       message: 'Jobdesk updated successfully',
-      jobdesk: updatedJobdesk
+      jobdesk: {
+        id: updatedJobdesk.id,
+        title: updatedJobdesk.title,
+        description: updatedJobdesk.description,
+        status: updatedJobdesk.status,
+        priority: updatedJobdesk.priority,
+        dueDate: updatedJobdesk.due_date,
+        assignedTo: updatedJobdesk.assigned_to.filter(id => id !== null),
+        createdBy: updatedJobdesk.created_by,
+        createdAt: updatedJobdesk.created_at,
+        updatedAt: updatedJobdesk.updated_at
+      }
     });
   } catch (error) {
     console.error('Update jobdesk error:', error);
@@ -954,51 +971,29 @@ async function handleDeleteJobdesk(request, jobdeskId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if jobdesk exists
-    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
-    if (!jobdesk) {
+    const jobdeskResult = await query('SELECT * FROM jobdesks WHERE id = $1', [jobdeskId]);
+    if (jobdeskResult.rows.length === 0) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
-    // Delete related data (cascade delete)
-    // 1. Delete attachments
-    const attachments = await db.collection('attachments')
-      .find({ jobdeskId })
-      .toArray();
-    
-    // Delete attachment files from filesystem
-    const fs = require('fs');
-    const path = require('path');
-    for (const attachment of attachments) {
+    // Get and delete attachment files
+    const attachmentsResult = await query(
+      'SELECT url FROM attachments WHERE jobdesk_id = $1',
+      [jobdeskId]
+    );
+
+    for (const attachment of attachmentsResult.rows) {
       try {
         const filePath = path.join(process.cwd(), 'public', attachment.url);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
+        await fs.unlink(filePath);
       } catch (err) {
         console.error('Failed to delete attachment file:', err);
       }
     }
-    
-    await db.collection('attachments').deleteMany({ jobdeskId });
 
-    // 2. Update related todos (remove jobdeskId reference)
-    await db.collection('todos').updateMany(
-      { jobdeskId },
-      { $unset: { jobdeskId: "" } }
-    );
-
-    // 3. Update related daily_logs (remove jobdeskId reference)
-    await db.collection('daily_logs').updateMany(
-      { jobdeskId },
-      { $unset: { jobdeskId: "" } }
-    );
-
-    // 4. Delete the jobdesk
-    await db.collection('jobdesks').deleteOne({ id: jobdeskId });
+    // Delete jobdesk (cascade will delete assignments and attachments)
+    await query('DELETE FROM jobdesks WHERE id = $1', [jobdeskId]);
 
     return NextResponse.json({
       message: 'Jobdesk deleted successfully',
@@ -1030,33 +1025,38 @@ async function handleGetDailyLogs(request) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const client = await clientPromise;
-    const db = client.db();
+    let queryText = 'SELECT * FROM daily_logs WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
 
-    let query = {};
-    
     // If karyawan, only show own logs
     if (user.role === 'karyawan') {
-      query.userId = user.userId;
+      queryText += ` AND user_id = $${paramIndex++}`;
+      params.push(user.userId);
     } else if (userId) {
-      query.userId = userId;
+      queryText += ` AND user_id = $${paramIndex++}`;
+      params.push(userId);
     }
 
     if (startDate && endDate) {
-      // Set endDate to end of day (23:59:59.999) to include all logs on that day
-      const endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
-      
-      query.date = {
-        $gte: new Date(startDate),
-        $lte: endDateTime
-      };
+      queryText += ` AND date >= $${paramIndex++} AND date <= $${paramIndex++}`;
+      params.push(startDate, endDate);
     }
 
-    const logs = await db.collection('daily_logs')
-      .find(query)
-      .sort({ date: -1 })
-      .toArray();
+    queryText += ' ORDER BY date DESC';
+
+    const result = await query(queryText, params);
+
+    const logs = result.rows.map(log => ({
+      id: log.id,
+      userId: log.user_id,
+      jobdeskId: log.jobdesk_id,
+      activity: log.activity,
+      notes: log.activity, // alias for compatibility
+      hoursSpent: parseFloat(log.hours_spent),
+      date: log.date,
+      createdAt: log.created_at
+    }));
 
     return NextResponse.json({ logs });
   } catch (error) {
@@ -1086,24 +1086,26 @@ async function handleCreateDailyLog(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `INSERT INTO daily_logs (user_id, jobdesk_id, activity, hours_spent, date)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [user.userId, jobdeskId, notes, hoursSpent || 0, date ? new Date(date) : new Date()]
+    );
 
-    const log = {
-      id: uuidv4(),
-      userId: user.userId,
-      jobdeskId,
-      notes,
-      hoursSpent: hoursSpent || 0,
-      date: date ? new Date(date) : new Date(),
-      createdAt: new Date()
-    };
-
-    await db.collection('daily_logs').insertOne(log);
+    const log = result.rows[0];
 
     return NextResponse.json({
       message: 'Daily log created successfully',
-      log
+      log: {
+        id: log.id,
+        userId: log.user_id,
+        jobdeskId: log.jobdesk_id,
+        notes: log.activity,
+        hoursSpent: parseFloat(log.hours_spent),
+        date: log.date,
+        createdAt: log.created_at
+      }
     });
   } catch (error) {
     console.error('Create daily log error:', error);
@@ -1136,55 +1138,51 @@ async function handleGetKPI(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    let dateQuery = {};
+    // Calculate date range
+    let dateStart, dateEnd;
     if (startDate && endDate) {
-      // Set endDate to end of day (23:59:59.999) to include all logs on that day
-      const endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
-      
-      dateQuery = {
-        $gte: new Date(startDate),
-        $lte: endDateTime
-      };
+      dateStart = new Date(startDate);
+      dateEnd = new Date(endDate);
+      dateEnd.setHours(23, 59, 59, 999);
     } else {
-      // Default to current month
       const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      lastDay.setHours(23, 59, 59, 999);
-      dateQuery = { $gte: firstDay, $lte: lastDay };
+      dateStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      dateEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      dateEnd.setHours(23, 59, 59, 999);
     }
 
-    // Get completed jobdesks
-    const completedJobdesks = await db.collection('jobdesks')
-      .countDocuments({
-        assignedTo: { $in: [userId] },
-        status: 'completed',
-        completedAt: dateQuery
-      });
+    // Get completed jobdesks count
+    const completedResult = await query(
+      `SELECT COUNT(DISTINCT j.id) as count
+       FROM jobdesks j
+       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE ja.user_id = $1 AND j.status = 'completed'
+       AND j.updated_at >= $2 AND j.updated_at <= $3`,
+      [userId, dateStart, dateEnd]
+    );
+    const completedJobdesks = parseInt(completedResult.rows[0].count);
 
-    // Get total jobdesks
-    const totalJobdesks = await db.collection('jobdesks')
-      .countDocuments({
-        assignedTo: { $in: [userId] }
-      });
+    // Get total jobdesks count
+    const totalResult = await query(
+      `SELECT COUNT(DISTINCT j.id) as count
+       FROM jobdesks j
+       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE ja.user_id = $1`,
+      [userId]
+    );
+    const totalJobdesks = parseInt(totalResult.rows[0].count);
 
-    // Get daily logs
-    const dailyLogs = await db.collection('daily_logs')
-      .find({
-        userId,
-        date: dateQuery
-      })
-      .toArray();
+    // Get daily logs stats
+    const logsResult = await query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(hours_spent), 0) as total_hours
+       FROM daily_logs
+       WHERE user_id = $1 AND date >= $2 AND date <= $3`,
+      [userId, dateStart, dateEnd]
+    );
+    const totalLogs = parseInt(logsResult.rows[0].count);
+    const totalHours = parseFloat(logsResult.rows[0].total_hours);
 
-    const totalHours = dailyLogs.reduce((sum, log) => sum + (log.hoursSpent || 0), 0);
-    const totalLogs = dailyLogs.length;
-
-    // Calculate KPI score (custom formula)
-    // Formula: (completed/total * 50) + (totalLogs * 2) + (totalHours * 0.5)
+    // Calculate KPI score
     const completionRate = totalJobdesks > 0 ? (completedJobdesks / totalJobdesks) * 50 : 0;
     const activityScore = totalLogs * 2;
     const hoursScore = totalHours * 0.5;
@@ -1199,8 +1197,8 @@ async function handleGetKPI(request) {
         totalLogs,
         totalHours,
         period: {
-          startDate: dateQuery.$gte,
-          endDate: dateQuery.$lte
+          startDate: dateStart,
+          endDate: dateEnd
         }
       }
     });
@@ -1221,16 +1219,23 @@ async function handleGetUsers(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `SELECT id, email, name, role, division_id, is_active, profile_photo, created_at, updated_at
+       FROM users
+       ORDER BY name ASC`
+    );
 
-    const users = await db.collection('users')
-      .find(
-        {},
-        { projection: { password: 0, twoFactorSecret: 0 } }
-      )
-      .sort({ name: 1 })
-      .toArray();
+    const users = result.rows.map(u => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      divisionId: u.division_id,
+      isActive: u.is_active,
+      profilePhoto: u.profile_photo,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at
+    }));
 
     return NextResponse.json({ users });
   } catch (error) {
@@ -1254,13 +1259,24 @@ async function handleGetTodos(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `SELECT * FROM todos WHERE user_id = $1 ORDER BY created_at DESC`,
+      [user.userId]
+    );
 
-    const todos = await db.collection('todos')
-      .find({ userId: user.userId })
-      .sort({ createdAt: -1 })
-      .toArray();
+    const todos = result.rows.map(todo => ({
+      id: todo.id,
+      userId: todo.user_id,
+      jobdeskId: todo.jobdesk_id,
+      title: todo.title,
+      description: todo.description,
+      status: todo.status,
+      priority: todo.priority,
+      dueDate: todo.due_date,
+      order: todo.order,
+      createdAt: todo.created_at,
+      updatedAt: todo.updated_at
+    }));
 
     return NextResponse.json({ todos });
   } catch (error) {
@@ -1290,29 +1306,29 @@ async function handleCreateTodo(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `INSERT INTO todos (user_id, title, description, status, priority, due_date, jobdesk_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [user.userId, title, description || '', status || 'pending', priority || 'medium', dueDate ? new Date(dueDate) : null, jobdeskId || null]
+    );
 
-    const todo = {
-      id: uuidv4(),
-      userId: user.userId,
-      title,
-      description: description || '',
-      status: status || 'pending',
-      priority: priority || 'medium',
-      dueDate: dueDate ? new Date(dueDate) : null,
-      jobdeskId: jobdeskId || null,
-      convertedToLog: false,
-      logId: null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    await db.collection('todos').insertOne(todo);
+    const todo = result.rows[0];
 
     return NextResponse.json({
       message: 'Todo created successfully',
-      todo
+      todo: {
+        id: todo.id,
+        userId: todo.user_id,
+        title: todo.title,
+        description: todo.description,
+        status: todo.status,
+        priority: todo.priority,
+        dueDate: todo.due_date,
+        jobdeskId: todo.jobdesk_id,
+        createdAt: todo.created_at,
+        updatedAt: todo.updated_at
+      }
     });
   } catch (error) {
     console.error('Create todo error:', error);
@@ -1341,32 +1357,25 @@ async function handleConvertTodoToLog(request, todoId) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Get todo
-    const todo = await db.collection('todos').findOne({ id: todoId, userId: user.userId });
-    if (!todo) {
+    const todoResult = await query(
+      'SELECT * FROM todos WHERE id = $1 AND user_id = $2',
+      [todoId, user.userId]
+    );
+
+    if (todoResult.rows.length === 0) {
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }
 
-    // Check if already converted
-    if (todo.convertedToLog) {
-      return NextResponse.json(
-        { error: 'Todo already converted to log' },
-        { status: 400 }
-      );
-    }
+    const todo = todoResult.rows[0];
 
-    // Check if has jobdesk
-    if (!todo.jobdeskId) {
+    if (!todo.jobdesk_id) {
       return NextResponse.json(
         { error: 'Todo must have a jobdesk to convert' },
         { status: 400 }
       );
     }
 
-    // Check if status is done
     if (todo.status !== 'done' && todo.status !== 'completed') {
       return NextResponse.json(
         { error: 'Todo must be in done status to convert' },
@@ -1375,33 +1384,26 @@ async function handleConvertTodoToLog(request, todoId) {
     }
 
     // Create daily log
-    const dailyLog = {
-      id: uuidv4(),
-      userId: user.userId,
-      jobdeskId: todo.jobdeskId,
-      date: new Date(),
-      notes: `**[From To-Do]** ${todo.title}\n\n${todo.description || 'No description'}`,
-      hoursSpent: parseFloat(hoursSpent),
-      createdAt: new Date()
-    };
-
-    await db.collection('daily_logs').insertOne(dailyLog);
-
-    // Update todo
-    await db.collection('todos').updateOne(
-      { id: todoId },
-      {
-        $set: {
-          convertedToLog: true,
-          logId: dailyLog.id,
-          updatedAt: new Date()
-        }
-      }
+    const logResult = await query(
+      `INSERT INTO daily_logs (user_id, jobdesk_id, activity, hours_spent, date)
+       VALUES ($1, $2, $3, $4, CURRENT_DATE)
+       RETURNING *`,
+      [user.userId, todo.jobdesk_id, `**[From To-Do]** ${todo.title}\n\n${todo.description || 'No description'}`, parseFloat(hoursSpent)]
     );
+
+    const dailyLog = logResult.rows[0];
 
     return NextResponse.json({
       message: 'Todo converted to log successfully',
-      log: dailyLog
+      log: {
+        id: dailyLog.id,
+        userId: dailyLog.user_id,
+        jobdeskId: dailyLog.jobdesk_id,
+        notes: dailyLog.activity,
+        hoursSpent: parseFloat(dailyLog.hours_spent),
+        date: dailyLog.date,
+        createdAt: dailyLog.created_at
+      }
     });
   } catch (error) {
     console.error('Convert todo to log error:', error);
@@ -1423,19 +1425,34 @@ async function handleUpdateTodo(request, todoId) {
     const body = await request.json();
     const { title, status, priority, dueDate } = body;
 
-    const client = await clientPromise;
-    const db = client.db();
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
 
-    const updateData = { updatedAt: new Date() };
-    if (title) updateData.title = title;
-    if (status) updateData.status = status;
-    if (priority) updateData.priority = priority;
-    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+    if (title) {
+      updates.push(`title = $${paramIndex++}`);
+      values.push(title);
+    }
+    if (status) {
+      updates.push(`status = $${paramIndex++}`);
+      values.push(status);
+    }
+    if (priority) {
+      updates.push(`priority = $${paramIndex++}`);
+      values.push(priority);
+    }
+    if (dueDate !== undefined) {
+      updates.push(`due_date = $${paramIndex++}`);
+      values.push(dueDate ? new Date(dueDate) : null);
+    }
 
-    await db.collection('todos').updateOne(
-      { id: todoId, userId: user.userId },
-      { $set: updateData }
-    );
+    if (updates.length > 0) {
+      values.push(todoId, user.userId);
+      await query(
+        `UPDATE todos SET ${updates.join(', ')} WHERE id = $${paramIndex++} AND user_id = $${paramIndex}`,
+        values
+      );
+    }
 
     return NextResponse.json({ message: 'Todo updated successfully' });
   } catch (error) {
@@ -1455,25 +1472,21 @@ async function handleDeleteTodo(request, todoId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if todo exists and belongs to user
-    const todo = await db.collection('todos').findOne({ 
-      id: todoId, 
-      userId: user.userId 
-    });
+    const result = await query(
+      'SELECT id FROM todos WHERE id = $1 AND user_id = $2',
+      [todoId, user.userId]
+    );
 
-    if (!todo) {
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }
 
-    // Delete the todo
-    await db.collection('todos').deleteOne({ id: todoId });
+    await query('DELETE FROM todos WHERE id = $1', [todoId]);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Todo deleted successfully',
-      deletedId: todoId 
+      deletedId: todoId
     });
   } catch (error) {
     console.error('Delete todo error:', error);
@@ -1496,15 +1509,27 @@ async function handleGetChatRooms(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `SELECT cr.*, ARRAY_AGG(crm.user_id) as members
+       FROM chat_rooms cr
+       JOIN chat_room_members crm ON crm.room_id = cr.id
+       WHERE cr.id IN (
+         SELECT room_id FROM chat_room_members WHERE user_id = $1
+       )
+       GROUP BY cr.id
+       ORDER BY cr.updated_at DESC`,
+      [user.userId]
+    );
 
-    const rooms = await db.collection('chat_rooms')
-      .find({
-        members: { $in: [user.userId] }
-      })
-      .sort({ updatedAt: -1 })
-      .toArray();
+    const rooms = result.rows.map(room => ({
+      id: room.id,
+      name: room.name,
+      type: room.type,
+      members: room.members.filter(id => id !== null),
+      createdBy: room.created_by,
+      createdAt: room.created_at,
+      updatedAt: room.updated_at
+    }));
 
     return NextResponse.json({ rooms });
   } catch (error) {
@@ -1534,24 +1559,45 @@ async function handleCreateChatRoom(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const room = await transaction(async (client) => {
+      // Create room
+      const roomResult = await client.query(
+        `INSERT INTO chat_rooms (name, type, created_by)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [name, type || 'group', user.userId]
+      );
 
-    const room = {
-      id: uuidv4(),
-      name,
-      type: type || 'group',
-      members: [...new Set([...members, user.userId])],
-      createdBy: user.userId,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+      const newRoom = roomResult.rows[0];
 
-    await db.collection('chat_rooms').insertOne(room);
+      // Add members (including creator)
+      const allMembers = [...new Set([...members, user.userId])];
+      for (const memberId of allMembers) {
+        await client.query(
+          `INSERT INTO chat_room_members (room_id, user_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [newRoom.id, memberId]
+        );
+      }
+
+      return {
+        ...newRoom,
+        members: allMembers
+      };
+    });
 
     return NextResponse.json({
       message: 'Chat room created successfully',
-      room
+      room: {
+        id: room.id,
+        name: room.name,
+        type: room.type,
+        members: room.members,
+        createdBy: room.created_by,
+        createdAt: room.created_at,
+        updatedAt: room.updated_at
+      }
     });
   } catch (error) {
     console.error('Create chat room error:', error);
@@ -1570,7 +1616,6 @@ async function handleUpdateChatRoom(request, roomId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only super_admin can update rooms
     if (user.role !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -1585,32 +1630,56 @@ async function handleUpdateChatRoom(request, roomId) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if room exists
-    const room = await db.collection('chat_rooms').findOne({ id: roomId });
-    if (!room) {
+    const roomResult = await query('SELECT * FROM chat_rooms WHERE id = $1', [roomId]);
+    if (roomResult.rows.length === 0) {
       return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     }
 
-    // Update room
-    await db.collection('chat_rooms').updateOne(
-      { id: roomId },
-      {
-        $set: {
-          name,
-          members: [...new Set(members)], // Remove duplicates
-          updatedAt: new Date()
-        }
+    await transaction(async (client) => {
+      // Update room name
+      await client.query(
+        'UPDATE chat_rooms SET name = $1 WHERE id = $2',
+        [name, roomId]
+      );
+
+      // Update members
+      await client.query('DELETE FROM chat_room_members WHERE room_id = $1', [roomId]);
+
+      const uniqueMembers = [...new Set(members)];
+      for (const memberId of uniqueMembers) {
+        await client.query(
+          `INSERT INTO chat_room_members (room_id, user_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [roomId, memberId]
+        );
       }
+    });
+
+    // Get updated room
+    const updatedResult = await query(
+      `SELECT cr.*, ARRAY_AGG(crm.user_id) as members
+       FROM chat_rooms cr
+       JOIN chat_room_members crm ON crm.room_id = cr.id
+       WHERE cr.id = $1
+       GROUP BY cr.id`,
+      [roomId]
     );
 
-    const updatedRoom = await db.collection('chat_rooms').findOne({ id: roomId });
+    const updatedRoom = updatedResult.rows[0];
 
     return NextResponse.json({
       message: 'Room updated successfully',
-      room: updatedRoom
+      room: {
+        id: updatedRoom.id,
+        name: updatedRoom.name,
+        type: updatedRoom.type,
+        members: updatedRoom.members.filter(id => id !== null),
+        createdBy: updatedRoom.created_by,
+        createdAt: updatedRoom.created_at,
+        updatedAt: updatedRoom.updated_at
+      }
     });
   } catch (error) {
     console.error('Update room error:', error);
@@ -1629,25 +1698,38 @@ async function handleGetMessages(request, roomId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if user is member of the room
-    const room = await db.collection('chat_rooms').findOne({ id: roomId });
-    if (!room || !room.members.includes(user.userId)) {
+    const memberResult = await query(
+      'SELECT * FROM chat_room_members WHERE room_id = $1 AND user_id = $2',
+      [roomId, user.userId]
+    );
+
+    if (memberResult.rows.length === 0) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
 
-    const messages = await db.collection('messages')
-      .find({ roomId })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .toArray();
+    const result = await query(
+      `SELECT cm.*, u.email as user_email, u.name as user_name
+       FROM chat_messages cm
+       LEFT JOIN users u ON u.id = cm.user_id
+       WHERE cm.room_id = $1
+       ORDER BY cm.created_at DESC
+       LIMIT $2`,
+      [roomId, limit]
+    );
 
-    messages.reverse();
+    const messages = result.rows.reverse().map(msg => ({
+      id: msg.id,
+      roomId: msg.room_id,
+      userId: msg.user_id,
+      userEmail: msg.user_email,
+      userName: msg.user_name,
+      content: msg.content,
+      createdAt: msg.created_at
+    }));
 
     return NextResponse.json({ messages });
   } catch (error) {
@@ -1677,35 +1759,41 @@ async function handleSendMessage(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if user is member of the room
-    const room = await db.collection('chat_rooms').findOne({ id: roomId });
-    if (!room || !room.members.includes(user.userId)) {
+    const memberResult = await query(
+      'SELECT * FROM chat_room_members WHERE room_id = $1 AND user_id = $2',
+      [roomId, user.userId]
+    );
+
+    if (memberResult.rows.length === 0) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const message = {
-      id: uuidv4(),
-      roomId,
-      userId: user.userId,
-      userEmail: user.email,
-      content,
-      createdAt: new Date()
-    };
-
-    await db.collection('messages').insertOne(message);
+    const result = await query(
+      `INSERT INTO chat_messages (room_id, user_id, content)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [roomId, user.userId, content]
+    );
 
     // Update room's last activity
-    await db.collection('chat_rooms').updateOne(
-      { id: roomId },
-      { $set: { updatedAt: new Date() } }
+    await query(
+      'UPDATE chat_rooms SET updated_at = NOW() WHERE id = $1',
+      [roomId]
     );
+
+    const message = result.rows[0];
 
     return NextResponse.json({
       message: 'Message sent successfully',
-      data: message
+      data: {
+        id: message.id,
+        roomId: message.room_id,
+        userId: message.user_id,
+        userEmail: user.email,
+        content: message.content,
+        createdAt: message.created_at
+      }
     });
   } catch (error) {
     console.error('Send message error:', error);
@@ -1728,14 +1816,24 @@ async function handleGetNotifications(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      `SELECT * FROM notifications
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [user.userId]
+    );
 
-    const notifications = await db.collection('notifications')
-      .find({ userId: user.userId })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray();
+    const notifications = result.rows.map(n => ({
+      id: n.id,
+      userId: n.user_id,
+      title: n.title,
+      message: n.message,
+      type: n.type,
+      read: n.read,
+      data: n.data,
+      createdAt: n.created_at
+    }));
 
     return NextResponse.json({ notifications });
   } catch (error) {
@@ -1755,12 +1853,9 @@ async function handleMarkNotificationRead(request, notificationId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    await db.collection('notifications').updateOne(
-      { id: notificationId, userId: user.userId },
-      { $set: { read: true } }
+    await query(
+      'UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2',
+      [notificationId, user.userId]
     );
 
     return NextResponse.json({ message: 'Notification marked as read' });
@@ -1785,45 +1880,54 @@ async function handleGetAttachments(request, jobdeskId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    // Check if jobdesk exists and user has access
+    const jobdeskResult = await query(
+      `SELECT j.*, ARRAY_AGG(ja.user_id) as assigned_to
+       FROM jobdesks j
+       LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id = $1
+       GROUP BY j.id`,
+      [jobdeskId]
+    );
 
-    // Check if user has access to this jobdesk
-    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
-    if (!jobdesk) {
+    if (jobdeskResult.rows.length === 0) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
-    // Check permission: assigned karyawan, pengurus, sdm, or super_admin
-    const hasAccess = 
-      jobdesk.assignedTo?.includes(user.userId) ||
+    const jobdesk = jobdeskResult.rows[0];
+    const assignedTo = jobdesk.assigned_to.filter(id => id !== null);
+
+    const hasAccess =
+      assignedTo.includes(user.userId) ||
       hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const attachments = await db.collection('attachments')
-      .find({ jobdeskId })
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    // Get user info for each attachment
-    const attachmentsWithUser = await Promise.all(
-      attachments.map(async (att) => {
-        const uploader = await db.collection('users').findOne(
-          { id: att.userId },
-          { projection: { name: 1, email: 1 } }
-        );
-        return {
-          ...att,
-          uploaderName: uploader?.name || 'Unknown',
-          uploaderEmail: uploader?.email || ''
-        };
-      })
+    const result = await query(
+      `SELECT a.*, u.name as uploader_name, u.email as uploader_email
+       FROM attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.jobdesk_id = $1
+       ORDER BY a.created_at DESC`,
+      [jobdeskId]
     );
 
-    return NextResponse.json({ attachments: attachmentsWithUser });
+    const attachments = result.rows.map(att => ({
+      id: att.id,
+      jobdeskId: att.jobdesk_id,
+      type: att.type,
+      name: att.name,
+      url: att.url,
+      size: att.size,
+      userId: att.uploaded_by,
+      uploaderName: att.uploader_name || 'Unknown',
+      uploaderEmail: att.uploader_email || '',
+      createdAt: att.created_at
+    }));
+
+    return NextResponse.json({ attachments });
   } catch (error) {
     console.error('Get attachments error:', error);
     return NextResponse.json(
@@ -1841,23 +1945,30 @@ async function handleCreateAttachment(request, jobdeskId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    // Check if jobdesk exists and user has access
+    const jobdeskResult = await query(
+      `SELECT j.*, ARRAY_AGG(ja.user_id) as assigned_to
+       FROM jobdesks j
+       LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id = $1
+       GROUP BY j.id`,
+      [jobdeskId]
+    );
 
-    // Check if user has access to this jobdesk
-    const jobdesk = await db.collection('jobdesks').findOne({ id: jobdeskId });
-    if (!jobdesk) {
+    if (jobdeskResult.rows.length === 0) {
       return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
     }
 
-    // Check permission: assigned karyawan, pengurus, sdm, or super_admin can upload
-    const canUpload = 
-      jobdesk.assignedTo?.includes(user.userId) ||
+    const jobdesk = jobdeskResult.rows[0];
+    const assignedTo = jobdesk.assigned_to.filter(id => id !== null);
+
+    const canUpload =
+      assignedTo.includes(user.userId) ||
       hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
-      
+
     if (!canUpload) {
-      return NextResponse.json({ 
-        error: 'Only assigned users or managers can upload attachments' 
+      return NextResponse.json({
+        error: 'Only assigned users or managers can upload attachments'
       }, { status: 403 });
     }
 
@@ -1871,40 +1982,33 @@ async function handleCreateAttachment(request, jobdeskId) {
       );
     }
 
-    const attachment = {
-      id: uuidv4(),
-      jobdeskId,
-      userId: user.userId,
-      type, // 'file' or 'link'
-      url: url || null,
-      fileName: fileName || null,
-      fileSize: fileSize || null,
-      fileType: fileType || null,
-      createdAt: new Date()
-    };
+    const result = await query(
+      `INSERT INTO attachments (jobdesk_id, type, name, url, size, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [jobdeskId, type, fileName || url, url || null, fileSize || null, user.userId]
+    );
 
-    await db.collection('attachments').insertOne(attachment);
+    const attachment = result.rows[0];
 
     // Send notification to pengurus
-    const pengurusUsers = await db.collection('users').find({
-      role: { $in: ['pengurus', 'super_admin'] }
-    }).toArray();
+    const pengurusResult = await query(
+      `SELECT id FROM users WHERE role IN ('pengurus', 'super_admin')`
+    );
 
-    for (const pengurus of pengurusUsers) {
-      const notification = {
-        id: uuidv4(),
-        userId: pengurus.id,
-        type: 'attachment_added',
-        title: 'Lampiran Baru',
-        message: `${user.email} menambahkan lampiran di jobdesk: ${jobdesk.title}`,
-        read: false,
-        createdAt: new Date()
-      };
-      
-      await db.collection('notifications').insertOne(notification);
-      
+    for (const pengurus of pengurusResult.rows) {
+      await query(
+        `INSERT INTO notifications (user_id, title, message, type)
+         VALUES ($1, $2, $3, $4)`,
+        [pengurus.id, 'Lampiran Baru', `${user.email} menambahkan lampiran di jobdesk: ${jobdesk.title}`, 'attachment_added']
+      );
+
       try {
-        sendNotification(pengurus.id, notification);
+        sendNotification(pengurus.id, {
+          type: 'attachment_added',
+          title: 'Lampiran Baru',
+          message: `${user.email} menambahkan lampiran di jobdesk: ${jobdesk.title}`
+        });
       } catch (err) {
         console.error('Socket notification error:', err);
       }
@@ -1912,7 +2016,16 @@ async function handleCreateAttachment(request, jobdeskId) {
 
     return NextResponse.json({
       message: 'Attachment added successfully',
-      attachment
+      attachment: {
+        id: attachment.id,
+        jobdeskId: attachment.jobdesk_id,
+        type: attachment.type,
+        name: attachment.name,
+        url: attachment.url,
+        size: attachment.size,
+        userId: attachment.uploaded_by,
+        createdAt: attachment.created_at
+      }
     });
   } catch (error) {
     console.error('Create attachment error:', error);
@@ -1931,24 +2044,27 @@ async function handleDeleteAttachment(request, attachmentId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    const result = await query(
+      'SELECT * FROM attachments WHERE id = $1',
+      [attachmentId]
+    );
 
-    const attachment = await db.collection('attachments').findOne({ id: attachmentId });
-    if (!attachment) {
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
     }
 
-    // Check permission: owner, pengurus, sdm, or super_admin
-    const canDelete = 
-      attachment.userId === user.userId ||
+    const attachment = result.rows[0];
+
+    // Check permission
+    const canDelete =
+      attachment.uploaded_by === user.userId ||
       hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
 
     if (!canDelete) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    await db.collection('attachments').deleteOne({ id: attachmentId });
+    await query('DELETE FROM attachments WHERE id = $1', [attachmentId]);
 
     return NextResponse.json({ message: 'Attachment deleted successfully' });
   } catch (error) {
@@ -1975,16 +2091,13 @@ async function handleUpdateUser(request, userId) {
     const body = await request.json();
     const { name, email, role, divisionId } = body;
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if email already exists (excluding current user)
     if (email) {
-      const existingUser = await db.collection('users').findOne({ 
-        email, 
-        id: { $ne: userId } 
-      });
-      if (existingUser) {
+      const existingResult = await query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [email, userId]
+      );
+      if (existingResult.rows.length > 0) {
         return NextResponse.json(
           { error: 'Email already in use' },
           { status: 400 }
@@ -1992,16 +2105,34 @@ async function handleUpdateUser(request, userId) {
       }
     }
 
-    const updateData = { updatedAt: new Date() };
-    if (name) updateData.name = name;
-    if (email) updateData.email = email;
-    if (role) updateData.role = role;
-    if (divisionId !== undefined) updateData.divisionId = divisionId;
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
 
-    await db.collection('users').updateOne(
-      { id: userId },
-      { $set: updateData }
-    );
+    if (name) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (email) {
+      updates.push(`email = $${paramIndex++}`);
+      values.push(email);
+    }
+    if (role) {
+      updates.push(`role = $${paramIndex++}`);
+      values.push(role);
+    }
+    if (divisionId !== undefined) {
+      updates.push(`division_id = $${paramIndex++}`);
+      values.push(divisionId);
+    }
+
+    if (updates.length > 0) {
+      values.push(userId);
+      await query(
+        `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+        values
+      );
+    }
 
     return NextResponse.json({ message: 'User updated successfully' });
   } catch (error) {
@@ -2024,16 +2155,13 @@ async function handleUpdateUserStatus(request, userId) {
     const body = await request.json();
     const { isActive } = body;
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    await db.collection('users').updateOne(
-      { id: userId },
-      { $set: { isActive, updatedAt: new Date() } }
+    await query(
+      'UPDATE users SET is_active = $1 WHERE id = $2',
+      [isActive, userId]
     );
 
-    return NextResponse.json({ 
-      message: `User ${isActive ? 'enabled' : 'disabled'} successfully` 
+    return NextResponse.json({
+      message: `User ${isActive ? 'enabled' : 'disabled'} successfully`
     });
   } catch (error) {
     console.error('Update user status error:', error);
@@ -2052,13 +2180,10 @@ async function handleDeleteUser(request, userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    // Soft delete - just set isActive to false
-    await db.collection('users').updateOne(
-      { id: userId },
-      { $set: { isActive: false, deletedAt: new Date() } }
+    // Soft delete
+    await query(
+      'UPDATE users SET is_active = FALSE WHERE id = $1',
+      [userId]
     );
 
     return NextResponse.json({ message: 'User deleted successfully' });
@@ -2082,12 +2207,9 @@ async function handleUpdateUserDivision(request, userId) {
     const body = await request.json();
     const { divisionId } = body;
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    await db.collection('users').updateOne(
-      { id: userId },
-      { $set: { divisionId, updatedAt: new Date() } }
+    await query(
+      'UPDATE users SET division_id = $1 WHERE id = $2',
+      [divisionId, userId]
     );
 
     return NextResponse.json({ message: 'User division updated successfully' });
@@ -2104,7 +2226,6 @@ async function handleUpdateUserDivision(request, userId) {
 async function handleUpdateUserPassword(request, userId) {
   try {
     const user = verifyToken(request);
-    // Only super_admin can change passwords
     if (!user || !hasPermission(user.role, ['super_admin'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
@@ -2119,27 +2240,18 @@ async function handleUpdateUserPassword(request, userId) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Check if user exists
-    const targetUser = await db.collection('users').findOne({ id: userId });
-    if (!targetUser) {
+    const userResult = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password
-    await db.collection('users').updateOne(
-      { id: userId },
-      { 
-        $set: { 
-          password: hashedPassword,
-          updatedAt: new Date() 
-        } 
-      }
+    await query(
+      'UPDATE users SET password = $1 WHERE id = $2',
+      [hashedPassword, userId]
     );
 
     return NextResponse.json({ message: 'Password updated successfully' });
@@ -2156,7 +2268,7 @@ async function handleUpdateUserPassword(request, userId) {
 // PWA ENDPOINTS
 // ============================================
 
-// Get VAPID public key for push notification subscription
+// Get VAPID public key
 async function handleGetVapidKey(request) {
   try {
     const publicKey = getVapidPublicKey();
@@ -2170,7 +2282,7 @@ async function handleGetVapidKey(request) {
   }
 }
 
-// Save push subscription for a user
+// Save push subscription
 async function handleSavePushSubscription(request) {
   try {
     const user = verifyToken(request);
@@ -2188,32 +2300,15 @@ async function handleSavePushSubscription(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    // Store or update subscription for user
-    await db.collection('push_subscriptions').updateOne(
-      { 
-        endpoint: subscription.endpoint 
-      },
-      {
-        $set: {
-          userId: user.userId,
-          subscription: subscription,
-          userAgent: request.headers.get('user-agent') || 'unknown',
-          updatedAt: new Date()
-        },
-        $setOnInsert: {
-          id: uuidv4(),
-          createdAt: new Date()
-        }
-      },
-      { upsert: true }
+    // Store subscription in user record
+    await query(
+      'UPDATE users SET push_subscription = $1 WHERE id = $2',
+      [JSON.stringify(subscription), user.userId]
     );
 
     console.log('[PWA] Push subscription saved for user:', user.userId);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Subscription saved successfully',
       subscribed: true
     });
@@ -2234,27 +2329,14 @@ async function handleRemovePushSubscription(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { endpoint } = body;
-
-    if (!endpoint) {
-      return NextResponse.json(
-        { error: 'Endpoint is required' },
-        { status: 400 }
-      );
-    }
-
-    const client = await clientPromise;
-    const db = client.db();
-
-    await db.collection('push_subscriptions').deleteOne({ 
-      endpoint,
-      userId: user.userId 
-    });
+    await query(
+      'UPDATE users SET push_subscription = NULL WHERE id = $1',
+      [user.userId]
+    );
 
     console.log('[PWA] Push subscription removed for user:', user.userId);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Subscription removed successfully',
       subscribed: false
     });
@@ -2267,7 +2349,7 @@ async function handleRemovePushSubscription(request) {
   }
 }
 
-// Send push notification to specific users (admin only)
+// Send push notification
 async function handleSendPushNotification(request) {
   try {
     const user = verifyToken(request);
@@ -2285,26 +2367,30 @@ async function handleSendPushNotification(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
+    let queryText = 'SELECT id, push_subscription FROM users WHERE push_subscription IS NOT NULL';
+    const params = [];
 
-    // Build query for target subscriptions
-    const query = {};
     if (userIds && userIds.length > 0) {
-      query.userId = { $in: userIds };
+      queryText += ' AND id = ANY($1)';
+      params.push(userIds);
     }
 
-    const subscriptions = await db.collection('push_subscriptions')
-      .find(query)
-      .toArray();
+    const result = await query(queryText, params);
 
-    if (subscriptions.length === 0) {
-      return NextResponse.json({ 
+    if (result.rows.length === 0) {
+      return NextResponse.json({
         message: 'No subscriptions found',
         sent: 0,
         failed: 0
       });
     }
+
+    const subscriptions = result.rows.map(row => ({
+      userId: row.id,
+      subscription: typeof row.push_subscription === 'string'
+        ? JSON.parse(row.push_subscription)
+        : row.push_subscription
+    }));
 
     const payload = {
       title,
@@ -2319,30 +2405,7 @@ async function handleSendPushNotification(request) {
       requireInteraction: true
     };
 
-    // Send notifications
     const results = await sendBulkPushNotifications(subscriptions, payload);
-
-    // Remove expired subscriptions
-    const expiredEndpoints = [];
-    for (let i = 0; i < subscriptions.length; i++) {
-      // Check if subscription expired during sending
-      const sub = subscriptions[i];
-      try {
-        const result = await sendPushNotification(sub.subscription, payload);
-        if (result.expired) {
-          expiredEndpoints.push(sub.endpoint);
-        }
-      } catch (err) {
-        // Already handled in bulk send
-      }
-    }
-
-    if (expiredEndpoints.length > 0) {
-      await db.collection('push_subscriptions').deleteMany({
-        endpoint: { $in: expiredEndpoints }
-      });
-      console.log(`[PWA] Removed ${expiredEndpoints.length} expired subscriptions`);
-    }
 
     return NextResponse.json({
       message: 'Notifications sent',
@@ -2358,7 +2421,7 @@ async function handleSendPushNotification(request) {
   }
 }
 
-// Get offline data bundle for caching
+// Get offline bundle
 async function handleGetOfflineBundle(request) {
   try {
     const user = verifyToken(request);
@@ -2366,47 +2429,65 @@ async function handleGetOfflineBundle(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Get user's jobdesks
-    const jobdesks = await db.collection('jobdesks')
-      .find({ assignedTo: user.userId })
-      .sort({ updatedAt: -1 })
-      .limit(50)
-      .toArray();
+    const jobdesksResult = await query(
+      `SELECT j.*, ARRAY_AGG(ja.user_id) as assigned_to
+       FROM jobdesks j
+       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id IN (
+         SELECT jobdesk_id FROM jobdesk_assignments WHERE user_id = $1
+       )
+       GROUP BY j.id
+       ORDER BY j.updated_at DESC
+       LIMIT 50`,
+      [user.userId]
+    );
 
-    // Get user's recent chat messages (last 100 per room)
-    const chatRooms = await db.collection('chat_rooms')
-      .find({ members: user.userId })
-      .toArray();
+    // Get user's chat rooms and messages
+    const roomsResult = await query(
+      `SELECT cr.id FROM chat_rooms cr
+       JOIN chat_room_members crm ON crm.room_id = cr.id
+       WHERE crm.user_id = $1`,
+      [user.userId]
+    );
 
-    const chatMessages = [];
-    for (const room of chatRooms) {
-      const messages = await db.collection('chat_messages')
-        .find({ roomId: room.id })
-        .sort({ timestamp: -1 })
-        .limit(100)
-        .toArray();
-      chatMessages.push(...messages);
+    const roomIds = roomsResult.rows.map(r => r.id);
+    let chatMessages = [];
+
+    if (roomIds.length > 0) {
+      const messagesResult = await query(
+        `SELECT * FROM chat_messages
+         WHERE room_id = ANY($1)
+         ORDER BY created_at DESC
+         LIMIT 500`,
+        [roomIds]
+      );
+      chatMessages = messagesResult.rows;
     }
 
     // Get attachments for user's jobdesks
-    const jobdeskIds = jobdesks.map(j => j.id);
-    const attachments = await db.collection('attachments')
-      .find({ jobdeskId: { $in: jobdeskIds } })
-      .toArray();
+    const jobdeskIds = jobdesksResult.rows.map(j => j.id);
+    let attachments = [];
 
-    // Get users list (for display names in chat, etc.)
-    const users = await db.collection('users')
-      .find({}, { projection: { password: 0, twoFactorSecret: 0 } })
-      .toArray();
+    if (jobdeskIds.length > 0) {
+      const attachmentsResult = await query(
+        'SELECT * FROM attachments WHERE jobdesk_id = ANY($1)',
+        [jobdeskIds]
+      );
+      attachments = attachmentsResult.rows;
+    }
+
+    // Get users list
+    const usersResult = await query(
+      `SELECT id, email, name, role, division_id, profile_photo
+       FROM users`
+    );
 
     return NextResponse.json({
-      jobdesks,
+      jobdesks: jobdesksResult.rows,
       chatMessages,
       attachments,
-      users,
+      users: usersResult.rows,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -2417,239 +2498,6 @@ async function handleGetOfflineBundle(request) {
     );
   }
 }
-
-// ============================================
-// ROUTER
-// ============================================
-
-export async function GET(request, { params }) {
-  const path = params?.path?.join('/') || '';
-
-  try {
-    // Auth
-    if (path === 'auth/me') return handleGetMe(request);
-    if (path === 'auth/2fa/qrcode') return handleGet2FAQRCode(request);
-    
-    // Divisions
-    if (path === 'divisions') return handleGetDivisions(request);
-    
-    // Jobdesks
-    if (path === 'jobdesks') return handleGetJobdesks(request);
-    
-    // Daily logs
-    if (path === 'daily-logs') return handleGetDailyLogs(request);
-    
-    // KPI
-    if (path === 'kpi') return handleGetKPI(request);
-    if (path === 'users') return handleGetUsers(request);
-    
-    // Todos
-    if (path === 'todos') return handleGetTodos(request);
-    
-    // Chat
-    if (path === 'chat/rooms') return handleGetChatRooms(request);
-    if (path.startsWith('chat/rooms/') && path.endsWith('/messages')) {
-      const roomId = path.split('/')[2];
-      return handleGetMessages(request, roomId);
-    }
-    
-    // Notifications
-    if (path === 'notifications') return handleGetNotifications(request);
-    
-    // Attachments
-    if (path.startsWith('jobdesks/') && path.endsWith('/attachments')) {
-      const jobdeskId = path.split('/')[1];
-      return handleGetAttachments(request, jobdeskId);
-    }
-
-    // Profile
-    if (path.match(/^profile\/[^/]+$/)) {
-      const userId = path.split('/')[1];
-      return handleGetUserProfile(request, userId);
-    }
-
-    // PWA endpoints
-    if (path === 'pwa/vapid-key') return handleGetVapidKey(request);
-    if (path === 'pwa/offline-bundle') return handleGetOfflineBundle(request);
-
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request, { params }) {
-  const path = params?.path?.join('/') || '';
-
-  try {
-    // Auth
-    if (path === 'auth/register') return handleRegister(request);
-    if (path === 'auth/login') return handleLogin(request);
-    if (path === 'auth/2fa/enable') return handleEnable2FA(request);
-    
-    // Users
-    if (path === 'users') return handleCreateUser(request);
-    
-    // Divisions
-    if (path === 'divisions') return handleCreateDivision(request);
-    
-    // Jobdesks
-    if (path === 'jobdesks') return handleCreateJobdesk(request);
-    
-    // Daily logs
-    if (path === 'daily-logs') return handleCreateDailyLog(request);
-    
-    // Todos
-    if (path === 'todos') return handleCreateTodo(request);
-    if (path.match(/^todos\/[^/]+\/convert-to-log$/)) {
-      const todoId = path.split('/')[1];
-      return handleConvertTodoToLog(request, todoId);
-    }
-    
-    // Chat
-    if (path === 'chat/rooms') return handleCreateChatRoom(request);
-    if (path === 'chat/messages') return handleSendMessage(request);
-    
-    // Attachments
-    if (path.startsWith('jobdesks/') && path.endsWith('/attachments')) {
-      const jobdeskId = path.split('/')[1];
-      return handleCreateAttachment(request, jobdeskId);
-    }
-
-    // Profile photo upload
-    if (path === 'profile/photo') {
-      return handleUploadProfilePhoto(request);
-    }
-
-    // PWA endpoints
-    if (path === 'pwa/save-subscription') return handleSavePushSubscription(request);
-    if (path === 'pwa/remove-subscription') return handleRemovePushSubscription(request);
-    if (path === 'pwa/send-notification') return handleSendPushNotification(request);
-
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function PUT(request, { params }) {
-  const path = params?.path?.join('/') || '';
-
-  try {
-    // Divisions
-    if (path.match(/^divisions\/[^/]+$/)) {
-      const divisionId = path.split('/')[1];
-      return handleUpdateDivision(request, divisionId);
-    }
-    
-    // Users
-    if (path.match(/^users\/[^/]+\/password$/)) {
-      const userId = path.split('/')[1];
-      return handleUpdateUserPassword(request, userId);
-    }
-    if (path.match(/^users\/[^/]+\/status$/)) {
-      const userId = path.split('/')[1];
-      return handleUpdateUserStatus(request, userId);
-    }
-    if (path.match(/^users\/[^/]+\/division$/)) {
-      const userId = path.split('/')[1];
-      return handleUpdateUserDivision(request, userId);
-    }
-    if (path.match(/^users\/[^/]+$/)) {
-      const userId = path.split('/')[1];
-      return handleUpdateUser(request, userId);
-    }
-    
-    // Jobdesks
-    if (path.match(/^jobdesks\/[^/]+\/status$/)) {
-      const jobdeskId = path.split('/')[1];
-      return handleUpdateJobdeskStatus(request, jobdeskId);
-    }
-    if (path.match(/^jobdesks\/[^/]+$/)) {
-      const jobdeskId = path.split('/')[1];
-      return handleUpdateJobdesk(request, jobdeskId);
-    }
-    
-    // Todos
-    if (path.match(/^todos\/[^/]+$/)) {
-      const todoId = path.split('/')[1];
-      return handleUpdateTodo(request, todoId);
-    }
-    
-    // Notifications
-    if (path.match(/^notifications\/[^/]+\/read$/)) {
-      const notificationId = path.split('/')[1];
-      return handleMarkNotificationRead(request, notificationId);
-    }
-
-    // Chat Rooms
-    if (path.match(/^chat\/rooms\/[^/]+$/)) {
-      const roomId = path.split('/')[2];
-      return handleUpdateChatRoom(request, roomId);
-    }
-
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request, { params }) {
-  const path = params?.path?.join('/') || '';
-
-  try {
-    // Divisions
-    if (path.match(/^divisions\/[^/]+$/)) {
-      const divisionId = path.split('/')[1];
-      return handleDeleteDivision(request, divisionId);
-    }
-    
-    // Users
-    if (path.match(/^users\/[^/]+$/)) {
-      const userId = path.split('/')[1];
-      return handleDeleteUser(request, userId);
-    }
-    
-    // Jobdesks
-    if (path.match(/^jobdesks\/[^/]+$/)) {
-      const jobdeskId = path.split('/')[1];
-      return handleDeleteJobdesk(request, jobdeskId);
-    }
-    
-    // Attachments
-    if (path.match(/^attachments\/[^/]+$/)) {
-      const attachmentId = path.split('/')[1];
-      return handleDeleteAttachment(request, attachmentId);
-    }
-    
-    // Todos
-    if (path.match(/^todos\/[^/]+$/)) {
-      const todoId = path.split('/')[1];
-      return handleDeleteTodo(request, todoId);
-    }
-
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
 
 // ============================================
 // PROFILE MANAGEMENT
@@ -2686,15 +2534,14 @@ async function handleUploadProfilePhoto(request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
     // Get existing user to check for old photo
-    const existingUser = await db.collection('users').findOne({ id: user.userId });
-    
-    // Delete old photo if exists
-    if (existingUser?.profilePhoto) {
-      const oldPhotoPath = path.join(process.cwd(), 'public', existingUser.profilePhoto);
+    const existingResult = await query(
+      'SELECT profile_photo FROM users WHERE id = $1',
+      [user.userId]
+    );
+
+    if (existingResult.rows.length > 0 && existingResult.rows[0].profile_photo) {
+      const oldPhotoPath = path.join(process.cwd(), 'public', existingResult.rows[0].profile_photo);
       try {
         await fs.unlink(oldPhotoPath);
       } catch (err) {
@@ -2702,29 +2549,23 @@ async function handleUploadProfilePhoto(request) {
       }
     }
 
-    // Create uploads directory if not exists
+    // Create uploads directory
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'profiles');
     await fs.mkdir(uploadDir, { recursive: true });
 
-    // Generate unique filename
+    // Generate filename and save
     const ext = path.extname(file.name);
     const filename = `${user.userId}-${Date.now()}${ext}`;
     const filepath = path.join(uploadDir, filename);
 
-    // Save file
     const buffer = Buffer.from(await file.arrayBuffer());
     await fs.writeFile(filepath, buffer);
 
-    // Update user profile photo in database
+    // Update database
     const photoUrl = `/uploads/profiles/${filename}`;
-    await db.collection('users').updateOne(
-      { id: user.userId },
-      { 
-        $set: { 
-          profilePhoto: photoUrl,
-          updatedAt: new Date()
-        } 
-      }
+    await query(
+      'UPDATE users SET profile_photo = $1 WHERE id = $2',
+      [photoUrl, user.userId]
     );
 
     return NextResponse.json({
@@ -2752,28 +2593,31 @@ async function handleGetUserProfile(request, userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const client = await clientPromise;
-    const db = client.db();
-
-    const profile = await db.collection('users').findOne(
-      { id: userId },
-      { projection: { password: 0, twoFactorSecret: 0 } }
+    const profileResult = await query(
+      `SELECT u.id, u.email, u.name, u.role, u.division_id, u.is_active, u.profile_photo,
+              u.two_factor_enabled, u.created_at, u.updated_at,
+              d.name as division_name
+       FROM users u
+       LEFT JOIN divisions d ON d.id = u.division_id
+       WHERE u.id = $1`,
+      [userId]
     );
 
-    if (!profile) {
+    if (profileResult.rows.length === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const profile = profileResult.rows[0];
+
     // Get jobdesk statistics
-    const jobdeskStats = await db.collection('jobdesks').aggregate([
-      { $match: { assignedTo: userId } },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
-    ]).toArray();
+    const statsResult = await query(
+      `SELECT status, COUNT(*) as count
+       FROM jobdesks j
+       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE ja.user_id = $1
+       GROUP BY status`,
+      [userId]
+    );
 
     const stats = {
       total: 0,
@@ -2782,36 +2626,281 @@ async function handleGetUserProfile(request, userId) {
       completed: 0
     };
 
-    jobdeskStats.forEach(stat => {
-      stats[stat._id] = stat.count;
-      stats.total += stat.count;
+    statsResult.rows.forEach(stat => {
+      stats[stat.status] = parseInt(stat.count);
+      stats.total += parseInt(stat.count);
     });
 
-    // Get attachments uploaded by user
-    const attachments = await db.collection('attachments')
-      .find({ userId: userId })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .toArray();
-
-    // Get division info if exists
-    let division = null;
-    if (profile.divisionId) {
-      division = await db.collection('divisions').findOne({ id: profile.divisionId });
-    }
+    // Get recent attachments
+    const attachmentsResult = await query(
+      `SELECT * FROM attachments
+       WHERE uploaded_by = $1
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [userId]
+    );
 
     return NextResponse.json({
       profile: {
-        ...profile,
-        division: division ? { id: division.id, name: division.name } : null
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        role: profile.role,
+        divisionId: profile.division_id,
+        division: profile.division_id ? { id: profile.division_id, name: profile.division_name } : null,
+        isActive: profile.is_active,
+        profilePhoto: profile.profile_photo,
+        twoFactorEnabled: profile.two_factor_enabled,
+        createdAt: profile.created_at,
+        updatedAt: profile.updated_at
       },
       stats,
-      recentAttachments: attachments
+      recentAttachments: attachmentsResult.rows.map(att => ({
+        id: att.id,
+        jobdeskId: att.jobdesk_id,
+        type: att.type,
+        name: att.name,
+        url: att.url,
+        size: att.size,
+        createdAt: att.created_at
+      }))
     });
   } catch (error) {
     console.error('Get user profile error:', error);
     return NextResponse.json(
       { error: 'Failed to get profile' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
+// ROUTER
+// ============================================
+
+export async function GET(request, { params }) {
+  const path = params?.path?.join('/') || '';
+
+  try {
+    // Auth
+    if (path === 'auth/me') return handleGetMe(request);
+    if (path === 'auth/2fa/qrcode') return handleGet2FAQRCode(request);
+
+    // Divisions
+    if (path === 'divisions') return handleGetDivisions(request);
+
+    // Jobdesks
+    if (path === 'jobdesks') return handleGetJobdesks(request);
+
+    // Daily logs
+    if (path === 'daily-logs') return handleGetDailyLogs(request);
+
+    // KPI
+    if (path === 'kpi') return handleGetKPI(request);
+    if (path === 'users') return handleGetUsers(request);
+
+    // Todos
+    if (path === 'todos') return handleGetTodos(request);
+
+    // Chat
+    if (path === 'chat/rooms') return handleGetChatRooms(request);
+    if (path.startsWith('chat/rooms/') && path.endsWith('/messages')) {
+      const roomId = path.split('/')[2];
+      return handleGetMessages(request, roomId);
+    }
+
+    // Notifications
+    if (path === 'notifications') return handleGetNotifications(request);
+
+    // Attachments
+    if (path.startsWith('jobdesks/') && path.endsWith('/attachments')) {
+      const jobdeskId = path.split('/')[1];
+      return handleGetAttachments(request, jobdeskId);
+    }
+
+    // Profile
+    if (path.match(/^profile\/[^/]+$/)) {
+      const userId = path.split('/')[1];
+      return handleGetUserProfile(request, userId);
+    }
+
+    // PWA endpoints
+    if (path === 'pwa/vapid-key') return handleGetVapidKey(request);
+    if (path === 'pwa/offline-bundle') return handleGetOfflineBundle(request);
+
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request, { params }) {
+  const path = params?.path?.join('/') || '';
+
+  try {
+    // Auth
+    if (path === 'auth/register') return handleRegister(request);
+    if (path === 'auth/login') return handleLogin(request);
+    if (path === 'auth/2fa/enable') return handleEnable2FA(request);
+
+    // Users
+    if (path === 'users') return handleCreateUser(request);
+
+    // Divisions
+    if (path === 'divisions') return handleCreateDivision(request);
+
+    // Jobdesks
+    if (path === 'jobdesks') return handleCreateJobdesk(request);
+
+    // Daily logs
+    if (path === 'daily-logs') return handleCreateDailyLog(request);
+
+    // Todos
+    if (path === 'todos') return handleCreateTodo(request);
+    if (path.match(/^todos\/[^/]+\/convert-to-log$/)) {
+      const todoId = path.split('/')[1];
+      return handleConvertTodoToLog(request, todoId);
+    }
+
+    // Chat
+    if (path === 'chat/rooms') return handleCreateChatRoom(request);
+    if (path === 'chat/messages') return handleSendMessage(request);
+
+    // Attachments
+    if (path.startsWith('jobdesks/') && path.endsWith('/attachments')) {
+      const jobdeskId = path.split('/')[1];
+      return handleCreateAttachment(request, jobdeskId);
+    }
+
+    // Profile photo upload
+    if (path === 'profile/photo') {
+      return handleUploadProfilePhoto(request);
+    }
+
+    // PWA endpoints
+    if (path === 'pwa/save-subscription') return handleSavePushSubscription(request);
+    if (path === 'pwa/remove-subscription') return handleRemovePushSubscription(request);
+    if (path === 'pwa/send-notification') return handleSendPushNotification(request);
+
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request, { params }) {
+  const path = params?.path?.join('/') || '';
+
+  try {
+    // Divisions
+    if (path.match(/^divisions\/[^/]+$/)) {
+      const divisionId = path.split('/')[1];
+      return handleUpdateDivision(request, divisionId);
+    }
+
+    // Users
+    if (path.match(/^users\/[^/]+\/password$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUserPassword(request, userId);
+    }
+    if (path.match(/^users\/[^/]+\/status$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUserStatus(request, userId);
+    }
+    if (path.match(/^users\/[^/]+\/division$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUserDivision(request, userId);
+    }
+    if (path.match(/^users\/[^/]+$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateUser(request, userId);
+    }
+
+    // Jobdesks
+    if (path.match(/^jobdesks\/[^/]+\/status$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleUpdateJobdeskStatus(request, jobdeskId);
+    }
+    if (path.match(/^jobdesks\/[^/]+$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleUpdateJobdesk(request, jobdeskId);
+    }
+
+    // Todos
+    if (path.match(/^todos\/[^/]+$/)) {
+      const todoId = path.split('/')[1];
+      return handleUpdateTodo(request, todoId);
+    }
+
+    // Notifications
+    if (path.match(/^notifications\/[^/]+\/read$/)) {
+      const notificationId = path.split('/')[1];
+      return handleMarkNotificationRead(request, notificationId);
+    }
+
+    // Chat Rooms
+    if (path.match(/^chat\/rooms\/[^/]+$/)) {
+      const roomId = path.split('/')[2];
+      return handleUpdateChatRoom(request, roomId);
+    }
+
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request, { params }) {
+  const path = params?.path?.join('/') || '';
+
+  try {
+    // Divisions
+    if (path.match(/^divisions\/[^/]+$/)) {
+      const divisionId = path.split('/')[1];
+      return handleDeleteDivision(request, divisionId);
+    }
+
+    // Users
+    if (path.match(/^users\/[^/]+$/)) {
+      const userId = path.split('/')[1];
+      return handleDeleteUser(request, userId);
+    }
+
+    // Jobdesks
+    if (path.match(/^jobdesks\/[^/]+$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleDeleteJobdesk(request, jobdeskId);
+    }
+
+    // Attachments
+    if (path.match(/^attachments\/[^/]+$/)) {
+      const attachmentId = path.split('/')[1];
+      return handleDeleteAttachment(request, attachmentId);
+    }
+
+    // Todos
+    if (path.match(/^todos\/[^/]+$/)) {
+      const todoId = path.split('/')[1];
+      return handleDeleteTodo(request, todoId);
+    }
+
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (error) {
+    console.error('API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
