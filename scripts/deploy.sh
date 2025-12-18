@@ -193,28 +193,30 @@ log_success "Nginx ready"
 # =====================================================
 log_step "STEP 6/12: Setting Up Application Directory"
 
-mkdir -p ${APP_DIR}
-mkdir -p ${APP_DIR}/public/uploads/jobdesk-attachments
-mkdir -p ${APP_DIR}/public/uploads/profile-photos
-chown -R www-data:www-data ${APP_DIR}/public/uploads
-
-cd ${APP_DIR}
-
 # Clone or pull repository
 if [ -d "${APP_DIR}/.git" ]; then
     log_info "Pulling latest changes from ${BRANCH}..."
+    cd ${APP_DIR}
     git fetch origin
     git reset --hard origin/${BRANCH}
     git clean -fd
 else
-    if [ "$REPO_URL" = "https://github.com/YOUR_USERNAME/kolaborasi.git" ]; then
-        log_error "Please update REPO_URL in this script!"
-        log_info "Edit line 24: REPO_URL=\"https://github.com/YOUR_USERNAME/kolaborasi.git\""
-        exit 1
+    # Remove directory if exists but not a git repo
+    if [ -d "${APP_DIR}" ]; then
+        log_info "Removing existing non-git directory..."
+        rm -rf ${APP_DIR}
     fi
+
     log_info "Cloning repository..."
-    git clone -b ${BRANCH} ${REPO_URL} .
+    git clone -b ${BRANCH} ${REPO_URL} ${APP_DIR}
+    cd ${APP_DIR}
 fi
+
+# Create upload directories
+mkdir -p ${APP_DIR}/public/uploads/jobdesk-attachments
+mkdir -p ${APP_DIR}/public/uploads/profile-photos
+chown -R www-data:www-data ${APP_DIR}/public/uploads
+
 log_success "Repository ready"
 
 # =====================================================
