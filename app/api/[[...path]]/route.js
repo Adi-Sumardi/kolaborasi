@@ -6,7 +6,7 @@ import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { sendNotification } from '@/lib/socket-server';
-import { sanitizeUserInput, sanitizeEmail, sanitizeString, validators } from '@/lib/sanitize';
+import { sanitizeUserInput, sanitizeEmail, sanitizeString, validators, validatePasswordStrength } from '@/lib/sanitize';
 import { rateLimitMiddleware, getClientIP } from '@/lib/rateLimit';
 import { getVapidPublicKey, sendPushNotification, sendBulkPushNotifications } from '@/lib/push-notifications';
 import fs from 'fs/promises';
@@ -122,10 +122,23 @@ async function handleRegister(request) {
     email = sanitizeEmail(email);
     name = sanitizeString(name);
     role = sanitizeString(role);
-    
-    if (!email || !password || !name || !role || !validators.email(email) || !validators.password(password)) {
+
+    // Basic field validation
+    if (!email || !password || !name || !role || !validators.email(email)) {
       return NextResponse.json(
         { error: 'Missing or invalid required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Strong password validation with detailed feedback
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.isValid) {
+      return NextResponse.json(
+        {
+          error: 'Password tidak memenuhi kriteria keamanan',
+          details: passwordValidation.errors
+        },
         { status: 400 }
       );
     }
@@ -320,9 +333,11 @@ async function handleGet2FAQRCode(request) {
 
     const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
 
+    // Only return QR code, not the raw secret (security best practice)
+    // User can scan QR code with authenticator app
     return NextResponse.json({
-      qrCode: qrCodeUrl,
-      secret: userDoc.twoFactorSecret
+      qrCode: qrCodeUrl
+      // Note: Secret is intentionally not exposed to prevent backup/export
     });
   } catch (error) {
     console.error('Get 2FA QR Code error:', error);
@@ -594,7 +609,7 @@ async function handleDeleteDivision(request, divisionId) {
 // JOBDESK ENDPOINTS
 // ============================================
 
-// Get jobdesks
+// Get jobdesks with pagination
 async function handleGetJobdesks(request) {
   try {
     const user = verifyToken(request);
@@ -602,22 +617,42 @@ async function handleGetJobdesks(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Parse pagination parameters
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
+    const skip = (page - 1) * limit;
+
     const client = await clientPromise;
     const db = client.db();
 
     let query = {};
-    
+
     // Karyawan only see their own jobdesks
     if (user.role === 'karyawan') {
       query = { assignedTo: { $in: [user.userId] } };
     }
 
+    // Get total count for pagination metadata
+    const totalCount = await db.collection('jobdesks').countDocuments(query);
+
     const jobdesks = await db.collection('jobdesks')
       .find(query)
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .toArray();
 
-    return NextResponse.json({ jobdesks });
+    return NextResponse.json({
+      jobdesks,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasMore: skip + jobdesks.length < totalCount
+      }
+    });
   } catch (error) {
     console.error('Get jobdesks error:', error);
     return NextResponse.json(

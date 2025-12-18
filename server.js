@@ -6,9 +6,42 @@ const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
 const compression = require('compression');
 
+// ===========================================
+// ENVIRONMENT VALIDATION
+// ===========================================
+const requiredEnvVars = ['MONGO_URL', 'JWT_SECRET'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ FATAL ERROR: Missing required environment variables:');
+  missingEnvVars.forEach(envVar => console.error(`   - ${envVar}`));
+  console.error('\nPlease set these environment variables before starting the server.');
+  console.error('See .env.example for reference.');
+  process.exit(1);
+}
+
+// Validate JWT_SECRET strength in production
+if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET.length < 32) {
+  console.error('❌ FATAL ERROR: JWT_SECRET must be at least 32 characters in production');
+  process.exit(1);
+}
+
+// ===========================================
+// SERVER CONFIGURATION
+// ===========================================
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = '0.0.0.0';
-const port = 3000;
+const hostname = process.env.HOST || '0.0.0.0';
+const port = parseInt(process.env.PORT, 10) || 3000;
+
+// Log configuration on startup
+console.log('===========================================');
+console.log('🚀 Starting Workspace Collaboration Server');
+console.log('===========================================');
+console.log(`Environment: ${dev ? 'DEVELOPMENT' : 'PRODUCTION'}`);
+console.log(`Host: ${hostname}`);
+console.log(`Port: ${port}`);
+console.log(`Base URL: ${process.env.NEXT_PUBLIC_BASE_URL || 'Not set'}`);
+console.log('===========================================\n');
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();

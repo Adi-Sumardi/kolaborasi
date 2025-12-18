@@ -46,10 +46,24 @@ export default function ChatPage({ user, socket }) {
       // Join room
       socket.emit('join_room', selectedRoom.id);
 
-      // Listen for new messages
+      // Listen for new messages with deduplication
       const handleNewMessage = (message) => {
         if (message.roomId === selectedRoom.id) {
-          setMessages(prev => [...prev, message]);
+          setMessages(prev => {
+            // Prevent duplicate messages by checking if message already exists
+            // Check by id if available, otherwise by content+userId+timestamp
+            const isDuplicate = prev.some(m =>
+              (message.id && m.id === message.id) ||
+              (m.content === message.content &&
+               m.userId === message.userId &&
+               Math.abs(new Date(m.createdAt) - new Date(message.createdAt)) < 2000)
+            );
+
+            if (isDuplicate) {
+              return prev;
+            }
+            return [...prev, message];
+          });
         }
       };
 
@@ -176,27 +190,34 @@ export default function ChatPage({ user, socket }) {
 
     if (!newMessage.trim() || !selectedRoom) return;
 
+    const messageContent = newMessage.trim();
+    setNewMessage(''); // Clear input immediately for better UX
+
     try {
       const message = {
         roomId: selectedRoom.id,
-        content: newMessage
+        content: messageContent
       };
 
-      await chatAPI.sendMessage(message);
-      
+      // Save message to database via API
+      const response = await chatAPI.sendMessage(message);
+
+      // Broadcast to other users via socket (server will handle deduplication)
+      // The sender will receive the message back via socket 'new_message' event
       if (socket) {
         socket.emit('send_message', {
           ...message,
+          id: response.data?.id, // Use the ID from API response if available
           userId: user.id,
           userEmail: user.email,
-          createdAt: new Date()
+          createdAt: new Date().toISOString()
         });
       }
-
-      setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);
       toast.error('Gagal mengirim pesan');
+      // Restore message on error
+      setNewMessage(messageContent);
     }
   };
 
