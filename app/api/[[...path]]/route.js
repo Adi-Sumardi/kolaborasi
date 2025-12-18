@@ -1229,6 +1229,7 @@ async function handleGetUsers(request) {
     const result = await query(
       `SELECT id, email, name, role, division_id, is_active, profile_photo, created_at, updated_at
        FROM users
+       WHERE is_active = TRUE
        ORDER BY name ASC`
     );
 
