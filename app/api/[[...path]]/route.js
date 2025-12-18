@@ -2193,15 +2193,24 @@ async function handleDeleteUser(request, userId) {
       return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 });
     }
 
-    // Hard delete - permanently remove user from database
-    const result = await query(
-      'DELETE FROM users WHERE id = $1 RETURNING id',
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
+    // Check if user exists
+    const existingUser = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (existingUser.rows.length === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    // Hard delete with cascade handling
+    // First, set NULL for tables that reference this user without ON DELETE CASCADE
+    await query('UPDATE divisions SET created_by = NULL WHERE created_by = $1', [userId]);
+    await query('UPDATE jobdesks SET created_by = NULL WHERE created_by = $1', [userId]);
+    await query('UPDATE chat_rooms SET created_by = NULL WHERE created_by = $1', [userId]);
+    await query('UPDATE attachments SET uploaded_by = NULL WHERE uploaded_by = $1', [userId]);
+
+    // Tables with ON DELETE CASCADE will be handled automatically:
+    // - jobdesk_assignments, daily_logs, todos, chat_room_members, notifications
+
+    // Now delete the user
+    await query('DELETE FROM users WHERE id = $1', [userId]);
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {
