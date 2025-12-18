@@ -3,6 +3,7 @@
  * Creates all required tables for Workspace Collaboration app
  */
 
+require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({

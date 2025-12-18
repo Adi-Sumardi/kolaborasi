@@ -3,6 +3,7 @@
  * Creates initial data for Workspace Collaboration app
  */
 
+require('dotenv').config();
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const speakeasy = require('speakeasy');
