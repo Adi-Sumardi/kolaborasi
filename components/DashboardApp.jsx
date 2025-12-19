@@ -2,18 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { 
-  Bell, 
-  LogOut, 
-  Home, 
-  ClipboardList, 
-  BarChart3, 
-  Users, 
-  MessageSquare, 
-  CheckSquare, 
+import {
+  Bell,
+  LogOut,
+  Home,
+  ClipboardList,
+  BarChart3,
+  Users,
+  MessageSquare,
+  CheckSquare,
   Settings,
   Menu,
-  X
+  X,
+  AlertTriangle,
+  FileWarning,
+  Mail,
+  FileText,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { 
   getUser, 
@@ -36,17 +42,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // Import page components
 import DashboardHome from './pages/DashboardHome';
 import KaryawanDashboard from './pages/KaryawanDashboard';
 import JobdeskPage from './pages/JobdeskPage';
-import KPIPage from './pages/KPIPage';
 import DivisionPage from './pages/DivisionPage';
 import ChatPage from './pages/ChatPage';
 import TodoPageKanban from './pages/TodoPageKanban';
 import SettingsPage from './pages/SettingsPage';
 import UserManagementPage from './pages/UserManagementPage';
+import EmployeeWarningPage from './pages/EmployeeWarningPage';
+import KPIPageV2 from './pages/KPIPageV2';
+import WarningLettersPage from './pages/WarningLettersPage';
+import SP2DKPage from './pages/SP2DKPage';
 
 export default function DashboardApp({ setIsLoggedIn }) {
   const [currentUser, setCurrentUser] = useState(null);
@@ -57,6 +67,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
   const [showJobdeskModal, setShowJobdeskModal] = useState(false);
   const [checkingJobdesks, setCheckingJobdesks] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [suratMenuOpen, setSuratMenuOpen] = useState(false);
 
   useEffect(() => {
     const user = getUser();
@@ -126,15 +137,29 @@ export default function DashboardApp({ setIsLoggedIn }) {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const menuItems = [
-    { id: 'home', label: 'Dashboard', icon: Home, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
-    { id: 'jobdesk', label: 'Jobdesk', icon: ClipboardList, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
-    { id: 'kpi', label: 'KPI', icon: BarChart3, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
-    { id: 'users', label: 'User', icon: Users, roles: ['super_admin', 'pengurus'] },
-    { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'pengurus', 'sdm'] },
-    { id: 'chat', label: 'Chat', icon: MessageSquare, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
-    { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
-    { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'pengurus', 'sdm', 'karyawan'] },
+    { id: 'home', label: 'Dashboard', icon: Home, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
+    { id: 'jobdesk', label: 'Jobdesk', icon: ClipboardList, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
+    { id: 'kpi', label: 'KPI', icon: BarChart3, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
+    {
+      id: 'surat',
+      label: 'Surat',
+      icon: FileText,
+      roles: ['super_admin', 'owner', 'pengurus', 'sdm'],
+      submenu: [
+        { id: 'warning-letters', label: 'Surat Teguran', icon: FileWarning, roles: ['super_admin', 'owner', 'pengurus'] },
+        { id: 'sp2dk', label: 'SP2DK', icon: Mail, roles: ['super_admin', 'owner', 'pengurus'] },
+        { id: 'employee-warnings', label: 'SP Karyawan', icon: AlertTriangle, roles: ['super_admin', 'owner', 'sdm'] },
+      ]
+    },
+    { id: 'users', label: 'User', icon: Users, roles: ['super_admin', 'owner', 'pengurus'] },
+    { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
+    { id: 'chat', label: 'Chat', icon: MessageSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
+    { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
+    { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
   ];
+
+  // Check if current page is in surat submenu
+  const isInSuratMenu = ['warning-letters', 'sp2dk', 'employee-warnings'].includes(currentPage);
 
   const filteredMenuItems = currentUser 
     ? menuItems.filter(item => item.roles.includes(currentUser.role))
@@ -144,13 +169,19 @@ export default function DashboardApp({ setIsLoggedIn }) {
     switch (currentPage) {
       case 'home':
         // Show KaryawanDashboard for karyawan role, DashboardHome for others
-        return currentUser.role === 'karyawan' 
+        return currentUser.role === 'karyawan'
           ? <KaryawanDashboard user={currentUser} />
           : <DashboardHome user={currentUser} />;
       case 'jobdesk':
         return <JobdeskPage user={currentUser} />;
       case 'kpi':
-        return <KPIPage user={currentUser} />;
+        return <KPIPageV2 user={currentUser} />;
+      case 'warning-letters':
+        return <WarningLettersPage user={currentUser} />;
+      case 'sp2dk':
+        return <SP2DKPage user={currentUser} />;
+      case 'employee-warnings':
+        return <EmployeeWarningPage user={currentUser} />;
       case 'users':
         return <UserManagementPage user={currentUser} />;
       case 'divisions':
@@ -162,7 +193,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
       case 'settings':
         return <SettingsPage user={currentUser} />;
       default:
-        return currentUser.role === 'karyawan' 
+        return currentUser.role === 'karyawan'
           ? <KaryawanDashboard user={currentUser} />
           : <DashboardHome user={currentUser} />;
     }
@@ -171,6 +202,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'super_admin': return 'bg-purple-100 text-purple-800';
+      case 'owner': return 'bg-amber-100 text-amber-800';
       case 'pengurus': return 'bg-blue-100 text-blue-800';
       case 'sdm': return 'bg-green-100 text-green-800';
       case 'karyawan': return 'bg-gray-100 text-gray-800';
@@ -181,6 +213,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
   const getRoleLabel = (role) => {
     switch (role) {
       case 'super_admin': return 'Super Admin';
+      case 'owner': return 'Owner';
       case 'pengurus': return 'Pengurus';
       case 'sdm': return 'SDM';
       case 'karyawan': return 'Karyawan';
@@ -229,6 +262,44 @@ export default function DashboardApp({ setIsLoggedIn }) {
             <nav className="hidden md:flex items-center space-x-1">
               {filteredMenuItems.map(item => {
                 const Icon = item.icon;
+
+                // Handle submenu items (like Surat)
+                if (item.submenu) {
+                  const filteredSubmenu = item.submenu.filter(sub => sub.roles.includes(currentUser.role));
+                  if (filteredSubmenu.length === 0) return null;
+
+                  return (
+                    <DropdownMenu key={item.id}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant={isInSuratMenu ? 'default' : 'ghost'}
+                          size="sm"
+                          className="flex items-center space-x-2"
+                        >
+                          <Icon className="w-4 h-4" />
+                          <span className="hidden lg:inline">{item.label}</span>
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {filteredSubmenu.map(subItem => {
+                          const SubIcon = subItem.icon;
+                          return (
+                            <DropdownMenuItem
+                              key={subItem.id}
+                              onClick={() => setCurrentPage(subItem.id)}
+                              className={currentPage === subItem.id ? 'bg-blue-50 text-blue-600' : ''}
+                            >
+                              <SubIcon className="w-4 h-4 mr-2" />
+                              {subItem.label}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  );
+                }
+
                 return (
                   <Button
                     key={item.id}
@@ -346,6 +417,51 @@ export default function DashboardApp({ setIsLoggedIn }) {
           <nav className="px-4 py-2 space-y-1">
             {filteredMenuItems.map(item => {
               const Icon = item.icon;
+
+              // Handle submenu items (like Surat)
+              if (item.submenu) {
+                const filteredSubmenu = item.submenu.filter(sub => sub.roles.includes(currentUser.role));
+                if (filteredSubmenu.length === 0) return null;
+
+                return (
+                  <Collapsible key={item.id} open={suratMenuOpen} onOpenChange={setSuratMenuOpen}>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant={isInSuratMenu ? 'default' : 'ghost'}
+                        size="sm"
+                        className="w-full justify-between flex items-center"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Icon className="w-4 h-4" />
+                          <span>{item.label}</span>
+                        </div>
+                        {suratMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pl-6 space-y-1 mt-1">
+                      {filteredSubmenu.map(subItem => {
+                        const SubIcon = subItem.icon;
+                        return (
+                          <Button
+                            key={subItem.id}
+                            variant={currentPage === subItem.id ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => {
+                              setCurrentPage(subItem.id);
+                              setMobileMenuOpen(false);
+                            }}
+                            className="w-full justify-start flex items-center space-x-2"
+                          >
+                            <SubIcon className="w-4 h-4" />
+                            <span>{subItem.label}</span>
+                          </Button>
+                        );
+                      })}
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              }
+
               return (
                 <Button
                   key={item.id}
@@ -395,6 +511,43 @@ export default function DashboardApp({ setIsLoggedIn }) {
         <div className="flex justify-around">
           {filteredMenuItems.slice(0, 5).map(item => {
             const Icon = item.icon;
+
+            // Handle submenu items (like Surat) - show dropdown on mobile bottom nav
+            if (item.submenu) {
+              const filteredSubmenu = item.submenu.filter(sub => sub.roles.includes(currentUser.role));
+              if (filteredSubmenu.length === 0) return null;
+
+              return (
+                <DropdownMenu key={item.id}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant={isInSuratMenu ? 'default' : 'ghost'}
+                      size="sm"
+                      className="flex flex-col items-center space-y-1 h-auto py-2"
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="text-xs">{item.label}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" side="top">
+                    {filteredSubmenu.map(subItem => {
+                      const SubIcon = subItem.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={subItem.id}
+                          onClick={() => setCurrentPage(subItem.id)}
+                          className={currentPage === subItem.id ? 'bg-blue-50 text-blue-600' : ''}
+                        >
+                          <SubIcon className="w-4 h-4 mr-2" />
+                          {subItem.label}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            }
+
             return (
               <Button
                 key={item.id}

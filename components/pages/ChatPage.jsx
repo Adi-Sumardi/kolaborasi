@@ -34,7 +34,7 @@ export default function ChatPage({ user, socket }) {
 
   const loadUsers = async () => {
     try {
-      const res = await userAPI.getAll();
+      const res = await userAPI.getList();
       setUsers(res.users || []);
     } catch (error) {
       console.error('Failed to load users:', error);

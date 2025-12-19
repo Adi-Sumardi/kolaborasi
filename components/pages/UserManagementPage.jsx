@@ -195,6 +195,7 @@ export default function UserManagementPage({ user }) {
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'super_admin': return 'bg-purple-100 text-purple-800';
+      case 'owner': return 'bg-amber-100 text-amber-800';
       case 'pengurus': return 'bg-blue-100 text-blue-800';
       case 'sdm': return 'bg-green-100 text-green-800';
       case 'karyawan': return 'bg-gray-100 text-gray-800';
@@ -205,6 +206,7 @@ export default function UserManagementPage({ user }) {
   const getRoleLabel = (role) => {
     switch (role) {
       case 'super_admin': return 'Super Admin';
+      case 'owner': return 'Owner';
       case 'pengurus': return 'Pengurus';
       case 'sdm': return 'SDM';
       case 'karyawan': return 'Karyawan';
@@ -287,6 +289,9 @@ export default function UserManagementPage({ user }) {
                     <SelectContent>
                       {user.role === 'super_admin' && (
                         <SelectItem value="super_admin">Super Admin</SelectItem>
+                      )}
+                      {(user.role === 'super_admin' || user.role === 'owner') && (
+                        <SelectItem value="owner">Owner</SelectItem>
                       )}
                       <SelectItem value="pengurus">Pengurus</SelectItem>
                       <SelectItem value="sdm">SDM</SelectItem>
@@ -499,6 +504,9 @@ export default function UserManagementPage({ user }) {
                 <SelectContent>
                   {user.role === 'super_admin' && (
                     <SelectItem value="super_admin">Super Admin</SelectItem>
+                  )}
+                  {(user.role === 'super_admin' || user.role === 'owner') && (
+                    <SelectItem value="owner">Owner</SelectItem>
                   )}
                   <SelectItem value="pengurus">Pengurus</SelectItem>
                   <SelectItem value="sdm">SDM</SelectItem>

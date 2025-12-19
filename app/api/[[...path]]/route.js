@@ -41,7 +41,7 @@ async function handleCreateUser(request) {
   try {
     // Auth check - only super_admin and pengurus can create users
     const authUser = verifyToken(request);
-    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'pengurus'])) {
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -481,7 +481,7 @@ async function handleGetDivisions(request) {
 async function handleCreateDivision(request) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -528,7 +528,7 @@ async function handleCreateDivision(request) {
 async function handleUpdateDivision(request, divisionId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -561,7 +561,7 @@ async function handleUpdateDivision(request, divisionId) {
 async function handleDeleteDivision(request, divisionId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -615,13 +615,16 @@ async function handleGetJobdesks(request) {
       `;
       dataQuery = `
         SELECT j.*,
-               ARRAY_AGG(ja.user_id) as assigned_to
+               c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
+               ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
+               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count
         FROM jobdesks j
+        LEFT JOIN clients c ON c.id = j.client_id
         JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
         WHERE j.id IN (
           SELECT jobdesk_id FROM jobdesk_assignments WHERE user_id = $1
         )
-        GROUP BY j.id
+        GROUP BY j.id, c.id
         ORDER BY j.created_at DESC
         LIMIT $2 OFFSET $3
       `;
@@ -630,10 +633,13 @@ async function handleGetJobdesks(request) {
       countQuery = 'SELECT COUNT(*) as total FROM jobdesks';
       dataQuery = `
         SELECT j.*,
-               ARRAY_AGG(ja.user_id) as assigned_to
+               c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
+               ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
+               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count
         FROM jobdesks j
+        LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
-        GROUP BY j.id
+        GROUP BY j.id, c.id
         ORDER BY j.created_at DESC
         LIMIT $1 OFFSET $2
       `;
@@ -655,6 +661,15 @@ async function handleGetJobdesks(request) {
       submissionLink: j.submission_link,
       createdBy: j.created_by,
       assignedTo: j.assigned_to ? j.assigned_to.filter(id => id !== null) : [],
+      clientId: j.client_id,
+      clientName: j.client_name,
+      clientNpwp: j.client_npwp,
+      isPkp: j.is_pkp,
+      isUmkm: j.is_umkm,
+      periodMonth: j.period_month,
+      periodYear: j.period_year,
+      taskTypes: j.task_types || [],
+      submissionCount: parseInt(j.submission_count) || 0,
       createdAt: j.created_at,
       updatedAt: j.updated_at
     }));
@@ -687,7 +702,11 @@ async function handleCreateJobdesk(request) {
     }
 
     const body = await request.json();
-    const { title, description, assignedTo, dueDate, priority, submissionLink } = body;
+    const {
+      title, description, assignedTo, dueDate, priority, submissionLink,
+      // New fields for client integration
+      clientId, newClient, periodMonth, periodYear, taskTypes
+    } = body;
 
     if (!title || !assignedTo || assignedTo.length === 0) {
       return NextResponse.json(
@@ -698,12 +717,46 @@ async function handleCreateJobdesk(request) {
 
     // Use transaction to create jobdesk and assignments
     const jobdesk = await transaction(async (client) => {
-      // Create jobdesk
+      let finalClientId = clientId || null;
+
+      // Create new client if provided
+      if (newClient && newClient.name) {
+        const clientResult = await client.query(
+          `INSERT INTO clients (name, npwp, address, contact_person, phone, email, is_pkp, is_umkm, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id`,
+          [
+            sanitizeString(newClient.name),
+            sanitizeString(newClient.npwp || ''),
+            sanitizeString(newClient.address || ''),
+            sanitizeString(newClient.contactPerson || ''),
+            sanitizeString(newClient.phone || ''),
+            sanitizeString(newClient.email || ''),
+            newClient.isPkp || false,
+            newClient.isUmkm || false,
+            user.userId
+          ]
+        );
+        finalClientId = clientResult.rows[0].id;
+      }
+
+      // Create jobdesk with new fields
       const jobdeskResult = await client.query(
-        `INSERT INTO jobdesks (title, description, status, priority, due_date, submission_link, created_by)
-         VALUES ($1, $2, 'pending', $3, $4, $5, $6)
+        `INSERT INTO jobdesks (title, description, status, priority, due_date, submission_link, created_by, client_id, period_month, period_year, task_types)
+         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
-        [title, description || '', priority || 'medium', dueDate ? new Date(dueDate) : null, submissionLink || null, user.userId]
+        [
+          title,
+          description || '',
+          priority || 'medium',
+          dueDate ? new Date(dueDate) : null,
+          submissionLink || null,
+          user.userId,
+          finalClientId,
+          periodMonth || null,
+          periodYear || null,
+          taskTypes && taskTypes.length > 0 ? taskTypes : null
+        ]
       );
 
       const newJobdesk = jobdeskResult.rows[0];
@@ -740,7 +793,8 @@ async function handleCreateJobdesk(request) {
 
       return {
         ...newJobdesk,
-        assignedTo
+        assignedTo,
+        clientId: finalClientId
       };
     });
 
@@ -756,6 +810,10 @@ async function handleCreateJobdesk(request) {
         submissionLink: jobdesk.submission_link,
         assignedTo: jobdesk.assignedTo,
         createdBy: jobdesk.created_by,
+        clientId: jobdesk.clientId,
+        periodMonth: jobdesk.period_month,
+        periodYear: jobdesk.period_year,
+        taskTypes: jobdesk.task_types || [],
         createdAt: jobdesk.created_at
       }
     });
@@ -844,7 +902,7 @@ async function handleUpdateJobdesk(request, jobdeskId) {
     const currentAssignees = existingJobdesk.assigned_to.filter(id => id !== null);
 
     // Authorization check
-    const isSuperAdminOrPengurus = hasPermission(user.role, ['super_admin', 'pengurus']);
+    const isSuperAdminOrPengurus = hasPermission(user.role, ['super_admin', 'owner', 'pengurus']);
     const isAssignedKaryawan = user.role === 'karyawan' && currentAssignees.includes(user.userId);
 
     if (!isSuperAdminOrPengurus && !isAssignedKaryawan) {
@@ -974,7 +1032,7 @@ async function handleUpdateJobdesk(request, jobdeskId) {
 async function handleDeleteJobdesk(request, jobdeskId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -1010,6 +1068,490 @@ async function handleDeleteJobdesk(request, jobdeskId) {
     console.error('Delete jobdesk error:', error);
     return NextResponse.json(
       { error: 'Failed to delete jobdesk' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
+// JOBDESK SUBMISSIONS ENDPOINTS
+// ============================================
+
+// Get submissions for a jobdesk
+async function handleGetJobdeskSubmissions(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check access - user must be assigned to jobdesk or be admin
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm']);
+    if (!isAdmin) {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM jobdesk_assignments WHERE jobdesk_id = $1 AND user_id = $2',
+        [jobdeskId, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      }
+    }
+
+    const result = await query(`
+      SELECT js.*, u.name as submitted_by_name
+      FROM jobdesk_submissions js
+      LEFT JOIN users u ON u.id = js.submitted_by
+      WHERE js.jobdesk_id = $1
+      ORDER BY js.task_type ASC NULLS LAST, js.created_at DESC
+    `, [jobdeskId]);
+
+    const submissions = result.rows.map(s => ({
+      id: s.id,
+      jobdeskId: s.jobdesk_id,
+      submittedBy: s.submitted_by,
+      submittedByName: s.submitted_by_name,
+      submissionType: s.submission_type,
+      title: s.title,
+      content: s.content,
+      fileName: s.file_name,
+      fileSize: s.file_size,
+      mimeType: s.mime_type,
+      taskType: s.task_type,
+      notes: s.notes,
+      deadline: s.deadline,
+      isLate: s.is_late,
+      lateDays: s.late_days,
+      createdAt: s.created_at,
+      updatedAt: s.updated_at
+    }));
+
+    return NextResponse.json({ submissions });
+  } catch (error) {
+    console.error('Get submissions error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get submissions' },
+      { status: 500 }
+    );
+  }
+}
+
+// Create submission for a jobdesk
+async function handleCreateJobdeskSubmission(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is assigned to this jobdesk (or admin)
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus']);
+    if (!isAdmin && user.role === 'karyawan') {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM jobdesk_assignments WHERE jobdesk_id = $1 AND user_id = $2',
+        [jobdeskId, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'You are not assigned to this jobdesk' }, { status: 403 });
+      }
+    }
+
+    const body = await request.json();
+    const { submissionType, title, content, fileName, fileSize, mimeType, taskType, notes } = body;
+
+    if (!submissionType || !['link', 'file', 'note'].includes(submissionType)) {
+      return NextResponse.json(
+        { error: 'Invalid submission type. Must be link, file, or note.' },
+        { status: 400 }
+      );
+    }
+
+    // Get jobdesk period info for deadline calculation
+    const jobdeskResult = await query(
+      'SELECT period_month, period_year FROM jobdesks WHERE id = $1',
+      [jobdeskId]
+    );
+
+    let deadline = null;
+    let isLate = false;
+    let lateDays = 0;
+
+    // Calculate deadline if task type and period exist
+    if (taskType && jobdeskResult.rows.length > 0) {
+      const { period_month, period_year } = jobdeskResult.rows[0];
+
+      if (period_month && period_year) {
+        // Import deadline calculation logic inline
+        // PPh types: deadline tgl 20 bulan berikutnya
+        // PPN: deadline tgl 28 + 7 hari bulan berikutnya
+        let nextMonth = period_month + 1;
+        let nextYear = period_year;
+        if (nextMonth > 12) {
+          nextMonth = 1;
+          nextYear++;
+        }
+
+        if (taskType === 'ppn') {
+          // PPN: Tanggal 28 + 7 hari di bulan berikutnya
+          const startDate = new Date(nextYear, nextMonth - 1, 28);
+          startDate.setDate(startDate.getDate() + 7);
+          deadline = startDate;
+        } else {
+          // PPh types: Tanggal 20 bulan berikutnya
+          deadline = new Date(nextYear, nextMonth - 1, 20);
+        }
+
+        // Check if submission is late
+        const now = new Date();
+        const deadlineEnd = new Date(deadline);
+        deadlineEnd.setHours(23, 59, 59, 999);
+
+        if (now > deadlineEnd) {
+          isLate = true;
+          const diffTime = now.getTime() - deadlineEnd.getTime();
+          lateDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+      }
+    }
+
+    const result = await query(`
+      INSERT INTO jobdesk_submissions (jobdesk_id, submitted_by, submission_type, title, content, file_name, file_size, mime_type, task_type, notes, deadline, is_late, late_days)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `, [
+      jobdeskId,
+      user.userId,
+      submissionType,
+      title || null,
+      content || null,
+      fileName || null,
+      fileSize || null,
+      mimeType || null,
+      taskType || null,
+      notes || null,
+      deadline,
+      isLate,
+      lateDays
+    ]);
+
+    const s = result.rows[0];
+    return NextResponse.json({
+      message: 'Submission created successfully',
+      submission: {
+        id: s.id,
+        jobdeskId: s.jobdesk_id,
+        submittedBy: s.submitted_by,
+        submissionType: s.submission_type,
+        title: s.title,
+        content: s.content,
+        fileName: s.file_name,
+        fileSize: s.file_size,
+        mimeType: s.mime_type,
+        taskType: s.task_type,
+        notes: s.notes,
+        deadline: s.deadline,
+        isLate: s.is_late,
+        lateDays: s.late_days,
+        createdAt: s.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Create submission error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create submission' },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete submission
+async function handleDeleteJobdeskSubmission(request, submissionId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if submission exists and user owns it (or is admin)
+    const submissionResult = await query(
+      'SELECT * FROM jobdesk_submissions WHERE id = $1',
+      [submissionId]
+    );
+
+    if (submissionResult.rows.length === 0) {
+      return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
+    }
+
+    const submission = submissionResult.rows[0];
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus']);
+    const isOwner = submission.submitted_by === user.userId;
+
+    if (!isAdmin && !isOwner) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // If it's a file, delete the file from filesystem
+    if (submission.submission_type === 'file' && submission.content) {
+      try {
+        const filePath = path.join(process.cwd(), 'public', submission.content);
+        await fs.unlink(filePath);
+      } catch (err) {
+        console.error('Failed to delete submission file:', err);
+      }
+    }
+
+    await query('DELETE FROM jobdesk_submissions WHERE id = $1', [submissionId]);
+
+    return NextResponse.json({
+      message: 'Submission deleted successfully',
+      deletedSubmissionId: submissionId
+    });
+  } catch (error) {
+    console.error('Delete submission error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete submission' },
+      { status: 500 }
+    );
+  }
+}
+
+// Upload file submission for a jobdesk
+async function handleUploadSubmissionFile(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is assigned to this jobdesk (or admin)
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus']);
+    if (!isAdmin && user.role === 'karyawan') {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM jobdesk_assignments WHERE jobdesk_id = $1 AND user_id = $2',
+        [jobdeskId, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'You are not assigned to this jobdesk' }, { status: 403 });
+      }
+    }
+
+    const formData = await request.formData();
+    const file = formData.get('file');
+    const taskType = formData.get('taskType') || null;
+    const notes = formData.get('notes') || null;
+
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // Create uploads directory if not exists
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'submissions');
+    await fs.mkdir(uploadsDir, { recursive: true });
+
+    // Generate unique filename
+    const fileExt = path.extname(file.name);
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}${fileExt}`;
+    const filePath = path.join(uploadsDir, fileName);
+    const publicPath = `/uploads/submissions/${fileName}`;
+
+    // Write file to disk
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    await fs.writeFile(filePath, buffer);
+
+    // Get task type label for title
+    const taskTypeLabels = {
+      'pph_21': 'PPh 21',
+      'pph_unifikasi': 'PPh Unifikasi',
+      'pph_25': 'PPh 25 Angsuran',
+      'ppn': 'PPN',
+      'pph_badan': 'PPh Badan',
+      'pph_05': 'PPh 0,5%'
+    };
+    const title = taskType ? taskTypeLabels[taskType] || taskType : 'Upload File';
+
+    // Calculate deadline based on task type and jobdesk period
+    let deadline = null;
+    let isLate = false;
+    let lateDays = 0;
+
+    if (taskType) {
+      // Get jobdesk period
+      const jobdeskResult = await query(
+        'SELECT period_month, period_year FROM jobdesks WHERE id = $1',
+        [jobdeskId]
+      );
+
+      if (jobdeskResult.rows.length > 0 && jobdeskResult.rows[0].period_month && jobdeskResult.rows[0].period_year) {
+        const { period_month, period_year } = jobdeskResult.rows[0];
+
+        // Calculate next month
+        let nextMonth = period_month + 1;
+        let nextYear = period_year;
+        if (nextMonth > 12) {
+          nextMonth = 1;
+          nextYear++;
+        }
+
+        // Calculate deadline based on task type
+        if (taskType === 'ppn') {
+          // PPN: Tanggal 28 + 7 hari di bulan berikutnya
+          const startDate = new Date(nextYear, nextMonth - 1, 28);
+          startDate.setDate(startDate.getDate() + 7);
+          deadline = startDate;
+        } else {
+          // PPh types: Tanggal 20 bulan berikutnya
+          deadline = new Date(nextYear, nextMonth - 1, 20);
+        }
+
+        // Check if submission is late
+        const now = new Date();
+        const deadlineEndOfDay = new Date(deadline);
+        deadlineEndOfDay.setHours(23, 59, 59, 999);
+
+        if (now > deadlineEndOfDay) {
+          isLate = true;
+          const diffTime = now.getTime() - deadlineEndOfDay.getTime();
+          lateDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+      }
+    }
+
+    // Insert into database
+    const result = await query(`
+      INSERT INTO jobdesk_submissions (jobdesk_id, submitted_by, submission_type, title, content, file_name, file_size, mime_type, task_type, notes, deadline, is_late, late_days)
+      VALUES ($1, $2, 'file', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `, [
+      jobdeskId,
+      user.userId,
+      title,
+      publicPath,
+      file.name,
+      file.size,
+      file.type,
+      taskType,
+      notes,
+      deadline,
+      isLate,
+      lateDays
+    ]);
+
+    const s = result.rows[0];
+    return NextResponse.json({
+      message: 'File uploaded successfully',
+      submission: {
+        id: s.id,
+        jobdeskId: s.jobdesk_id,
+        submittedBy: s.submitted_by,
+        submissionType: s.submission_type,
+        title: s.title,
+        content: s.content,
+        fileName: s.file_name,
+        fileSize: s.file_size,
+        mimeType: s.mime_type,
+        taskType: s.task_type,
+        notes: s.notes,
+        deadline: s.deadline,
+        isLate: s.is_late,
+        lateDays: s.late_days,
+        createdAt: s.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Upload submission file error:', error);
+    return NextResponse.json(
+      { error: 'Failed to upload file' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get single jobdesk with full details (including submissions count)
+async function handleGetJobdeskDetail(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check access
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm']);
+    if (!isAdmin) {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM jobdesk_assignments WHERE jobdesk_id = $1 AND user_id = $2',
+        [jobdeskId, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      }
+    }
+
+    const result = await query(`
+      SELECT j.*,
+             c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
+             c.address as client_address, c.contact_person, c.phone as client_phone, c.email as client_email,
+             ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
+             (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count
+      FROM jobdesks j
+      LEFT JOIN clients c ON c.id = j.client_id
+      LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+      WHERE j.id = $1
+      GROUP BY j.id, c.id
+    `, [jobdeskId]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+
+    const j = result.rows[0];
+
+    // Get assigned user names
+    const assignedUserIds = j.assigned_to ? j.assigned_to.filter(id => id !== null) : [];
+    let assignedUsers = [];
+    if (assignedUserIds.length > 0) {
+      const usersResult = await query(
+        'SELECT id, name, email FROM users WHERE id = ANY($1)',
+        [assignedUserIds]
+      );
+      assignedUsers = usersResult.rows;
+    }
+
+    return NextResponse.json({
+      jobdesk: {
+        id: j.id,
+        title: j.title,
+        description: j.description,
+        status: j.status,
+        priority: j.priority,
+        dueDate: j.due_date,
+        submissionLink: j.submission_link,
+        createdBy: j.created_by,
+        assignedTo: assignedUserIds,
+        assignedUsers: assignedUsers,
+        clientId: j.client_id,
+        client: j.client_id ? {
+          id: j.client_id,
+          name: j.client_name,
+          npwp: j.client_npwp,
+          isPkp: j.is_pkp,
+          isUmkm: j.is_umkm,
+          address: j.client_address,
+          contactPerson: j.contact_person,
+          phone: j.client_phone,
+          email: j.client_email
+        } : null,
+        periodMonth: j.period_month,
+        periodYear: j.period_year,
+        taskTypes: j.task_types || [],
+        submissionCount: parseInt(j.submission_count) || 0,
+        createdAt: j.created_at,
+        updatedAt: j.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Get jobdesk detail error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get jobdesk detail' },
       { status: 500 }
     );
   }
@@ -1141,7 +1683,7 @@ async function handleGetKPI(request) {
     const endDate = searchParams.get('endDate');
 
     // Only SDM, Pengurus, and Super Admin can see other users' KPI
-    if (userId !== user.userId && !hasPermission(user.role, ['super_admin', 'pengurus', 'sdm'])) {
+    if (userId !== user.userId && !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -1222,7 +1764,7 @@ async function handleGetKPI(request) {
 async function handleGetUsers(request) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus', 'sdm'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -1250,6 +1792,38 @@ async function handleGetUsers(request) {
     console.error('Get users error:', error);
     return NextResponse.json(
       { error: 'Failed to get users' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get users list (minimal data - accessible by all logged-in users)
+async function handleGetUsersList(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const result = await query(
+      `SELECT id, name, email, role
+       FROM users
+       WHERE is_active = TRUE
+       ORDER BY name ASC`
+    );
+
+    const users = result.rows.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role
+    }));
+
+    return NextResponse.json({ users });
+  } catch (error) {
+    console.error('Get users list error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get users list' },
       { status: 500 }
     );
   }
@@ -1907,7 +2481,7 @@ async function handleGetAttachments(request, jobdeskId) {
 
     const hasAccess =
       assignedTo.includes(user.userId) ||
-      hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
+      hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm']);
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -1972,7 +2546,7 @@ async function handleCreateAttachment(request, jobdeskId) {
 
     const canUpload =
       assignedTo.includes(user.userId) ||
-      hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
+      hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm']);
 
     if (!canUpload) {
       return NextResponse.json({
@@ -2066,7 +2640,7 @@ async function handleDeleteAttachment(request, attachmentId) {
     // Check permission
     const canDelete =
       attachment.uploaded_by === user.userId ||
-      hasPermission(user.role, ['super_admin', 'pengurus', 'sdm']);
+      hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm']);
 
     if (!canDelete) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -2092,7 +2666,7 @@ async function handleDeleteAttachment(request, attachmentId) {
 async function handleUpdateUser(request, userId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -2156,7 +2730,7 @@ async function handleUpdateUser(request, userId) {
 async function handleUpdateUserStatus(request, userId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -2226,7 +2800,7 @@ async function handleDeleteUser(request, userId) {
 async function handleUpdateUserDivision(request, userId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -2252,7 +2826,7 @@ async function handleUpdateUserDivision(request, userId) {
 async function handleUpdateUserPassword(request, userId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -2379,7 +2953,7 @@ async function handleRemovePushSubscription(request) {
 async function handleSendPushNotification(request) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'pengurus'])) {
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -2615,7 +3189,7 @@ async function handleGetUserProfile(request, userId) {
     }
 
     // Users can only view their own profile, unless admin/pengurus
-    if (user.userId !== userId && !hasPermission(user.role, ['super_admin', 'pengurus', 'sdm'])) {
+    if (user.userId !== userId && !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -2701,6 +3275,1951 @@ async function handleGetUserProfile(request, userId) {
 }
 
 // ============================================
+// CLIENT MANAGEMENT (Tax Consulting)
+// ============================================
+
+// Get all clients with assignments
+async function handleGetClients(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const isPkp = url.searchParams.get('is_pkp');
+    const isUmkm = url.searchParams.get('is_umkm');
+    const clientType = url.searchParams.get('client_type');
+    const isActive = url.searchParams.get('is_active');
+    const assignedTo = url.searchParams.get('assigned_to');
+
+    let queryText = `
+      SELECT c.*,
+             u.name as created_by_name,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'userId', ca.user_id,
+                   'userName', au.name,
+                   'userEmail', au.email,
+                   'isPrimary', ca.is_primary,
+                   'assignedAt', ca.assigned_at
+                 )
+               ) FILTER (WHERE ca.user_id IS NOT NULL),
+               '[]'
+             ) as assignments
+      FROM clients c
+      LEFT JOIN users u ON u.id = c.created_by
+      LEFT JOIN client_assignments ca ON ca.client_id = c.id
+      LEFT JOIN users au ON au.id = ca.user_id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    // For karyawan, only show assigned clients
+    if (user.role === 'karyawan') {
+      queryText += ` AND c.id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
+      params.push(user.userId);
+      paramIndex++;
+    }
+
+    if (isPkp !== null && isPkp !== '') {
+      queryText += ` AND c.is_pkp = $${paramIndex}`;
+      params.push(isPkp === 'true');
+      paramIndex++;
+    }
+
+    if (isUmkm !== null && isUmkm !== '') {
+      queryText += ` AND c.is_umkm = $${paramIndex}`;
+      params.push(isUmkm === 'true');
+      paramIndex++;
+    }
+
+    if (clientType) {
+      queryText += ` AND c.client_type = $${paramIndex}`;
+      params.push(clientType);
+      paramIndex++;
+    }
+
+    if (isActive !== null && isActive !== '') {
+      queryText += ` AND c.is_active = $${paramIndex}`;
+      params.push(isActive === 'true');
+      paramIndex++;
+    }
+
+    if (assignedTo) {
+      queryText += ` AND c.id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
+      params.push(assignedTo);
+      paramIndex++;
+    }
+
+    queryText += ' GROUP BY c.id, u.name ORDER BY c.name ASC';
+
+    const result = await query(queryText, params);
+
+    return NextResponse.json({
+      clients: result.rows.map(c => ({
+        id: c.id,
+        name: c.name,
+        npwp: c.npwp,
+        address: c.address,
+        contactPerson: c.contact_person,
+        phone: c.phone,
+        email: c.email,
+        isPkp: c.is_pkp,
+        isUmkm: c.is_umkm,
+        clientType: c.client_type,
+        isActive: c.is_active,
+        createdBy: c.created_by,
+        createdByName: c.created_by_name,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+        assignments: c.assignments
+      }))
+    });
+  } catch (error) {
+    console.error('Get clients error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get clients' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get single client by ID
+async function handleGetClient(request, clientId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // For karyawan, check if assigned to this client
+    if (user.role === 'karyawan') {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM client_assignments WHERE client_id = $1 AND user_id = $2',
+        [clientId, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      }
+    }
+
+    const result = await query(
+      `SELECT c.*,
+              u.name as created_by_name,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'userId', ca.user_id,
+                    'userName', au.name,
+                    'userEmail', au.email,
+                    'isPrimary', ca.is_primary,
+                    'assignedAt', ca.assigned_at
+                  )
+                ) FILTER (WHERE ca.user_id IS NOT NULL),
+                '[]'
+              ) as assignments
+       FROM clients c
+       LEFT JOIN users u ON u.id = c.created_by
+       LEFT JOIN client_assignments ca ON ca.client_id = c.id
+       LEFT JOIN users au ON au.id = ca.user_id
+       WHERE c.id = $1
+       GROUP BY c.id, u.name`,
+      [clientId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    const c = result.rows[0];
+    return NextResponse.json({
+      client: {
+        id: c.id,
+        name: c.name,
+        npwp: c.npwp,
+        address: c.address,
+        contactPerson: c.contact_person,
+        phone: c.phone,
+        email: c.email,
+        isPkp: c.is_pkp,
+        isUmkm: c.is_umkm,
+        clientType: c.client_type,
+        isActive: c.is_active,
+        createdBy: c.created_by,
+        createdByName: c.created_by_name,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+        assignments: c.assignments
+      }
+    });
+  } catch (error) {
+    console.error('Get client error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get client' },
+      { status: 500 }
+    );
+  }
+}
+
+// Create new client
+async function handleCreateClient(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, npwp, address, contactPerson, phone, email, isPkp, isUmkm, clientType } = body;
+
+    if (!name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    }
+
+    // Check duplicate NPWP if provided
+    if (npwp) {
+      const existingNpwp = await query(
+        'SELECT id FROM clients WHERE npwp = $1',
+        [npwp]
+      );
+      if (existingNpwp.rows.length > 0) {
+        return NextResponse.json({ error: 'NPWP already registered' }, { status: 400 });
+      }
+    }
+
+    const result = await query(
+      `INSERT INTO clients (name, npwp, address, contact_person, phone, email, is_pkp, is_umkm, client_type, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [name, npwp || null, address || null, contactPerson || null, phone || null, email || null,
+       isPkp || false, isUmkm || false, clientType || 'badan', user.userId]
+    );
+
+    const c = result.rows[0];
+    return NextResponse.json({
+      message: 'Client created successfully',
+      client: {
+        id: c.id,
+        name: c.name,
+        npwp: c.npwp,
+        address: c.address,
+        contactPerson: c.contact_person,
+        phone: c.phone,
+        email: c.email,
+        isPkp: c.is_pkp,
+        isUmkm: c.is_umkm,
+        clientType: c.client_type,
+        isActive: c.is_active,
+        createdBy: c.created_by,
+        createdAt: c.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Create client error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create client' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update client
+async function handleUpdateClient(request, clientId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, npwp, address, contactPerson, phone, email, isPkp, isUmkm, clientType, isActive } = body;
+
+    // Check if client exists
+    const existingClient = await query('SELECT id FROM clients WHERE id = $1', [clientId]);
+    if (existingClient.rows.length === 0) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    // Check duplicate NPWP if changed
+    if (npwp) {
+      const existingNpwp = await query(
+        'SELECT id FROM clients WHERE npwp = $1 AND id != $2',
+        [npwp, clientId]
+      );
+      if (existingNpwp.rows.length > 0) {
+        return NextResponse.json({ error: 'NPWP already registered' }, { status: 400 });
+      }
+    }
+
+    const result = await query(
+      `UPDATE clients SET
+        name = COALESCE($1, name),
+        npwp = $2,
+        address = $3,
+        contact_person = $4,
+        phone = $5,
+        email = $6,
+        is_pkp = COALESCE($7, is_pkp),
+        is_umkm = COALESCE($8, is_umkm),
+        client_type = COALESCE($9, client_type),
+        is_active = COALESCE($10, is_active),
+        updated_at = NOW()
+       WHERE id = $11
+       RETURNING *`,
+      [name, npwp || null, address || null, contactPerson || null, phone || null, email || null,
+       isPkp, isUmkm, clientType, isActive, clientId]
+    );
+
+    const c = result.rows[0];
+    return NextResponse.json({
+      message: 'Client updated successfully',
+      client: {
+        id: c.id,
+        name: c.name,
+        npwp: c.npwp,
+        address: c.address,
+        contactPerson: c.contact_person,
+        phone: c.phone,
+        email: c.email,
+        isPkp: c.is_pkp,
+        isUmkm: c.is_umkm,
+        clientType: c.client_type,
+        isActive: c.is_active,
+        updatedAt: c.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Update client error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update client' },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete client
+async function handleDeleteClient(request, clientId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // Check if client exists
+    const existingClient = await query('SELECT id FROM clients WHERE id = $1', [clientId]);
+    if (existingClient.rows.length === 0) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    // Delete related data first (assignments, tax_periods, etc.)
+    await transaction(async (client) => {
+      await client.query('DELETE FROM client_assignments WHERE client_id = $1', [clientId]);
+      await client.query('DELETE FROM tax_periods WHERE client_id = $1', [clientId]);
+      await client.query('DELETE FROM annual_tax_filings WHERE client_id = $1', [clientId]);
+      await client.query('DELETE FROM warning_letters WHERE client_id = $1', [clientId]);
+      await client.query('DELETE FROM sp2dk_notices WHERE client_id = $1', [clientId]);
+      await client.query('DELETE FROM clients WHERE id = $1', [clientId]);
+    });
+
+    return NextResponse.json({ message: 'Client deleted successfully' });
+  } catch (error) {
+    console.error('Delete client error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete client' },
+      { status: 500 }
+    );
+  }
+}
+
+// Assign employee to client
+async function handleAssignClientEmployee(request, clientId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { userId, isPrimary } = body;
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    }
+
+    // Check if client exists
+    const clientExists = await query('SELECT id FROM clients WHERE id = $1', [clientId]);
+    if (clientExists.rows.length === 0) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    // Check if user exists
+    const userExists = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userExists.rows.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Check if already assigned
+    const existing = await query(
+      'SELECT 1 FROM client_assignments WHERE client_id = $1 AND user_id = $2',
+      [clientId, userId]
+    );
+    if (existing.rows.length > 0) {
+      return NextResponse.json({ error: 'User already assigned to this client' }, { status: 400 });
+    }
+
+    // If setting as primary, remove other primary assignments for this client
+    if (isPrimary) {
+      await query(
+        'UPDATE client_assignments SET is_primary = false WHERE client_id = $1',
+        [clientId]
+      );
+    }
+
+    await query(
+      `INSERT INTO client_assignments (client_id, user_id, assigned_by, is_primary)
+       VALUES ($1, $2, $3, $4)`,
+      [clientId, userId, user.userId, isPrimary || false]
+    );
+
+    return NextResponse.json({ message: 'Employee assigned successfully' });
+  } catch (error) {
+    console.error('Assign employee error:', error);
+    return NextResponse.json(
+      { error: 'Failed to assign employee' },
+      { status: 500 }
+    );
+  }
+}
+
+// Remove employee from client
+async function handleUnassignClientEmployee(request, clientId, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query(
+      'DELETE FROM client_assignments WHERE client_id = $1 AND user_id = $2 RETURNING *',
+      [clientId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'Employee removed from client successfully' });
+  } catch (error) {
+    console.error('Unassign employee error:', error);
+    return NextResponse.json(
+      { error: 'Failed to remove employee' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update client assignment (change primary status)
+async function handleUpdateClientAssignment(request, clientId, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { isPrimary } = body;
+
+    // If setting as primary, remove other primary assignments for this client
+    if (isPrimary) {
+      await query(
+        'UPDATE client_assignments SET is_primary = false WHERE client_id = $1',
+        [clientId]
+      );
+    }
+
+    const result = await query(
+      `UPDATE client_assignments SET is_primary = $1 WHERE client_id = $2 AND user_id = $3 RETURNING *`,
+      [isPrimary || false, clientId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'Assignment updated successfully' });
+  } catch (error) {
+    console.error('Update assignment error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update assignment' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
+// TAX PERIOD MANAGEMENT
+// ============================================
+
+// Helper function to generate tax period deadlines
+function generateTaxPeriodDeadlines(month, year, isPkp = false) {
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const lastDayOfNextMonth = new Date(nextYear, nextMonth, 0).getDate();
+
+  const deadlines = {
+    pph_payment_deadline: new Date(nextYear, nextMonth - 1, 15),
+    pph_filing_deadline: new Date(nextYear, nextMonth - 1, 20),
+    bookkeeping_employee_deadline: new Date(nextYear, nextMonth - 1, 25),
+    bookkeeping_owner_deadline: new Date(nextYear, nextMonth - 1, Math.min(30, lastDayOfNextMonth))
+  };
+
+  if (isPkp) {
+    const ppnDeadline = new Date(nextYear, nextMonth, 0);
+    deadlines.ppn_payment_deadline = ppnDeadline;
+    deadlines.ppn_filing_deadline = ppnDeadline;
+  }
+
+  return deadlines;
+}
+
+// Get all tax periods with filtering
+async function handleGetTaxPeriods(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const clientId = url.searchParams.get('client_id');
+    const month = url.searchParams.get('month');
+    const year = url.searchParams.get('year');
+    const status = url.searchParams.get('status'); // pending, in_progress, completed, overdue
+
+    let queryText = `
+      SELECT tp.*,
+             c.name as client_name,
+             c.npwp as client_npwp,
+             c.is_pkp,
+             c.is_umkm,
+             hu.name as handled_by_name,
+             au.name as authorized_by_name
+      FROM tax_periods tp
+      JOIN clients c ON c.id = tp.client_id
+      LEFT JOIN users hu ON hu.id = tp.handled_by
+      LEFT JOIN users au ON au.id = tp.authorized_by
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    // For karyawan, only show their assigned clients
+    if (user.role === 'karyawan') {
+      queryText += ` AND tp.client_id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
+      params.push(user.userId);
+      paramIndex++;
+    }
+
+    if (clientId) {
+      queryText += ` AND tp.client_id = $${paramIndex}`;
+      params.push(clientId);
+      paramIndex++;
+    }
+
+    if (month) {
+      queryText += ` AND tp.period_month = $${paramIndex}`;
+      params.push(parseInt(month));
+      paramIndex++;
+    }
+
+    if (year) {
+      queryText += ` AND tp.period_year = $${paramIndex}`;
+      params.push(parseInt(year));
+      paramIndex++;
+    }
+
+    queryText += ' ORDER BY tp.period_year DESC, tp.period_month DESC, c.name ASC';
+
+    const result = await query(queryText, params);
+
+    // Filter by status if requested (need to calculate overdue)
+    let periods = result.rows.map(tp => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const isOverdue = (deadline, status) => {
+        if (status === 'completed') return false;
+        if (!deadline) return false;
+        return new Date(deadline) < today;
+      };
+
+      return {
+        id: tp.id,
+        clientId: tp.client_id,
+        clientName: tp.client_name,
+        clientNpwp: tp.client_npwp,
+        isPkp: tp.is_pkp,
+        isUmkm: tp.is_umkm,
+        periodMonth: tp.period_month,
+        periodYear: tp.period_year,
+        pphPaymentDeadline: tp.pph_payment_deadline,
+        pphPaymentStatus: tp.pph_payment_status,
+        pphPaymentOverdue: isOverdue(tp.pph_payment_deadline, tp.pph_payment_status),
+        pphFilingDeadline: tp.pph_filing_deadline,
+        pphFilingStatus: tp.pph_filing_status,
+        pphFilingOverdue: isOverdue(tp.pph_filing_deadline, tp.pph_filing_status),
+        ppnPaymentDeadline: tp.ppn_payment_deadline,
+        ppnPaymentStatus: tp.ppn_payment_status,
+        ppnPaymentOverdue: isOverdue(tp.ppn_payment_deadline, tp.ppn_payment_status),
+        ppnFilingDeadline: tp.ppn_filing_deadline,
+        ppnFilingStatus: tp.ppn_filing_status,
+        ppnFilingOverdue: isOverdue(tp.ppn_filing_deadline, tp.ppn_filing_status),
+        bookkeepingStatus: tp.bookkeeping_status,
+        bookkeepingEmployeeDeadline: tp.bookkeeping_employee_deadline,
+        bookkeepingEmployeeOverdue: isOverdue(tp.bookkeeping_employee_deadline, tp.bookkeeping_status),
+        bookkeepingOwnerDeadline: tp.bookkeeping_owner_deadline,
+        bookkeepingOwnerOverdue: isOverdue(tp.bookkeeping_owner_deadline, tp.bookkeeping_status),
+        handledBy: tp.handled_by,
+        handledByName: tp.handled_by_name,
+        authorizedBy: tp.authorized_by,
+        authorizedByName: tp.authorized_by_name,
+        createdAt: tp.created_at,
+        updatedAt: tp.updated_at
+      };
+    });
+
+    // Filter by overall status if requested
+    if (status) {
+      periods = periods.filter(tp => {
+        const hasOverdue = tp.pphPaymentOverdue || tp.pphFilingOverdue ||
+          tp.ppnPaymentOverdue || tp.ppnFilingOverdue ||
+          tp.bookkeepingEmployeeOverdue || tp.bookkeepingOwnerOverdue;
+
+        const allCompleted = tp.pphPaymentStatus === 'completed' &&
+          tp.pphFilingStatus === 'completed' &&
+          (!tp.ppnPaymentDeadline || tp.ppnPaymentStatus === 'completed') &&
+          (!tp.ppnFilingDeadline || tp.ppnFilingStatus === 'completed') &&
+          tp.bookkeepingStatus === 'completed';
+
+        if (status === 'overdue') return hasOverdue;
+        if (status === 'completed') return allCompleted;
+        if (status === 'pending') return !allCompleted && !hasOverdue;
+        return true;
+      });
+    }
+
+    return NextResponse.json({ taxPeriods: periods });
+  } catch (error) {
+    console.error('Get tax periods error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get tax periods' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get single tax period
+async function handleGetTaxPeriod(request, periodId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query(
+      `SELECT tp.*,
+              c.name as client_name,
+              c.npwp as client_npwp,
+              c.is_pkp,
+              c.is_umkm,
+              hu.name as handled_by_name,
+              au.name as authorized_by_name
+       FROM tax_periods tp
+       JOIN clients c ON c.id = tp.client_id
+       LEFT JOIN users hu ON hu.id = tp.handled_by
+       LEFT JOIN users au ON au.id = tp.authorized_by
+       WHERE tp.id = $1`,
+      [periodId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Tax period not found' }, { status: 404 });
+    }
+
+    const tp = result.rows[0];
+
+    // For karyawan, check if assigned to this client
+    if (user.role === 'karyawan') {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM client_assignments WHERE client_id = $1 AND user_id = $2',
+        [tp.client_id, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      }
+    }
+
+    return NextResponse.json({
+      taxPeriod: {
+        id: tp.id,
+        clientId: tp.client_id,
+        clientName: tp.client_name,
+        clientNpwp: tp.client_npwp,
+        isPkp: tp.is_pkp,
+        isUmkm: tp.is_umkm,
+        periodMonth: tp.period_month,
+        periodYear: tp.period_year,
+        pphPaymentDeadline: tp.pph_payment_deadline,
+        pphPaymentStatus: tp.pph_payment_status,
+        pphFilingDeadline: tp.pph_filing_deadline,
+        pphFilingStatus: tp.pph_filing_status,
+        ppnPaymentDeadline: tp.ppn_payment_deadline,
+        ppnPaymentStatus: tp.ppn_payment_status,
+        ppnFilingDeadline: tp.ppn_filing_deadline,
+        ppnFilingStatus: tp.ppn_filing_status,
+        bookkeepingStatus: tp.bookkeeping_status,
+        bookkeepingEmployeeDeadline: tp.bookkeeping_employee_deadline,
+        bookkeepingOwnerDeadline: tp.bookkeeping_owner_deadline,
+        handledBy: tp.handled_by,
+        handledByName: tp.handled_by_name,
+        authorizedBy: tp.authorized_by,
+        authorizedByName: tp.authorized_by_name,
+        createdAt: tp.created_at,
+        updatedAt: tp.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Get tax period error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get tax period' },
+      { status: 500 }
+    );
+  }
+}
+
+// Create tax period with auto-generated deadlines
+async function handleCreateTaxPeriod(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { clientId, periodMonth, periodYear, customDeadlines } = body;
+
+    if (!clientId || !periodMonth || !periodYear) {
+      return NextResponse.json({ error: 'Client ID, month, and year are required' }, { status: 400 });
+    }
+
+    // Check if client exists and get PKP status
+    const clientResult = await query('SELECT id, is_pkp FROM clients WHERE id = $1', [clientId]);
+    if (clientResult.rows.length === 0) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    const isPkp = clientResult.rows[0].is_pkp;
+
+    // Check if period already exists
+    const existingPeriod = await query(
+      'SELECT id FROM tax_periods WHERE client_id = $1 AND period_month = $2 AND period_year = $3',
+      [clientId, periodMonth, periodYear]
+    );
+    if (existingPeriod.rows.length > 0) {
+      return NextResponse.json({ error: 'Tax period already exists for this client' }, { status: 400 });
+    }
+
+    // Generate deadlines (auto or custom)
+    const deadlines = customDeadlines || generateTaxPeriodDeadlines(periodMonth, periodYear, isPkp);
+
+    const result = await query(
+      `INSERT INTO tax_periods (
+        client_id, period_month, period_year,
+        pph_payment_deadline, pph_filing_deadline,
+        ppn_payment_deadline, ppn_filing_deadline,
+        bookkeeping_employee_deadline, bookkeeping_owner_deadline
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *`,
+      [
+        clientId, periodMonth, periodYear,
+        deadlines.pph_payment_deadline,
+        deadlines.pph_filing_deadline,
+        deadlines.ppn_payment_deadline || null,
+        deadlines.ppn_filing_deadline || null,
+        deadlines.bookkeeping_employee_deadline,
+        deadlines.bookkeeping_owner_deadline
+      ]
+    );
+
+    return NextResponse.json({
+      message: 'Tax period created successfully',
+      taxPeriod: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Create tax period error:', error);
+    return NextResponse.json(
+      { error: 'Failed to create tax period' },
+      { status: 500 }
+    );
+  }
+}
+
+// Generate tax periods for multiple clients (bulk)
+async function handleGenerateTaxPeriods(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { periodMonth, periodYear, clientIds } = body;
+
+    if (!periodMonth || !periodYear) {
+      return NextResponse.json({ error: 'Month and year are required' }, { status: 400 });
+    }
+
+    // Get all active clients or specific clients
+    let clientsQuery = 'SELECT id, is_pkp FROM clients WHERE is_active = true';
+    const queryParams = [];
+
+    if (clientIds && clientIds.length > 0) {
+      clientsQuery += ' AND id = ANY($1)';
+      queryParams.push(clientIds);
+    }
+
+    const clientsResult = await query(clientsQuery, queryParams);
+    const clients = clientsResult.rows;
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const client of clients) {
+      // Check if period already exists
+      const existingPeriod = await query(
+        'SELECT id FROM tax_periods WHERE client_id = $1 AND period_month = $2 AND period_year = $3',
+        [client.id, periodMonth, periodYear]
+      );
+
+      if (existingPeriod.rows.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      const deadlines = generateTaxPeriodDeadlines(periodMonth, periodYear, client.is_pkp);
+
+      await query(
+        `INSERT INTO tax_periods (
+          client_id, period_month, period_year,
+          pph_payment_deadline, pph_filing_deadline,
+          ppn_payment_deadline, ppn_filing_deadline,
+          bookkeeping_employee_deadline, bookkeeping_owner_deadline
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          client.id, periodMonth, periodYear,
+          deadlines.pph_payment_deadline,
+          deadlines.pph_filing_deadline,
+          deadlines.ppn_payment_deadline || null,
+          deadlines.ppn_filing_deadline || null,
+          deadlines.bookkeeping_employee_deadline,
+          deadlines.bookkeeping_owner_deadline
+        ]
+      );
+      created++;
+    }
+
+    return NextResponse.json({
+      message: `Generated ${created} tax periods, skipped ${skipped} (already exist)`,
+      created,
+      skipped
+    });
+  } catch (error) {
+    console.error('Generate tax periods error:', error);
+    return NextResponse.json(
+      { error: 'Failed to generate tax periods' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update tax period status
+async function handleUpdateTaxPeriodStatus(request, periodId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { field, status } = body;
+
+    const validFields = [
+      'pph_payment_status', 'pph_filing_status',
+      'ppn_payment_status', 'ppn_filing_status',
+      'bookkeeping_status'
+    ];
+
+    if (!validFields.includes(field)) {
+      return NextResponse.json({ error: 'Invalid field' }, { status: 400 });
+    }
+
+    const validStatuses = ['pending', 'in_progress', 'completed'];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+
+    // Check permissions - karyawan can only update if assigned
+    const periodResult = await query('SELECT client_id FROM tax_periods WHERE id = $1', [periodId]);
+    if (periodResult.rows.length === 0) {
+      return NextResponse.json({ error: 'Tax period not found' }, { status: 404 });
+    }
+
+    if (user.role === 'karyawan') {
+      const assignmentCheck = await query(
+        'SELECT 1 FROM client_assignments WHERE client_id = $1 AND user_id = $2',
+        [periodResult.rows[0].client_id, user.userId]
+      );
+      if (assignmentCheck.rows.length === 0) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      }
+    }
+
+    // Update the status and set handled_by
+    const result = await query(
+      `UPDATE tax_periods SET ${field} = $1, handled_by = $2, updated_at = NOW() WHERE id = $3 RETURNING *`,
+      [status, user.userId, periodId]
+    );
+
+    return NextResponse.json({
+      message: 'Status updated successfully',
+      taxPeriod: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Update tax period status error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update status' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update tax period deadlines (manual override)
+async function handleUpdateTaxPeriod(request, periodId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const {
+      pphPaymentDeadline, pphFilingDeadline,
+      ppnPaymentDeadline, ppnFilingDeadline,
+      bookkeepingEmployeeDeadline, bookkeepingOwnerDeadline
+    } = body;
+
+    const result = await query(
+      `UPDATE tax_periods SET
+        pph_payment_deadline = COALESCE($1, pph_payment_deadline),
+        pph_filing_deadline = COALESCE($2, pph_filing_deadline),
+        ppn_payment_deadline = COALESCE($3, ppn_payment_deadline),
+        ppn_filing_deadline = COALESCE($4, ppn_filing_deadline),
+        bookkeeping_employee_deadline = COALESCE($5, bookkeeping_employee_deadline),
+        bookkeeping_owner_deadline = COALESCE($6, bookkeeping_owner_deadline),
+        updated_at = NOW()
+       WHERE id = $7
+       RETURNING *`,
+      [
+        pphPaymentDeadline, pphFilingDeadline,
+        ppnPaymentDeadline, ppnFilingDeadline,
+        bookkeepingEmployeeDeadline, bookkeepingOwnerDeadline,
+        periodId
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Tax period not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      message: 'Tax period updated successfully',
+      taxPeriod: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Update tax period error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update tax period' },
+      { status: 500 }
+    );
+  }
+}
+
+// Delete tax period
+async function handleDeleteTaxPeriod(request, periodId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query(
+      'DELETE FROM tax_periods WHERE id = $1 RETURNING id',
+      [periodId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Tax period not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'Tax period deleted successfully' });
+  } catch (error) {
+    console.error('Delete tax period error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete tax period' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get tax monitoring dashboard stats
+async function handleGetTaxMonitoringStats(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const month = url.searchParams.get('month') || new Date().getMonth() + 1;
+    const year = url.searchParams.get('year') || new Date().getFullYear();
+
+    let baseCondition = '';
+    const params = [month, year];
+
+    if (user.role === 'karyawan') {
+      baseCondition = ' AND tp.client_id IN (SELECT client_id FROM client_assignments WHERE user_id = $3)';
+      params.push(user.userId);
+    }
+
+    const statsQuery = `
+      SELECT
+        COUNT(*) as total_periods,
+        COUNT(*) FILTER (WHERE pph_payment_status = 'completed') as pph_payment_completed,
+        COUNT(*) FILTER (WHERE pph_filing_status = 'completed') as pph_filing_completed,
+        COUNT(*) FILTER (WHERE ppn_payment_status = 'completed' OR ppn_payment_deadline IS NULL) as ppn_payment_completed,
+        COUNT(*) FILTER (WHERE ppn_filing_status = 'completed' OR ppn_filing_deadline IS NULL) as ppn_filing_completed,
+        COUNT(*) FILTER (WHERE bookkeeping_status = 'completed') as bookkeeping_completed,
+        COUNT(*) FILTER (WHERE pph_payment_deadline < NOW() AND pph_payment_status != 'completed') as pph_payment_overdue,
+        COUNT(*) FILTER (WHERE pph_filing_deadline < NOW() AND pph_filing_status != 'completed') as pph_filing_overdue,
+        COUNT(*) FILTER (WHERE ppn_payment_deadline < NOW() AND ppn_payment_status != 'completed') as ppn_payment_overdue,
+        COUNT(*) FILTER (WHERE ppn_filing_deadline < NOW() AND ppn_filing_status != 'completed') as ppn_filing_overdue,
+        COUNT(*) FILTER (WHERE bookkeeping_employee_deadline < NOW() AND bookkeeping_status != 'completed') as bookkeeping_overdue
+      FROM tax_periods tp
+      WHERE period_month = $1 AND period_year = $2 ${baseCondition}
+    `;
+
+    const result = await query(statsQuery, params);
+    const stats = result.rows[0];
+
+    return NextResponse.json({
+      stats: {
+        totalPeriods: parseInt(stats.total_periods),
+        pphPayment: {
+          completed: parseInt(stats.pph_payment_completed),
+          overdue: parseInt(stats.pph_payment_overdue)
+        },
+        pphFiling: {
+          completed: parseInt(stats.pph_filing_completed),
+          overdue: parseInt(stats.pph_filing_overdue)
+        },
+        ppnPayment: {
+          completed: parseInt(stats.ppn_payment_completed),
+          overdue: parseInt(stats.ppn_payment_overdue)
+        },
+        ppnFiling: {
+          completed: parseInt(stats.ppn_filing_completed),
+          overdue: parseInt(stats.ppn_filing_overdue)
+        },
+        bookkeeping: {
+          completed: parseInt(stats.bookkeeping_completed),
+          overdue: parseInt(stats.bookkeeping_overdue)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get tax monitoring stats error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get stats' },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================
+// WARNING LETTERS (SURAT TEGURAN)
+// ============================================
+
+async function handleGetWarningLetters(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const clientId = url.searchParams.get('client_id');
+    const year = url.searchParams.get('year');
+
+    let queryText = `
+      SELECT wl.*,
+             c.name as client_name,
+             c.npwp as client_npwp,
+             u.name as handled_by_name,
+             j.title as jobdesk_title
+      FROM warning_letters wl
+      JOIN clients c ON c.id = wl.client_id
+      LEFT JOIN users u ON u.id = wl.handled_by
+      LEFT JOIN jobdesks j ON j.id = wl.jobdesk_id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    if (year) {
+      queryText += ` AND EXTRACT(YEAR FROM wl.letter_date) = $${paramIndex}`;
+      params.push(parseInt(year));
+      paramIndex++;
+    }
+
+    if (user.role === 'karyawan') {
+      queryText += ` AND wl.client_id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
+      params.push(user.userId);
+      paramIndex++;
+    }
+
+    if (clientId) {
+      queryText += ` AND wl.client_id = $${paramIndex}`;
+      params.push(clientId);
+      paramIndex++;
+    }
+
+    queryText += ' ORDER BY wl.letter_date DESC';
+
+    const result = await query(queryText, params);
+
+    return NextResponse.json({
+      warningLetters: result.rows.map(wl => ({
+        id: wl.id,
+        clientId: wl.client_id,
+        clientName: wl.client_name,
+        clientNpwp: wl.client_npwp,
+        jobdeskId: wl.jobdesk_id,
+        jobdeskTitle: wl.jobdesk_title,
+        letterDate: wl.letter_date,
+        letterNumber: wl.letter_number,
+        description: wl.description,
+        fineAmount: wl.fine_amount,
+        fineUpdatedAt: wl.fine_updated_at,
+        fineUpdateStatus: wl.fine_update_status,
+        handledBy: wl.handled_by,
+        handledByName: wl.handled_by_name,
+        createdAt: wl.created_at
+      }))
+    });
+  } catch (error) {
+    console.error('Get warning letters error:', error);
+    return NextResponse.json({ error: 'Failed to get warning letters' }, { status: 500 });
+  }
+}
+
+async function handleCreateWarningLetter(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { clientId, jobdeskId, letterDate, letterNumber, description, fineAmount } = body;
+
+    if (!clientId || !letterDate) {
+      return NextResponse.json({ error: 'Client ID and letter date are required' }, { status: 400 });
+    }
+
+    const result = await query(
+      `INSERT INTO warning_letters (client_id, jobdesk_id, letter_date, letter_number, description, fine_amount, handled_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [clientId, jobdeskId || null, letterDate, letterNumber || null, description || null, fineAmount || 0, user.userId]
+    );
+
+    return NextResponse.json({
+      message: 'Warning letter created successfully',
+      warningLetter: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Create warning letter error:', error);
+    return NextResponse.json({ error: 'Failed to create warning letter' }, { status: 500 });
+  }
+}
+
+async function handleUpdateWarningLetter(request, letterId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { clientId, jobdeskId, letterDate, letterNumber, description, fineAmount, fineUpdateStatus } = body;
+
+    const result = await query(
+      `UPDATE warning_letters SET
+        client_id = COALESCE($1, client_id),
+        jobdesk_id = $2,
+        letter_date = COALESCE($3, letter_date),
+        letter_number = COALESCE($4, letter_number),
+        description = COALESCE($5, description),
+        fine_amount = COALESCE($6, fine_amount),
+        fine_update_status = COALESCE($7, fine_update_status),
+        fine_updated_at = CASE WHEN $6 IS NOT NULL THEN NOW() ELSE fine_updated_at END
+       WHERE id = $8
+       RETURNING *`,
+      [clientId, jobdeskId || null, letterDate, letterNumber, description, fineAmount, fineUpdateStatus, letterId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Warning letter not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      message: 'Warning letter updated successfully',
+      warningLetter: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Update warning letter error:', error);
+    return NextResponse.json({ error: 'Failed to update warning letter' }, { status: 500 });
+  }
+}
+
+async function handleDeleteWarningLetter(request, letterId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query('DELETE FROM warning_letters WHERE id = $1 RETURNING id', [letterId]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Warning letter not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'Warning letter deleted successfully' });
+  } catch (error) {
+    console.error('Delete warning letter error:', error);
+    return NextResponse.json({ error: 'Failed to delete warning letter' }, { status: 500 });
+  }
+}
+
+// ============================================
+// SP2DK NOTICES
+// ============================================
+
+async function handleGetSp2dkNotices(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const clientId = url.searchParams.get('client_id');
+    const status = url.searchParams.get('status');
+    const year = url.searchParams.get('year');
+
+    let queryText = `
+      SELECT sp.*,
+             c.name as client_name,
+             c.npwp as client_npwp,
+             u.name as handled_by_name,
+             j.id as jobdesk_id,
+             j.title as jobdesk_title
+      FROM sp2dk_notices sp
+      JOIN clients c ON c.id = sp.client_id
+      LEFT JOIN users u ON u.id = sp.handled_by
+      LEFT JOIN jobdesks j ON j.id = sp.jobdesk_id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    if (user.role === 'karyawan') {
+      queryText += ` AND sp.client_id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
+      params.push(user.userId);
+      paramIndex++;
+    }
+
+    if (clientId) {
+      queryText += ` AND sp.client_id = $${paramIndex}`;
+      params.push(clientId);
+      paramIndex++;
+    }
+
+    if (status) {
+      queryText += ` AND sp.status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (year) {
+      queryText += ` AND EXTRACT(YEAR FROM sp.letter_date) = $${paramIndex}`;
+      params.push(parseInt(year));
+      paramIndex++;
+    }
+
+    queryText += ' ORDER BY sp.deadline ASC, sp.letter_date DESC';
+
+    const result = await query(queryText, params);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return NextResponse.json({
+      sp2dkNotices: result.rows.map(sp => ({
+        id: sp.id,
+        clientId: sp.client_id,
+        clientName: sp.client_name,
+        clientNpwp: sp.client_npwp,
+        letterDate: sp.letter_date,
+        letterNumber: sp.letter_number,
+        description: sp.description,
+        deadline: sp.deadline,
+        isOverdue: sp.status !== 'completed' && new Date(sp.deadline) < today,
+        responseDate: sp.response_date,
+        status: sp.status,
+        handledBy: sp.handled_by,
+        handledByName: sp.handled_by_name,
+        jobdeskId: sp.jobdesk_id,
+        jobdeskTitle: sp.jobdesk_title,
+        createdAt: sp.created_at
+      }))
+    });
+  } catch (error) {
+    console.error('Get SP2DK notices error:', error);
+    return NextResponse.json({ error: 'Failed to get SP2DK notices' }, { status: 500 });
+  }
+}
+
+async function handleCreateSp2dkNotice(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { clientId, letterDate, letterNumber, description, jobdeskId } = body;
+
+    if (!clientId || !letterDate) {
+      return NextResponse.json({ error: 'Client ID and letter date are required' }, { status: 400 });
+    }
+
+    // Calculate deadline (14 days from letter date)
+    const deadline = new Date(letterDate);
+    deadline.setDate(deadline.getDate() + 14);
+
+    const result = await query(
+      `INSERT INTO sp2dk_notices (client_id, letter_date, letter_number, description, deadline, handled_by, jobdesk_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [clientId, letterDate, letterNumber || null, description || null, deadline, user.userId, jobdeskId || null]
+    );
+
+    return NextResponse.json({
+      message: 'SP2DK notice created successfully',
+      sp2dkNotice: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Create SP2DK notice error:', error);
+    return NextResponse.json({ error: 'Failed to create SP2DK notice' }, { status: 500 });
+  }
+}
+
+async function handleUpdateSp2dkNotice(request, noticeId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { clientId, letterDate, letterNumber, description, deadline, responseDate, status, jobdeskId } = body;
+
+    // If letterDate changes, recalculate deadline
+    let newDeadline = deadline;
+    if (letterDate && !deadline) {
+      const dl = new Date(letterDate);
+      dl.setDate(dl.getDate() + 14);
+      newDeadline = dl;
+    }
+
+    const result = await query(
+      `UPDATE sp2dk_notices SET
+        client_id = COALESCE($1, client_id),
+        letter_date = COALESCE($2, letter_date),
+        letter_number = COALESCE($3, letter_number),
+        description = COALESCE($4, description),
+        deadline = COALESCE($5, deadline),
+        response_date = $6,
+        status = COALESCE($7, status),
+        jobdesk_id = $8
+       WHERE id = $9
+       RETURNING *`,
+      [clientId, letterDate, letterNumber, description, newDeadline, responseDate, status, jobdeskId, noticeId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'SP2DK notice not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      message: 'SP2DK notice updated successfully',
+      sp2dkNotice: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Update SP2DK notice error:', error);
+    return NextResponse.json({ error: 'Failed to update SP2DK notice' }, { status: 500 });
+  }
+}
+
+async function handleDeleteSp2dkNotice(request, noticeId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query('DELETE FROM sp2dk_notices WHERE id = $1 RETURNING id', [noticeId]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'SP2DK notice not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'SP2DK notice deleted successfully' });
+  } catch (error) {
+    console.error('Delete SP2DK notice error:', error);
+    return NextResponse.json({ error: 'Failed to delete SP2DK notice' }, { status: 500 });
+  }
+}
+
+// ============================================
+// KPI V2 (Enhanced Tax KPI System)
+// ============================================
+
+async function handleGetKpiV2(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const month = parseInt(url.searchParams.get('month')) || new Date().getMonth() + 1;
+    const year = parseInt(url.searchParams.get('year')) || new Date().getFullYear();
+    const userId = url.searchParams.get('userId');
+
+    // Check permission - karyawan can only see their own KPI
+    if (user.role === 'karyawan' && userId && userId !== user.userId) {
+      return NextResponse.json({ error: 'Unauthorized to view other user KPI' }, { status: 403 });
+    }
+
+    // Get all users
+    let userQuery = `
+      SELECT u.id, u.name, u.email, u.role, u.division_id, d.name as division_name
+      FROM users u
+      LEFT JOIN divisions d ON u.division_id = d.id
+      WHERE u.is_active = true AND u.role NOT IN ('super_admin', 'owner')
+    `;
+    const queryParams = [];
+    let paramIndex = 1;
+
+    if (userId) {
+      userQuery += ` AND u.id = $${paramIndex}`;
+      queryParams.push(userId);
+      paramIndex++;
+    } else if (user.role === 'karyawan') {
+      userQuery += ` AND u.id = $${paramIndex}`;
+      queryParams.push(user.userId);
+      paramIndex++;
+    }
+
+    const usersResult = await query(userQuery, queryParams);
+    const users = usersResult.rows;
+
+    // Calculate KPI for each user based on completed jobdesks
+    const kpiData = await Promise.all(users.map(async (u) => {
+      // Get completed jobdesks for this user in the specified month/year
+      const jobdesksResult = await query(`
+        SELECT j.id, j.title, j.status, j.client_id, j.period_month, j.period_year,
+               c.name as client_name,
+               j.due_date, j.created_at, j.updated_at
+        FROM jobdesks j
+        LEFT JOIN clients c ON j.client_id = c.id
+        LEFT JOIN jobdesk_assignments ja ON j.id = ja.jobdesk_id
+        WHERE (j.created_by = $1 OR ja.user_id = $1)
+          AND j.status = 'completed'
+          AND EXTRACT(MONTH FROM j.updated_at) = $2
+          AND EXTRACT(YEAR FROM j.updated_at) = $3
+        GROUP BY j.id, c.name
+      `, [u.id, month, year]);
+
+      const completedJobdesks = jobdesksResult.rows;
+
+      // Calculate points for each jobdesk
+      const jobdeskPoints = await Promise.all(completedJobdesks.map(async (jd) => {
+        let basePoint = 100;
+
+        // Check if completed late (after due date)
+        let isLate = false;
+        let lateDeduction = 0;
+        if (jd.due_date && jd.updated_at) {
+          const dueDate = new Date(jd.due_date);
+          dueDate.setHours(23, 59, 59, 999); // End of day
+          const completedDate = new Date(jd.updated_at);
+          isLate = completedDate > dueDate;
+          if (isLate) {
+            lateDeduction = 5; // -5 poin jika terlambat
+          }
+        }
+
+        // Check for late task type submissions (deadline per task type)
+        // Count distinct task types that have late submissions (-5 per task type)
+        const taskTypeLatnessResult = await query(`
+          SELECT COUNT(DISTINCT task_type) as late_task_count,
+                 ARRAY_AGG(DISTINCT task_type) as late_task_types
+          FROM jobdesk_submissions
+          WHERE jobdesk_id = $1 AND is_late = true AND task_type IS NOT NULL
+        `, [jd.id]);
+        const lateTaskTypeCount = parseInt(taskTypeLatnessResult.rows[0].late_task_count) || 0;
+        const lateTaskTypes = taskTypeLatnessResult.rows[0].late_task_types || [];
+        const taskTypeDeduction = lateTaskTypeCount * 5;
+
+        // Check for warning letters linked to this jobdesk
+        // OR linked to the same client (where the user is assigned to jobdesks for that client)
+        const warningResult = await query(`
+          SELECT COUNT(DISTINCT wl.id) as count FROM warning_letters wl
+          WHERE wl.jobdesk_id = $1
+             OR (wl.client_id = $2 AND wl.client_id IS NOT NULL
+                 AND EXTRACT(MONTH FROM wl.letter_date) = $3
+                 AND EXTRACT(YEAR FROM wl.letter_date) = $4)
+        `, [jd.id, jd.client_id, month, year]);
+        const warningCount = parseInt(warningResult.rows[0].count) || 0;
+
+        // Check for SP2DK linked to this jobdesk
+        // OR linked to the same client (where the user is assigned to jobdesks for that client)
+        const sp2dkResult = await query(`
+          SELECT COUNT(DISTINCT sp.id) as count FROM sp2dk_notices sp
+          WHERE sp.jobdesk_id = $1
+             OR (sp.client_id = $2 AND sp.client_id IS NOT NULL
+                 AND EXTRACT(MONTH FROM sp.letter_date) = $3
+                 AND EXTRACT(YEAR FROM sp.letter_date) = $4)
+        `, [jd.id, jd.client_id, month, year]);
+        const sp2dkCount = parseInt(sp2dkResult.rows[0].count) || 0;
+
+        // Calculate deductions: -5 if late, -5 per late task type, -5 per warning letter, -5 per SP2DK
+        const warningDeduction = warningCount * 5;
+        const sp2dkDeduction = sp2dkCount * 5;
+        const totalDeduction = lateDeduction + taskTypeDeduction + warningDeduction + sp2dkDeduction;
+        const finalPoint = Math.max(0, basePoint - totalDeduction);
+
+        return {
+          jobdeskId: jd.id,
+          jobdeskTitle: jd.title,
+          clientName: jd.client_name,
+          dueDate: jd.due_date,
+          completedAt: jd.updated_at,
+          isLate,
+          basePoint,
+          lateDeduction,
+          lateTaskTypeCount,
+          lateTaskTypes,
+          taskTypeDeduction,
+          warningCount,
+          sp2dkCount,
+          warningDeduction,
+          sp2dkDeduction,
+          totalDeduction,
+          finalPoint
+        };
+      }));
+
+      // Calculate average KPI
+      const totalJobdesks = jobdeskPoints.length;
+      const totalPoints = jobdeskPoints.reduce((sum, jp) => sum + jp.finalPoint, 0);
+      const averageKpi = totalJobdesks > 0 ? Math.round(totalPoints / totalJobdesks) : 0;
+
+      // Count total deductions
+      const totalWarnings = jobdeskPoints.reduce((sum, jp) => sum + jp.warningCount, 0);
+      const totalSp2dk = jobdeskPoints.reduce((sum, jp) => sum + jp.sp2dkCount, 0);
+      const totalLateJobs = jobdeskPoints.filter(jp => jp.isLate).length;
+      const totalLateDeduction = jobdeskPoints.reduce((sum, jp) => sum + jp.lateDeduction, 0);
+      const totalLateTaskTypes = jobdeskPoints.reduce((sum, jp) => sum + jp.lateTaskTypeCount, 0);
+      const totalTaskTypeDeduction = jobdeskPoints.reduce((sum, jp) => sum + jp.taskTypeDeduction, 0);
+
+      // For KPIPageV2 compatibility - these are simplified metrics
+      // KPI Hasil Kinerja = rata-rata poin dari semua jobdesk (sudah termasuk potongan)
+      // KPI Total = sama dengan KPI Hasil Kinerja
+      const kpiHasilKinerja = averageKpi;
+      const kpiEfektivitasWaktu = totalJobdesks > 0
+        ? Math.round(((totalJobdesks - totalLateJobs) / totalJobdesks) * 100)
+        : 0;
+      // KPI Total sekarang langsung sama dengan KPI Hasil Kinerja (rata-rata poin)
+      const overallKpi = kpiHasilKinerja;
+
+      // Get grade based on overallKpi (the combined score shown in UI)
+      let grade = '-';
+      let gradeColor = 'gray';
+      if (totalJobdesks > 0) {
+        if (overallKpi >= 90) { grade = 'A'; gradeColor = 'green'; }
+        else if (overallKpi >= 80) { grade = 'B'; gradeColor = 'blue'; }
+        else if (overallKpi >= 70) { grade = 'C'; gradeColor = 'yellow'; }
+        else if (overallKpi >= 60) { grade = 'D'; gradeColor = 'orange'; }
+        else { grade = 'E'; gradeColor = 'red'; }
+      }
+
+      // Determine SP level based on overallKpi
+      let spLevel = 0;
+      let spDescription = 'Normal';
+      if (totalJobdesks > 0 && overallKpi < 60) {
+        spLevel = 1;
+        spDescription = 'Kandidat SP - KPI di bawah 60%';
+      }
+
+      // Count unique clients from completed jobdesks
+      const totalClients = new Set(jobdeskPoints.map(jp => jp.clientName).filter(Boolean)).size;
+
+      return {
+        userId: u.id,
+        userName: u.name,
+        userEmail: u.email,
+        userRole: u.role,
+        divisionId: u.division_id,
+        divisionName: u.division_name,
+        periodMonth: month,
+        periodYear: year,
+        // Jobdesk details
+        jobdeskPoints,
+        totalJobdesks,
+        totalPoints,
+        averageKpi,
+        // KPIPageV2 compatibility fields
+        kpiHasilKinerja,
+        kpiEfektivitasWaktu,
+        overallKpi,
+        totalClients,
+        completedTasks: totalJobdesks,
+        totalTasks: totalJobdesks,
+        deadlineCompliance: kpiEfektivitasWaktu,
+        pajakScore: averageKpi,
+        pembukuanScore: averageKpi,
+        warningLetterCount: totalWarnings,
+        sp2dkCount: totalSp2dk,
+        // Deductions summary
+        totalWarnings,
+        totalSp2dk,
+        totalLateJobs,
+        totalLateDeduction,
+        totalLateTaskTypes,
+        totalTaskTypeDeduction,
+        // SP Status
+        spLevel,
+        spDescription,
+        // Grade
+        grade,
+        gradeColor
+      };
+    }));
+
+    return NextResponse.json({
+      kpiData,
+      period: { month, year }
+    });
+  } catch (error) {
+    console.error('Get KPI V2 error:', error);
+    return NextResponse.json({ error: 'Failed to fetch KPI data' }, { status: 500 });
+  }
+}
+
+async function handleGetKpiV2Summary(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const month = parseInt(url.searchParams.get('month')) || new Date().getMonth() + 1;
+    const year = parseInt(url.searchParams.get('year')) || new Date().getFullYear();
+
+    // Get summary statistics
+    const summaryResult = await query(`
+      SELECT
+        COUNT(DISTINCT u.id) as total_employees,
+        COUNT(DISTINCT CASE WHEN tp.handled_by IS NOT NULL THEN u.id END) as employees_with_tasks,
+        COUNT(tp.id) as total_tax_periods,
+        COUNT(CASE WHEN tp.pph_payment_status = 'completed' THEN 1 END) as pph_payment_completed,
+        COUNT(CASE WHEN tp.pph_filing_status = 'completed' THEN 1 END) as pph_filing_completed,
+        COUNT(CASE WHEN tp.bookkeeping_status = 'completed' THEN 1 END) as bookkeeping_completed
+      FROM users u
+      LEFT JOIN tax_periods tp ON tp.handled_by = u.id AND tp.period_month = $1 AND tp.period_year = $2
+      WHERE u.is_active = true AND u.role = 'karyawan'
+    `, [month, year]);
+
+    // Count warning letters and SP2DK this month
+    const issuesResult = await query(`
+      SELECT
+        (SELECT COUNT(*) FROM warning_letters WHERE EXTRACT(MONTH FROM letter_date) = $1 AND EXTRACT(YEAR FROM letter_date) = $2) as warning_letters,
+        (SELECT COUNT(*) FROM sp2dk_notices WHERE EXTRACT(MONTH FROM letter_date) = $1 AND EXTRACT(YEAR FROM letter_date) = $2) as sp2dk_notices
+    `, [month, year]);
+
+    const summary = summaryResult.rows[0];
+    const issues = issuesResult.rows[0];
+
+    return NextResponse.json({
+      summary: {
+        totalEmployees: parseInt(summary.total_employees) || 0,
+        employeesWithTasks: parseInt(summary.employees_with_tasks) || 0,
+        totalTaxPeriods: parseInt(summary.total_tax_periods) || 0,
+        completionRates: {
+          pphPayment: summary.total_tax_periods > 0 ? Math.round((summary.pph_payment_completed / summary.total_tax_periods) * 100) : 0,
+          pphFiling: summary.total_tax_periods > 0 ? Math.round((summary.pph_filing_completed / summary.total_tax_periods) * 100) : 0,
+          bookkeeping: summary.total_tax_periods > 0 ? Math.round((summary.bookkeeping_completed / summary.total_tax_periods) * 100) : 0
+        },
+        issues: {
+          warningLetters: parseInt(issues.warning_letters) || 0,
+          sp2dkNotices: parseInt(issues.sp2dk_notices) || 0
+        }
+      },
+      period: { month, year }
+    });
+  } catch (error) {
+    console.error('Get KPI V2 summary error:', error);
+    return NextResponse.json({ error: 'Failed to fetch KPI summary' }, { status: 500 });
+  }
+}
+
+// ============================================
+// EMPLOYEE WARNING ENDPOINTS (SP Karyawan)
+// ============================================
+
+async function handleGetEmployeeWarnings(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const url = new URL(request.url);
+    const year = url.searchParams.get('year');
+    const userId = url.searchParams.get('userId');
+    const spLevel = url.searchParams.get('spLevel');
+
+    let queryText = `
+      SELECT ew.*,
+             u.name as user_name, u.email as user_email,
+             ib.name as issued_by_name
+      FROM employee_warnings ew
+      JOIN users u ON ew.user_id = u.id
+      LEFT JOIN users ib ON ew.issued_by = ib.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    if (year) {
+      queryText += ` AND ew.period_year = $${paramIndex}`;
+      params.push(parseInt(year));
+      paramIndex++;
+    }
+
+    if (userId) {
+      queryText += ` AND ew.user_id = $${paramIndex}`;
+      params.push(userId);
+      paramIndex++;
+    }
+
+    if (spLevel) {
+      queryText += ` AND ew.sp_level = $${paramIndex}`;
+      params.push(parseInt(spLevel));
+      paramIndex++;
+    }
+
+    queryText += ' ORDER BY ew.created_at DESC';
+
+    const result = await query(queryText, params);
+
+    return NextResponse.json({
+      warnings: result.rows.map(w => ({
+        id: w.id,
+        userId: w.user_id,
+        userName: w.user_name,
+        userEmail: w.user_email,
+        spLevel: w.sp_level,
+        periodMonth: w.period_month,
+        periodYear: w.period_year,
+        reason: w.reason,
+        notes: w.notes,
+        issuedBy: w.issued_by,
+        issuedByName: w.issued_by_name,
+        status: w.status,
+        createdAt: w.created_at,
+        updatedAt: w.updated_at
+      }))
+    });
+  } catch (error) {
+    console.error('Get employee warnings error:', error);
+    return NextResponse.json({ error: 'Failed to get employee warnings' }, { status: 500 });
+  }
+}
+
+async function handleGetEmployeeWarningStats(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query(`
+      SELECT
+        COUNT(CASE WHEN sp_level = 1 AND status = 'active' THEN 1 END) as sp1,
+        COUNT(CASE WHEN sp_level = 2 AND status = 'active' THEN 1 END) as sp2,
+        COUNT(CASE WHEN sp_level = 3 AND status = 'active' THEN 1 END) as sp3,
+        COUNT(*) as total
+      FROM employee_warnings
+    `);
+
+    const stats = result.rows[0];
+
+    return NextResponse.json({
+      stats: {
+        sp1: parseInt(stats.sp1) || 0,
+        sp2: parseInt(stats.sp2) || 0,
+        sp3: parseInt(stats.sp3) || 0,
+        total: parseInt(stats.total) || 0
+      }
+    });
+  } catch (error) {
+    console.error('Get employee warning stats error:', error);
+    return NextResponse.json({ error: 'Failed to get stats' }, { status: 500 });
+  }
+}
+
+async function handleCreateEmployeeWarning(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { userId, spLevel, periodMonth, periodYear, reason, notes } = body;
+
+    if (!userId || !spLevel || !periodMonth || !periodYear || !reason) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Check if warning already exists for this user in this period
+    const existingCheck = await query(
+      'SELECT id FROM employee_warnings WHERE user_id = $1 AND period_month = $2 AND period_year = $3',
+      [userId, periodMonth, periodYear]
+    );
+
+    if (existingCheck.rows.length > 0) {
+      return NextResponse.json({
+        error: 'Surat peringatan untuk karyawan ini sudah ada di periode yang sama'
+      }, { status: 400 });
+    }
+
+    const result = await query(`
+      INSERT INTO employee_warnings (user_id, sp_level, period_month, period_year, reason, notes, issued_by, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      RETURNING *
+    `, [userId, spLevel, periodMonth, periodYear, reason, notes || null, user.userId]);
+
+    return NextResponse.json({
+      message: 'Surat peringatan berhasil dibuat',
+      warning: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Create employee warning error:', error);
+    return NextResponse.json({ error: 'Failed to create employee warning' }, { status: 500 });
+  }
+}
+
+async function handleUpdateEmployeeWarning(request, warningId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { spLevel, periodMonth, periodYear, reason, notes, status } = body;
+
+    const result = await query(`
+      UPDATE employee_warnings
+      SET sp_level = COALESCE($1, sp_level),
+          period_month = COALESCE($2, period_month),
+          period_year = COALESCE($3, period_year),
+          reason = COALESCE($4, reason),
+          notes = COALESCE($5, notes),
+          status = COALESCE($6, status),
+          updated_at = NOW()
+      WHERE id = $7
+      RETURNING *
+    `, [spLevel, periodMonth, periodYear, reason, notes, status, warningId]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Warning not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      message: 'Surat peringatan berhasil diupdate',
+      warning: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Update employee warning error:', error);
+    return NextResponse.json({ error: 'Failed to update employee warning' }, { status: 500 });
+  }
+}
+
+async function handleDeleteEmployeeWarning(request, warningId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query('DELETE FROM employee_warnings WHERE id = $1 RETURNING id', [warningId]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Warning not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'Surat peringatan berhasil dihapus' });
+  } catch (error) {
+    console.error('Delete employee warning error:', error);
+    return NextResponse.json({ error: 'Failed to delete employee warning' }, { status: 500 });
+  }
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
@@ -2717,13 +5236,24 @@ export async function GET(request, { params }) {
 
     // Jobdesks
     if (path === 'jobdesks') return handleGetJobdesks(request);
+    if (path.match(/^jobdesks\/[^/]+\/submissions$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleGetJobdeskSubmissions(request, jobdeskId);
+    }
+    if (path.match(/^jobdesks\/[^/]+$/) && !path.includes('attachments') && !path.includes('status')) {
+      const jobdeskId = path.split('/')[1];
+      return handleGetJobdeskDetail(request, jobdeskId);
+    }
 
     // Daily logs
     if (path === 'daily-logs') return handleGetDailyLogs(request);
 
     // KPI
     if (path === 'kpi') return handleGetKPI(request);
+    if (path === 'kpi-v2') return handleGetKpiV2(request);
+    if (path === 'kpi-v2/summary') return handleGetKpiV2Summary(request);
     if (path === 'users') return handleGetUsers(request);
+    if (path === 'users/list') return handleGetUsersList(request);
 
     // Todos
     if (path === 'todos') return handleGetTodos(request);
@@ -2754,6 +5284,31 @@ export async function GET(request, { params }) {
     if (path === 'pwa/vapid-key') return handleGetVapidKey(request);
     if (path === 'pwa/offline-bundle') return handleGetOfflineBundle(request);
 
+    // Clients (Tax Consulting)
+    if (path === 'clients') return handleGetClients(request);
+    if (path.match(/^clients\/[^/]+$/)) {
+      const clientId = path.split('/')[1];
+      return handleGetClient(request, clientId);
+    }
+
+    // Tax Periods
+    if (path === 'tax-periods') return handleGetTaxPeriods(request);
+    if (path === 'tax-periods/stats') return handleGetTaxMonitoringStats(request);
+    if (path.match(/^tax-periods\/[^/]+$/)) {
+      const periodId = path.split('/')[1];
+      return handleGetTaxPeriod(request, periodId);
+    }
+
+    // Warning Letters (DJP - Surat Teguran)
+    if (path === 'warning-letters') return handleGetWarningLetters(request);
+
+    // SP2DK Notices
+    if (path === 'sp2dk') return handleGetSp2dkNotices(request);
+
+    // Employee Warnings (SP Karyawan)
+    if (path === 'employee-warnings') return handleGetEmployeeWarnings(request);
+    if (path === 'employee-warnings/stats') return handleGetEmployeeWarningStats(request);
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
@@ -2781,6 +5336,14 @@ export async function POST(request, { params }) {
 
     // Jobdesks
     if (path === 'jobdesks') return handleCreateJobdesk(request);
+    if (path.match(/^jobdesks\/[^/]+\/submissions\/upload$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleUploadSubmissionFile(request, jobdeskId);
+    }
+    if (path.match(/^jobdesks\/[^/]+\/submissions$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleCreateJobdeskSubmission(request, jobdeskId);
+    }
 
     // Daily logs
     if (path === 'daily-logs') return handleCreateDailyLog(request);
@@ -2811,6 +5374,26 @@ export async function POST(request, { params }) {
     if (path === 'pwa/save-subscription') return handleSavePushSubscription(request);
     if (path === 'pwa/remove-subscription') return handleRemovePushSubscription(request);
     if (path === 'pwa/send-notification') return handleSendPushNotification(request);
+
+    // Clients (Tax Consulting)
+    if (path === 'clients') return handleCreateClient(request);
+    if (path.match(/^clients\/[^/]+\/assign$/)) {
+      const clientId = path.split('/')[1];
+      return handleAssignClientEmployee(request, clientId);
+    }
+
+    // Tax Periods
+    if (path === 'tax-periods') return handleCreateTaxPeriod(request);
+    if (path === 'tax-periods/generate') return handleGenerateTaxPeriods(request);
+
+    // Warning Letters (DJP)
+    if (path === 'warning-letters') return handleCreateWarningLetter(request);
+
+    // SP2DK Notices
+    if (path === 'sp2dk') return handleCreateSp2dkNotice(request);
+
+    // Employee Warnings (SP Karyawan)
+    if (path === 'employee-warnings') return handleCreateEmployeeWarning(request);
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
@@ -2878,6 +5461,46 @@ export async function PUT(request, { params }) {
       return handleUpdateChatRoom(request, roomId);
     }
 
+    // Clients (Tax Consulting)
+    if (path.match(/^clients\/[^/]+\/assign\/[^/]+$/)) {
+      const parts = path.split('/');
+      const clientId = parts[1];
+      const userId = parts[3];
+      return handleUpdateClientAssignment(request, clientId, userId);
+    }
+    if (path.match(/^clients\/[^/]+$/)) {
+      const clientId = path.split('/')[1];
+      return handleUpdateClient(request, clientId);
+    }
+
+    // Tax Periods
+    if (path.match(/^tax-periods\/[^/]+\/status$/)) {
+      const periodId = path.split('/')[1];
+      return handleUpdateTaxPeriodStatus(request, periodId);
+    }
+    if (path.match(/^tax-periods\/[^/]+$/)) {
+      const periodId = path.split('/')[1];
+      return handleUpdateTaxPeriod(request, periodId);
+    }
+
+    // Warning Letters
+    if (path.match(/^warning-letters\/[^/]+$/)) {
+      const letterId = path.split('/')[1];
+      return handleUpdateWarningLetter(request, letterId);
+    }
+
+    // SP2DK Notices
+    if (path.match(/^sp2dk\/[^/]+$/)) {
+      const noticeId = path.split('/')[1];
+      return handleUpdateSp2dkNotice(request, noticeId);
+    }
+
+    // Employee Warnings (SP Karyawan)
+    if (path.match(/^employee-warnings\/[^/]+$/)) {
+      const warningId = path.split('/')[1];
+      return handleUpdateEmployeeWarning(request, warningId);
+    }
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
@@ -2910,6 +5533,12 @@ export async function DELETE(request, { params }) {
       return handleDeleteJobdesk(request, jobdeskId);
     }
 
+    // Jobdesk Submissions
+    if (path.match(/^jobdesk-submissions\/[^/]+$/)) {
+      const submissionId = path.split('/')[1];
+      return handleDeleteJobdeskSubmission(request, submissionId);
+    }
+
     // Attachments
     if (path.match(/^attachments\/[^/]+$/)) {
       const attachmentId = path.split('/')[1];
@@ -2920,6 +5549,42 @@ export async function DELETE(request, { params }) {
     if (path.match(/^todos\/[^/]+$/)) {
       const todoId = path.split('/')[1];
       return handleDeleteTodo(request, todoId);
+    }
+
+    // Clients (Tax Consulting)
+    if (path.match(/^clients\/[^/]+\/assign\/[^/]+$/)) {
+      const parts = path.split('/');
+      const clientId = parts[1];
+      const userId = parts[3];
+      return handleUnassignClientEmployee(request, clientId, userId);
+    }
+    if (path.match(/^clients\/[^/]+$/)) {
+      const clientId = path.split('/')[1];
+      return handleDeleteClient(request, clientId);
+    }
+
+    // Tax Periods
+    if (path.match(/^tax-periods\/[^/]+$/)) {
+      const periodId = path.split('/')[1];
+      return handleDeleteTaxPeriod(request, periodId);
+    }
+
+    // Warning Letters
+    if (path.match(/^warning-letters\/[^/]+$/)) {
+      const letterId = path.split('/')[1];
+      return handleDeleteWarningLetter(request, letterId);
+    }
+
+    // SP2DK Notices
+    if (path.match(/^sp2dk\/[^/]+$/)) {
+      const noticeId = path.split('/')[1];
+      return handleDeleteSp2dkNotice(request, noticeId);
+    }
+
+    // Employee Warnings (SP Karyawan)
+    if (path.match(/^employee-warnings\/[^/]+$/)) {
+      const warningId = path.split('/')[1];
+      return handleDeleteEmployeeWarning(request, warningId);
     }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
