@@ -67,6 +67,36 @@ const migrations = [
   // Add submission_link column if not exists (for existing databases)
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS submission_link TEXT;`,
 
+  // Clients table - MUST be created before jobdesks references it
+  `CREATE TABLE IF NOT EXISTS clients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    npwp VARCHAR(30),
+    address TEXT,
+    contact_person VARCHAR(255),
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    is_pkp BOOLEAN DEFAULT FALSE,
+    is_umkm BOOLEAN DEFAULT FALSE,
+    client_type VARCHAR(20) DEFAULT 'badan',
+    notes TEXT,
+    created_by UUID REFERENCES users(id),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );`,
+
+  // Client assignments (Penugasan Karyawan ke Klien)
+  `CREATE TABLE IF NOT EXISTS client_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES users(id),
+    is_primary BOOLEAN DEFAULT FALSE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(client_id, user_id)
+  );`,
+
   // Add client and tax-related columns to jobdesks
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id) ON DELETE SET NULL;`,
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS period_month INTEGER CHECK (period_month BETWEEN 1 AND 12);`,
@@ -240,35 +270,8 @@ const migrations = [
   // TAX CONSULTING KPI SYSTEM - NEW TABLES
   // =====================================================
 
-  // Clients table (Klien - Perusahaan/OP yang ditangani)
-  `CREATE TABLE IF NOT EXISTS clients (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    npwp VARCHAR(30),
-    address TEXT,
-    contact_person VARCHAR(255),
-    phone VARCHAR(50),
-    email VARCHAR(255),
-    is_pkp BOOLEAN DEFAULT FALSE,
-    is_umkm BOOLEAN DEFAULT FALSE,
-    client_type VARCHAR(20) DEFAULT 'badan',
-    notes TEXT,
-    created_by UUID REFERENCES users(id),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-  );`,
-
-  // Client assignments (Penugasan Karyawan ke Klien)
-  `CREATE TABLE IF NOT EXISTS client_assignments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    assigned_by UUID REFERENCES users(id),
-    is_primary BOOLEAN DEFAULT FALSE,
-    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(client_id, user_id)
-  );`,
+  // Note: clients and client_assignments tables are created earlier in the migration
+  // to ensure proper foreign key ordering (before jobdesks.client_id)
 
   // Tax periods (Periode Pajak Bulanan)
   `CREATE TABLE IF NOT EXISTS tax_periods (
