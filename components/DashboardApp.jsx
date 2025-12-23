@@ -110,7 +110,21 @@ export default function DashboardApp({ setIsLoggedIn }) {
       setCheckingJobdesks(false);
     }
 
+    // Heartbeat untuk track user online - setiap 5 menit
+    const heartbeatInterval = setInterval(() => {
+      authAPI.heartbeat().catch(err => {
+        console.warn('Heartbeat failed:', err);
+      });
+    }, 5 * 60 * 1000); // 5 menit
+
+    // Initial heartbeat
+    authAPI.heartbeat().catch(err => {
+      console.warn('Initial heartbeat failed:', err);
+    });
+
     return () => {
+      clearTimeout(socketTimer);
+      clearInterval(heartbeatInterval);
       disconnectSocket();
     };
   }, []);

@@ -437,6 +437,30 @@ async function handleGetMe(request) {
   }
 }
 
+// Heartbeat - update last_login untuk tracking user online
+async function handleHeartbeat(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Update last_login
+    await query(
+      'UPDATE users SET last_login = NOW() WHERE id = $1',
+      [user.userId]
+    );
+
+    return NextResponse.json({ success: true, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('Heartbeat error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update activity' },
+      { status: 500 }
+    );
+  }
+}
+
 // ============================================
 // DIVISION ENDPOINTS
 // ============================================
@@ -2918,6 +2942,7 @@ export async function GET(request, { params }) {
     // Auth
     if (path === 'auth/me') return handleGetMe(request);
     if (path === 'auth/2fa/qrcode') return handleGet2FAQRCode(request);
+    if (path === 'auth/heartbeat') return handleHeartbeat(request);
 
     // Divisions
     if (path === 'divisions') return handleGetDivisions(request);

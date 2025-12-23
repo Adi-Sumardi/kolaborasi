@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { userAPI, divisionAPI } from '@/lib/api';
-import { Plus, Edit, Trash2, Power, PowerOff, Key } from 'lucide-react';
+import { Plus, Edit, Trash2, Power, PowerOff, Key, Circle, Clock, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -53,6 +53,9 @@ export default function UserManagementPage({ user }) {
 
   useEffect(() => {
     loadData();
+    // Auto-refresh setiap 30 detik untuk update status online
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
@@ -217,6 +220,34 @@ export default function UserManagementPage({ user }) {
     return division ? division.name : '-';
   };
 
+  const formatLastLogin = (lastLogin) => {
+    if (!lastLogin) return 'Belum pernah login';
+
+    const date = new Date(lastLogin);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Baru saja';
+    if (diffMins < 60) return `${diffMins} menit lalu`;
+    if (diffHours < 24) return `${diffHours} jam lalu`;
+    if (diffDays < 7) return `${diffDays} hari lalu`;
+
+    return date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Hitung user online (login dalam 15 menit terakhir)
+  const onlineUsers = users.filter(u => u.isOnline === true);
+  const offlineUsers = users.filter(u => u.isOnline !== true && u.isActive !== false);
+
   if (loading) {
     return <div className="text-center py-8">Memuat data...</div>;
   }
@@ -326,16 +357,25 @@ export default function UserManagementPage({ user }) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{users.length}</div>
             <p className="text-sm text-gray-600">Total User</p>
           </CardContent>
         </Card>
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <Circle className="w-3 h-3 fill-green-500 text-green-500 animate-pulse" />
+              <span className="text-2xl font-bold text-green-600">{onlineUsers.length}</span>
+            </div>
+            <p className="text-sm text-green-700">Sedang Online</p>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-blue-600">
               {users.filter(u => u.isActive !== false).length}
             </div>
             <p className="text-sm text-gray-600">User Aktif</p>
@@ -351,13 +391,47 @@ export default function UserManagementPage({ user }) {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-blue-600">
+            <div className="text-2xl font-bold text-purple-600">
               {users.filter(u => u.role === 'karyawan').length}
             </div>
             <p className="text-sm text-gray-600">Karyawan</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Online Users Section */}
+      {onlineUsers.length > 0 && (
+        <Card className="border-green-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-green-700">
+              <Circle className="w-3 h-3 fill-green-500 text-green-500 animate-pulse" />
+              User Sedang Online ({onlineUsers.length})
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadData}
+                className="ml-auto"
+                title="Refresh"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              {onlineUsers.map(u => (
+                <div key={u.id} className="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-lg">
+                  <Circle className="w-2 h-2 fill-green-500 text-green-500" />
+                  <div>
+                    <p className="font-medium text-sm text-green-900">{u.name}</p>
+                    <p className="text-xs text-green-700">{getRoleLabel(u.role)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Users Table */}
       <Card>
@@ -370,9 +444,11 @@ export default function UserManagementPage({ user }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nama</TableHead>
-                  <TableHead>Email</TableHead>
+                  <TableHead className="hidden sm:table-cell">Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Divisi</TableHead>
+                  <TableHead className="hidden md:table-cell">Divisi</TableHead>
+                  <TableHead>Online</TableHead>
+                  <TableHead className="hidden lg:table-cell">Last Login</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
@@ -380,24 +456,49 @@ export default function UserManagementPage({ user }) {
               <TableBody>
                 {users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500 py-4">
+                    <TableCell colSpan={8} className="text-center text-gray-500 py-4">
                       Tidak ada user
                     </TableCell>
                   </TableRow>
                 ) : (
                   users.map(u => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell>{u.email}</TableCell>
+                    <TableRow key={u.id} className={u.isOnline ? 'bg-green-50/50' : ''}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {u.isOnline && (
+                            <Circle className="w-2 h-2 fill-green-500 text-green-500 flex-shrink-0" />
+                          )}
+                          {u.name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">{u.email}</TableCell>
                       <TableCell>
                         <Badge className={getRoleBadgeColor(u.role)}>
                           {getRoleLabel(u.role)}
                         </Badge>
                       </TableCell>
-                      <TableCell>{getDivisionName(u.divisionId)}</TableCell>
+                      <TableCell className="hidden md:table-cell">{getDivisionName(u.divisionId)}</TableCell>
+                      <TableCell>
+                        {u.isOnline ? (
+                          <Badge className="bg-green-100 text-green-800">
+                            <Circle className="w-2 h-2 fill-green-500 mr-1" />
+                            Online
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-gray-500">
+                            Offline
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Clock className="w-3 h-3" />
+                          {formatLastLogin(u.lastLogin)}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         {u.isActive !== false ? (
-                          <Badge className="bg-green-100 text-green-800">Aktif</Badge>
+                          <Badge className="bg-blue-100 text-blue-800">Aktif</Badge>
                         ) : (
                           <Badge className="bg-red-100 text-red-800">Nonaktif</Badge>
                         )}
