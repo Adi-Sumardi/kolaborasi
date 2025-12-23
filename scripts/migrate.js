@@ -76,6 +76,11 @@ const migrations = [
     UNIQUE(jobdesk_id, user_id)
   );`,
 
+  // Add user_status and completed_at to jobdesk_assignments for per-user tracking
+  `ALTER TABLE jobdesk_assignments ADD COLUMN IF NOT EXISTS user_status VARCHAR(20) DEFAULT 'pending';`,
+  `ALTER TABLE jobdesk_assignments ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;`,
+  `ALTER TABLE jobdesk_assignments ADD COLUMN IF NOT EXISTS attachment_count INTEGER DEFAULT 0;`,
+
   // Daily logs table
   `CREATE TABLE IF NOT EXISTS daily_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -153,6 +158,9 @@ const migrations = [
     uploaded_by UUID REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
   );`,
+
+  // Add last_login column to users
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP WITH TIME ZONE;`,
 
   // Create indexes for better performance
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,

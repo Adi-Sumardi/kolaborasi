@@ -272,7 +272,7 @@ async function handleLogin(request) {
 
     // Update last login
     await query(
-      'UPDATE users SET updated_at = NOW() WHERE id = $1',
+      'UPDATE users SET last_login = NOW() WHERE id = $1',
       [user.id]
     );
 
@@ -645,19 +645,70 @@ async function handleGetJobdesks(request) {
 
     const result = await query(dataQuery, params);
 
-    const jobdesks = result.rows.map(j => ({
-      id: j.id,
-      title: j.title,
-      description: j.description,
-      status: j.status,
-      priority: j.priority,
-      dueDate: j.due_date,
-      submissionLink: j.submission_link,
-      createdBy: j.created_by,
-      assignedTo: j.assigned_to ? j.assigned_to.filter(id => id !== null) : [],
-      createdAt: j.created_at,
-      updatedAt: j.updated_at
-    }));
+    // Get per-user assignment details for each jobdesk
+    const jobdeskIds = result.rows.map(j => j.id);
+    let assignmentDetails = {};
+
+    if (jobdeskIds.length > 0) {
+      const assignmentsResult = await query(
+        `SELECT ja.jobdesk_id, ja.user_id, ja.user_status, ja.completed_at, ja.attachment_count,
+                u.name as user_name, u.email as user_email
+         FROM jobdesk_assignments ja
+         LEFT JOIN users u ON u.id = ja.user_id
+         WHERE ja.jobdesk_id = ANY($1)`,
+        [jobdeskIds]
+      );
+
+      // Group by jobdesk_id
+      assignmentsResult.rows.forEach(a => {
+        if (!assignmentDetails[a.jobdesk_id]) {
+          assignmentDetails[a.jobdesk_id] = [];
+        }
+        assignmentDetails[a.jobdesk_id].push({
+          userId: a.user_id,
+          userName: a.user_name,
+          userEmail: a.user_email,
+          userStatus: a.user_status || 'pending',
+          completedAt: a.completed_at,
+          attachmentCount: a.attachment_count || 0
+        });
+      });
+    }
+
+    const jobdesks = result.rows.map(j => {
+      const assignments = assignmentDetails[j.id] || [];
+      const completedCount = assignments.filter(a => a.userStatus === 'completed').length;
+      const totalAssignees = assignments.length;
+
+      // Calculate overall status based on per-user status
+      let overallStatus = j.status;
+      if (totalAssignees > 0) {
+        if (completedCount === totalAssignees) {
+          overallStatus = 'completed';
+        } else if (completedCount > 0 || assignments.some(a => a.userStatus === 'in_progress')) {
+          overallStatus = 'in_progress';
+        } else {
+          overallStatus = 'pending';
+        }
+      }
+
+      return {
+        id: j.id,
+        title: j.title,
+        description: j.description,
+        status: overallStatus,
+        priority: j.priority,
+        dueDate: j.due_date,
+        submissionLink: j.submission_link,
+        createdBy: j.created_by,
+        assignedTo: j.assigned_to ? j.assigned_to.filter(id => id !== null) : [],
+        assignments: assignments,
+        completedCount,
+        totalAssignees,
+        createdAt: j.created_at,
+        updatedAt: j.updated_at
+      };
+    });
 
     return NextResponse.json({
       jobdesks,
@@ -768,7 +819,7 @@ async function handleCreateJobdesk(request) {
   }
 }
 
-// Update jobdesk status
+// Update jobdesk status (per-user tracking)
 async function handleUpdateJobdeskStatus(request, jobdeskId) {
   try {
     const user = verifyToken(request);
@@ -796,15 +847,45 @@ async function handleUpdateJobdeskStatus(request, jobdeskId) {
       return NextResponse.json({ error: 'Not assigned to this jobdesk' }, { status: 403 });
     }
 
-    // Update jobdesk status
+    // Update user's individual status in jobdesk_assignments
+    await query(
+      `UPDATE jobdesk_assignments
+       SET user_status = $1,
+           completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE NULL END
+       WHERE jobdesk_id = $2 AND user_id = $3`,
+      [status, jobdeskId, user.userId]
+    );
+
+    // Get all assignments to calculate overall status
+    const allAssignments = await query(
+      `SELECT user_status FROM jobdesk_assignments WHERE jobdesk_id = $1`,
+      [jobdeskId]
+    );
+
+    const statuses = allAssignments.rows.map(a => a.user_status || 'pending');
+    const completedCount = statuses.filter(s => s === 'completed').length;
+    const totalCount = statuses.length;
+
+    // Calculate overall jobdesk status
+    let overallStatus = 'pending';
+    if (completedCount === totalCount) {
+      overallStatus = 'completed';
+    } else if (completedCount > 0 || statuses.some(s => s === 'in_progress')) {
+      overallStatus = 'in_progress';
+    }
+
+    // Update overall jobdesk status
     await query(
       'UPDATE jobdesks SET status = $1 WHERE id = $2',
-      [status, jobdeskId]
+      [overallStatus, jobdeskId]
     );
 
     return NextResponse.json({
       message: 'Status updated',
-      status
+      userStatus: status,
+      overallStatus,
+      completedCount,
+      totalCount
     });
   } catch (error) {
     console.error('Update jobdesk status error:', error);
@@ -1218,7 +1299,118 @@ async function handleGetKPI(request) {
   }
 }
 
-// Get all users (for KPI selection)
+// Get KPI data for all employees
+async function handleGetAllKPI(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Only SDM, Pengurus, and Super Admin can see all KPIs
+    if (!hasPermission(user.role, ['super_admin', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
+    // Calculate date range
+    let dateStart, dateEnd;
+    if (startDate && endDate) {
+      dateStart = new Date(startDate);
+      dateEnd = new Date(endDate);
+      dateEnd.setHours(23, 59, 59, 999);
+    } else {
+      const now = new Date();
+      dateStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      dateEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      dateEnd.setHours(23, 59, 59, 999);
+    }
+
+    // Get all employees (karyawan role)
+    const usersResult = await query(
+      `SELECT id, name, email, role, division_id
+       FROM users
+       WHERE role = 'karyawan' AND is_active = true
+       ORDER BY name ASC`
+    );
+
+    const employees = usersResult.rows;
+    const kpiList = [];
+
+    for (const employee of employees) {
+      // Get completed jobdesks count for this employee (based on user_status in assignments)
+      const completedResult = await query(
+        `SELECT COUNT(DISTINCT ja.jobdesk_id) as count
+         FROM jobdesk_assignments ja
+         WHERE ja.user_id = $1 AND ja.user_status = 'completed'
+         AND ja.completed_at >= $2 AND ja.completed_at <= $3`,
+        [employee.id, dateStart, dateEnd]
+      );
+      const completedJobdesks = parseInt(completedResult.rows[0].count);
+
+      // Get total assigned jobdesks count
+      const totalResult = await query(
+        `SELECT COUNT(DISTINCT ja.jobdesk_id) as count
+         FROM jobdesk_assignments ja
+         WHERE ja.user_id = $1`,
+        [employee.id]
+      );
+      const totalJobdesks = parseInt(totalResult.rows[0].count);
+
+      // Get daily logs stats
+      const logsResult = await query(
+        `SELECT COUNT(*) as count, COALESCE(SUM(hours_spent), 0) as total_hours
+         FROM daily_logs
+         WHERE user_id = $1 AND date >= $2 AND date <= $3`,
+        [employee.id, dateStart, dateEnd]
+      );
+      const totalLogs = parseInt(logsResult.rows[0].count);
+      const totalHours = parseFloat(logsResult.rows[0].total_hours);
+
+      // Calculate KPI score (same formula as individual KPI)
+      const completionRate = totalJobdesks > 0 ? (completedJobdesks / totalJobdesks) * 50 : 0;
+      const activityScore = totalLogs * 2;
+      const hoursScore = totalHours * 0.5;
+      const kpiScore = Math.min(100, completionRate + activityScore + hoursScore);
+
+      kpiList.push({
+        userId: employee.id,
+        userName: employee.name,
+        userEmail: employee.email,
+        divisionId: employee.division_id,
+        score: Math.round(kpiScore * 10) / 10,
+        completedJobdesks,
+        totalJobdesks,
+        completionRate: totalJobdesks > 0 ? Math.round((completedJobdesks / totalJobdesks) * 100) : 0,
+        totalLogs,
+        totalHours
+      });
+    }
+
+    // Sort by score descending
+    kpiList.sort((a, b) => b.score - a.score);
+
+    return NextResponse.json({
+      kpiList,
+      period: {
+        startDate: dateStart,
+        endDate: dateEnd
+      },
+      totalEmployees: kpiList.length
+    });
+  } catch (error) {
+    console.error('Get All KPI error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get KPI data' },
+      { status: 500 }
+    );
+  }
+}
+
+// Get all users (for KPI selection and user management)
 async function handleGetUsers(request) {
   try {
     const user = verifyToken(request);
@@ -1226,12 +1418,25 @@ async function handleGetUsers(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const result = await query(
-      `SELECT id, email, name, role, division_id, is_active, profile_photo, created_at, updated_at
-       FROM users
-       WHERE is_active = TRUE
-       ORDER BY name ASC`
-    );
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get('includeInactive') === 'true';
+
+    let queryText = `
+      SELECT id, email, name, role, division_id, is_active, profile_photo,
+             last_login, created_at, updated_at
+      FROM users
+    `;
+
+    if (!includeInactive) {
+      queryText += ' WHERE is_active = TRUE';
+    }
+
+    queryText += ' ORDER BY name ASC';
+
+    const result = await query(queryText);
+
+    // Calculate online status (user is online if last_login is within 15 minutes)
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
     const users = result.rows.map(u => ({
       id: u.id,
@@ -1241,6 +1446,8 @@ async function handleGetUsers(request) {
       divisionId: u.division_id,
       isActive: u.is_active,
       profilePhoto: u.profile_photo,
+      lastLogin: u.last_login,
+      isOnline: u.last_login ? new Date(u.last_login) > fifteenMinutesAgo : false,
       createdAt: u.created_at,
       updatedAt: u.updated_at
     }));
@@ -2723,6 +2930,7 @@ export async function GET(request, { params }) {
 
     // KPI
     if (path === 'kpi') return handleGetKPI(request);
+    if (path === 'kpi/all') return handleGetAllKPI(request);
     if (path === 'users') return handleGetUsers(request);
 
     // Todos

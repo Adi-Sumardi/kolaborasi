@@ -72,38 +72,69 @@ export default function JobdeskPage({ user }) {
   const [divisionFilter, setDivisionFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
 
-  // Helper function to get effective status based on progress
+  // Helper function to get effective status based on assignments
   // If any user completed, status should be 'in_progress' not 'pending'
   const getEffectiveStatus = (job) => {
+    // Use new assignments data if available
+    if (job.assignments && job.assignments.length > 0) {
+      const completedCount = job.assignments.filter(a => a.userStatus === 'completed').length;
+      const totalAssigned = job.assignments.length;
+
+      if (completedCount === totalAssigned && totalAssigned > 0) {
+        return 'completed';
+      }
+
+      const anyProgress = job.assignments.some(a => a.userStatus === 'completed' || a.userStatus === 'in_progress');
+      if (anyProgress && job.status === 'pending') {
+        return 'in_progress';
+      }
+
+      return job.status;
+    }
+
+    // Fallback to old progress data for backward compatibility
     if (!job.progress || job.progress.length === 0) {
       return job.status;
     }
-    
+
     const completedCount = job.progress.filter(p => p.status === 'completed').length;
     const totalAssigned = job.assignedTo?.length || 0;
-    
+
     // If all completed, status is completed
     if (completedCount === totalAssigned && totalAssigned > 0) {
       return 'completed';
     }
-    
+
     // If any completed or in_progress, status is in_progress (not pending)
     const anyProgress = job.progress.some(p => p.status === 'completed' || p.status === 'in_progress');
     if (anyProgress && job.status === 'pending') {
       return 'in_progress';
     }
-    
+
     return job.status;
   };
 
   // Helper function to get user progress details for tooltip
   const getUserProgressDetails = (job) => {
+    // Use new assignments data if available
+    if (job.assignments && job.assignments.length > 0) {
+      return job.assignments.map(assignment => ({
+        userId: assignment.userId,
+        name: assignment.userName || 'Unknown User',
+        email: assignment.userEmail,
+        status: assignment.userStatus || 'pending',
+        completedAt: assignment.completedAt,
+        attachmentCount: assignment.attachmentCount || 0
+      }));
+    }
+
+    // Fallback to old progress data for backward compatibility
     if (!job.progress || !job.assignedTo) return [];
-    
+
     return job.assignedTo.map(userId => {
       const userInfo = users.find(u => u.id === userId);
       const progress = job.progress.find(p => p.userId === userId);
-      
+
       return {
         userId,
         name: userInfo?.name || 'Unknown User',
@@ -576,10 +607,15 @@ export default function JobdeskPage({ user }) {
           </Card>
         ) : (
           jobdesks.map(job => {
-            // Get user's personal status from progress array
+            // Get user's personal status from assignments array (new) or progress array (old)
+            const userAssignment = job.assignments?.find(a => a.userId === user.id);
             const userProgress = job.progress?.find(p => p.userId === user.id);
-            const userStatus = userProgress?.status || job.status; // Fallback to global status for old data
-            
+            const userStatus = userAssignment?.userStatus || userProgress?.status || job.status; // Fallback to global status for old data
+
+            // Get counts for progress display
+            const completedCount = job.completedCount ?? job.assignments?.filter(a => a.userStatus === 'completed').length ?? 0;
+            const totalAssignees = job.totalAssignees ?? job.assignments?.length ?? job.assignedTo?.length ?? 0;
+
             return (
             <Card key={job.id}>
               <CardHeader>
@@ -634,15 +670,15 @@ export default function JobdeskPage({ user }) {
                           );
                         })()}
                         {/* Show progress count with HoverCard tooltip for admin/pengurus */}
-                        {job.progress && job.assignedTo?.length > 0 && (
+                        {totalAssignees > 0 && (
                           <HoverCard>
                             <HoverCardTrigger asChild>
                               <span className="text-xs text-blue-600 hover:text-blue-700 cursor-pointer bg-blue-50 px-2 py-1 rounded-full text-center font-medium">
                                 <Users className="w-3 h-3 inline mr-1" />
-                                {job.progress.filter(p => p.status === 'completed').length}/{job.assignedTo.length} selesai
+                                {completedCount}/{totalAssignees} selesai
                               </span>
                             </HoverCardTrigger>
-                            <HoverCardContent className="w-72" align="end">
+                            <HoverCardContent className="w-80" align="end">
                               <div className="space-y-3">
                                 <div className="flex items-center gap-2">
                                   <Users className="w-4 h-4 text-gray-500" />
@@ -651,10 +687,17 @@ export default function JobdeskPage({ user }) {
                                 <div className="space-y-2 max-h-48 overflow-y-auto">
                                   {getUserProgressDetails(job).map((detail, idx) => (
                                     <div key={idx} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-gray-50">
-                                      <span className="text-sm text-gray-700 truncate max-w-[140px]" title={detail.name}>
-                                        {detail.name}
-                                      </span>
-                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusColor(detail.status)}`}>
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-sm text-gray-700 truncate block" title={detail.name}>
+                                          {detail.name}
+                                        </span>
+                                        {detail.completedAt && (
+                                          <span className="text-xs text-gray-500">
+                                            Selesai: {new Date(detail.completedAt).toLocaleDateString('id-ID')}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${getStatusColor(detail.status)}`}>
                                         {detail.status === 'completed' && '✓ '}
                                         {getStatusLabel(detail.status)}
                                       </span>
@@ -662,7 +705,7 @@ export default function JobdeskPage({ user }) {
                                   ))}
                                 </div>
                                 <div className="pt-2 border-t text-xs text-gray-500">
-                                  {job.progress.filter(p => p.status === 'completed').length} dari {job.assignedTo.length} karyawan selesai
+                                  {completedCount} dari {totalAssignees} karyawan selesai
                                 </div>
                               </div>
                             </HoverCardContent>
