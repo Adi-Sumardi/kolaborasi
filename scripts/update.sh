@@ -70,7 +70,7 @@ log_success "Build completed"
 
 # Step 6: Run migrations (if any)
 log_info "Running database migrations..."
-yarn db:migrate 2>/dev/null || log_warning "No new migrations"
+node scripts/migrate.js 2>/dev/null && log_success "Migrations completed" || log_warning "Migration skipped or failed"
 
 # Step 7: Reload PM2 (zero-downtime)
 log_info "Reloading application..."
