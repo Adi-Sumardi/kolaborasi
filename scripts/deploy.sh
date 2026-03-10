@@ -275,7 +275,7 @@ log_success "Build completed"
 log_step "STEP 10/12: Database Migration & Seeding"
 
 log_info "Running database migrations..."
-yarn db:migrate || log_warning "Migration may have already been applied"
+node scripts/migrate.js
 
 log_info "Seeding database with initial data..."
 yarn seed 2>/dev/null || log_warning "Seeding skipped (data may already exist)"

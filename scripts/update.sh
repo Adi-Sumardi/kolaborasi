@@ -68,9 +68,10 @@ log_info "Building application..."
 yarn build
 log_success "Build completed"
 
-# Step 6: Run migrations (if any)
+# Step 6: Run migrations
 log_info "Running database migrations..."
-yarn db:migrate 2>/dev/null || log_warning "No new migrations"
+node scripts/migrate.js
+log_success "Migrations completed"
 
 # Step 7: Reload PM2 (zero-downtime)
 log_info "Reloading application..."
