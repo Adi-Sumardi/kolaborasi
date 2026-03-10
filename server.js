@@ -114,11 +114,17 @@ app.prepare().then(() => {
 
   const io = new Server(server, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        // Allow connections with no origin (desktop agent, mobile apps)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error('Not allowed by CORS'));
+      },
       methods: ['GET', 'POST'],
       credentials: true
     },
-    path: '/socket.io/'
+    path: '/socket.io/',
+    maxHttpBufferSize: 500 * 1024 // 500KB for screenshot binary
   });
 
   // Socket.IO authentication middleware
@@ -136,6 +142,7 @@ app.prepare().then(() => {
       socket.userId = decoded.userId;
       socket.userEmail = decoded.email;
       socket.userRole = decoded.role;
+      socket.source = socket.handshake.auth.source || 'browser';
       next();
     } catch (err) {
       console.error('Socket auth error:', err.message);
@@ -143,23 +150,43 @@ app.prepare().then(() => {
     }
   });
 
+  // In-memory store for employee activity
+  const employeeActivity = new Map();
+
   // Socket.IO connection handler
   io.on('connection', (socket) => {
-    console.log(`✅ User connected: ${socket.userEmail} (ID: ${socket.userId})`);
+    console.log(`✅ User connected: ${socket.userEmail} (role: ${socket.userRole}, source: ${socket.source})`);
 
     // Join user's personal room
     socket.join(`user:${socket.userId}`);
 
+    // Auto-track activity for karyawan/sdm on connect (server-side, no client emit needed)
+    if (['karyawan', 'sdm'].includes(socket.userRole)) {
+      console.log(`📊 ${socket.userEmail} auto-tracked as online (source: ${socket.source})`);
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, {
+        ...existing,
+        status: 'online',
+        page: existing.page || 'home',
+        pageLabel: existing.pageLabel || 'Dashboard',
+        agentConnected: socket.source === 'desktop-agent' ? true : (existing.agentConnected || false),
+        onlineSince: new Date().toISOString(),
+        lastActivity: new Date().toISOString()
+      });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+    }
+
     // Join chat room
     socket.on('join_room', (roomId) => {
       socket.join(`room:${roomId}`);
-      console.log(`${socket.userEmail} joined room: ${roomId}`);
     });
 
     // Leave chat room
     socket.on('leave_room', (roomId) => {
       socket.leave(`room:${roomId}`);
-      console.log(`${socket.userEmail} left room: ${roomId}`);
     });
 
     // Send message
@@ -175,9 +202,190 @@ app.prepare().then(() => {
       });
     });
 
+    // WebRTC Signaling for screen monitoring
+    socket.on('monitor:offer', (data) => {
+      io.to(`user:${data.targetUserId}`).emit('monitor:offer', {
+        offer: data.offer,
+        fromUserId: socket.userId,
+        sessionId: data.sessionId
+      });
+    });
+
+    socket.on('monitor:answer', (data) => {
+      io.to(`user:${data.targetUserId}`).emit('monitor:answer', {
+        answer: data.answer,
+        fromUserId: socket.userId,
+        sessionId: data.sessionId
+      });
+    });
+
+    socket.on('monitor:ice-candidate', (data) => {
+      io.to(`user:${data.targetUserId}`).emit('monitor:ice-candidate', {
+        candidate: data.candidate,
+        fromUserId: socket.userId,
+        sessionId: data.sessionId
+      });
+    });
+
+    // Start working (from WelcomeWorkModal)
+    socket.on('activity:start-working', (data) => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, {
+        ...existing,
+        status: 'online',
+        mood: data.mood || 'biasa',
+        workStartedAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString()
+      });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+      console.log(`🏢 ${socket.userEmail} started working (mood: ${data.mood})`);
+    });
+
+    // Screen share ready/stopped (from "Mulai Bekerja" / "Selesai Bekerja")
+    socket.on('monitor:screen-ready', () => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, { ...existing, screenReady: true, lastActivity: new Date().toISOString() });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+      console.log(`🖥️ ${socket.userEmail} screen share ready`);
+    });
+
+    socket.on('monitor:screen-stopped', () => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, { ...existing, screenReady: false, lastActivity: new Date().toISOString() });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+      console.log(`🖥️ ${socket.userEmail} screen share stopped`);
+    });
+
+    // --- Desktop Agent Events ---
+
+    // Agent sends screenshot frame (binary buffer)
+    socket.on('agent:screenshot', (frameBuffer) => {
+      if (socket.source !== 'desktop-agent') return;
+      // Relay screenshot ONLY to admins currently watching this employee
+      io.to(`monitor:${socket.userId}`).emit('agent:frame', {
+        userId: socket.userId,
+        frame: frameBuffer,
+        timestamp: Date.now()
+      });
+    });
+
+    // Admin subscribes to employee's desktop stream
+    socket.on('agent:watch', (data) => {
+      if (!['super_admin', 'owner'].includes(socket.userRole)) return;
+      socket.join(`monitor:${data.targetUserId}`);
+      // Tell agent to start capturing
+      io.to(`user:${data.targetUserId}`).emit('agent:config', {
+        fps: data.fps || 1,
+        quality: data.quality || 60
+      });
+      console.log(`👁️ ${socket.userEmail} started watching ${data.targetUserId}`);
+    });
+
+    // Admin stops watching
+    socket.on('agent:unwatch', (data) => {
+      socket.leave(`monitor:${data.targetUserId}`);
+      // If no more watchers, tell agent to stop capturing
+      const room = io.sockets.adapter.rooms.get(`monitor:${data.targetUserId}`);
+      if (!room || room.size === 0) {
+        io.to(`user:${data.targetUserId}`).emit('agent:config', { fps: 0 });
+      }
+      console.log(`👁️ ${socket.userEmail} stopped watching ${data.targetUserId}`);
+    });
+
+    // Activity Tracking Events (from client ActivityTracker)
+    socket.on('activity:online', (data) => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, {
+        ...existing,
+        status: 'online',
+        page: data.page || existing.page || 'home',
+        pageLabel: data.pageLabel || existing.pageLabel || 'Dashboard',
+        onlineSince: existing.onlineSince || new Date().toISOString(),
+        lastActivity: new Date().toISOString()
+      });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+    });
+
+    socket.on('activity:page-change', (data) => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, {
+        ...existing,
+        page: data.page,
+        pageLabel: data.pageLabel,
+        lastActivity: new Date().toISOString()
+      });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+    });
+
+    socket.on('activity:idle', () => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, { ...existing, status: 'idle', lastActivity: new Date().toISOString() });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+    });
+
+    socket.on('activity:active', () => {
+      const existing = employeeActivity.get(socket.userId) || {};
+      employeeActivity.set(socket.userId, { ...existing, status: 'online', lastActivity: new Date().toISOString() });
+      io.to('room:admin-monitor').emit('activity:update', {
+        userId: socket.userId,
+        ...employeeActivity.get(socket.userId)
+      });
+    });
+
+    socket.on('activity:request-all', () => {
+      const allActivity = {};
+      employeeActivity.forEach((value, key) => { allActivity[key] = value; });
+      socket.emit('activity:all-data', allActivity);
+    });
+
+    socket.on('activity:join-monitor', () => {
+      socket.join('room:admin-monitor');
+    });
+
     // Disconnect
     socket.on('disconnect', () => {
-      console.log(`❌ User disconnected: ${socket.userEmail}`);
+      console.log(`❌ User disconnected: ${socket.userEmail} (source: ${socket.source})`);
+
+      // Mark as offline in activity store
+      if (employeeActivity.has(socket.userId)) {
+        const updates = {
+          ...employeeActivity.get(socket.userId),
+          lastActivity: new Date().toISOString()
+        };
+
+        if (socket.source === 'desktop-agent') {
+          // Desktop agent disconnected — mark agent as offline but keep browser status
+          updates.agentConnected = false;
+        } else {
+          // Browser disconnected — mark as offline
+          updates.status = 'offline';
+          updates.screenReady = false;
+        }
+
+        employeeActivity.set(socket.userId, updates);
+        io.to('room:admin-monitor').emit('activity:update', {
+          userId: socket.userId,
+          ...employeeActivity.get(socket.userId)
+        });
+      }
     });
   });
 

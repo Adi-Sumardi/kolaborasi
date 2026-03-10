@@ -47,7 +47,7 @@ const TASK_TYPES = [
   { id: 'pph_05', label: 'PPh 0,5%', description: 'PPh Final 0,5% (UMKM)' },
 ];
 
-// Helper function to calculate deadline based on task type and period
+// Helper function to calculate deadline - universal tanggal 5 bulan berikutnya
 const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
   if (!periodMonth || !periodYear) return null;
 
@@ -59,15 +59,8 @@ const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
     nextYear++;
   }
 
-  if (taskType === 'ppn') {
-    // PPN: Tanggal 28 + 7 hari di bulan berikutnya
-    const startDate = new Date(nextYear, nextMonth - 1, 28);
-    startDate.setDate(startDate.getDate() + 7);
-    return startDate;
-  } else {
-    // PPh types: Tanggal 20 bulan berikutnya
-    return new Date(nextYear, nextMonth - 1, 20);
-  }
+  // Universal deadline: tanggal 5 bulan berikutnya
+  return new Date(nextYear, nextMonth - 1, 5);
 };
 
 // Check if deadline has passed
@@ -1882,11 +1875,20 @@ export default function JobdeskPage({ user }) {
                                           <User className="w-3 h-3 inline mr-1" />
                                           {sub.submittedByName} • {new Date(sub.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                         </p>
-                                        {sub.isLate && (
-                                          <Badge className="bg-orange-100 text-orange-800 text-xs">
-                                            Terlambat {sub.lateDays} hari (-5 poin)
-                                          </Badge>
+                                        {sub.deadline && (
+                                          <span className="text-xs text-gray-400">
+                                            Deadline: {formatDeadlineDate(sub.deadline)}
+                                          </span>
                                         )}
+                                        {sub.isLate ? (
+                                          <Badge className="bg-red-100 text-red-800 text-xs">
+                                            Terlambat {sub.lateDays} hari
+                                          </Badge>
+                                        ) : sub.deadline ? (
+                                          <Badge className="bg-green-100 text-green-800 text-xs">
+                                            Tepat Waktu
+                                          </Badge>
+                                        ) : null}
                                       </div>
                                     </div>
                                     {(user.role === 'super_admin' || user.role === 'owner' || sub.submittedBy === user.id) && (

@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { authAPI, getToken, setToken, setUser, getUser } from '@/lib/api';
+import { authAPI, getToken, setToken, setUser, getUser, notifyElectronAuth } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Users, BarChart3, MessageSquare, CheckSquare } from 'lucide-react';
+import { Loader2, Users, BarChart3, MessageSquare, CheckSquare, Eye, EyeOff } from 'lucide-react';
 import DashboardApp from '@/components/DashboardApp';
 import InstallPrompt from '@/components/InstallPrompt';
 import OnlineStatus from '@/components/OnlineStatus';
@@ -22,6 +22,7 @@ export default function App() {
   const [need2FA, setNeed2FA] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     // Register Service Worker for PWA
@@ -32,6 +33,8 @@ export default function App() {
     const user = getUser();
     if (token && user) {
       setIsLoggedIn(true);
+      // Notify Electron app to start agent (auto-login on app restart)
+      notifyElectronAuth(token, user);
     }
     setLoading(false);
   }, []);
@@ -45,7 +48,7 @@ export default function App() {
         email: loginForm.email,
         password: loginForm.password,
         twoFactorCode: need2FA ? twoFactorCode : undefined,
-        rememberMe: loginForm.rememberMe
+        rememberMe: loginForm.rememberMe || !!window.electronAPI?.isElectron
       });
 
       if (response.require2FA) {
@@ -55,6 +58,8 @@ export default function App() {
         setToken(response.token);
         setUser(response.user);
         setIsLoggedIn(true);
+        // Notify Electron app to start agent after login
+        notifyElectronAuth(response.token, response.user);
         toast.success('Login berhasil!');
       }
     } catch (error) {
@@ -149,15 +154,26 @@ export default function App() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                  required
-                  disabled={need2FA}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={loginForm.password}
+                    onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                    required
+                    disabled={need2FA}
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {need2FA && (

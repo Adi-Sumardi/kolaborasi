@@ -1,0 +1,47 @@
+{
+  "name": "kkp-anwar-kpi",
+  "version": "1.0.0",
+  "description": "KKP Anwar KPI - Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "unset ELECTRON_RUN_AS_NODE && electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --win --mac"
+  },
+  "build": {
+    "appId": "com.kkpanwar.kpi",
+    "productName": "KKP Anwar KPI",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "runAfterFinish": true
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "build/tray-icon.png"
+    ]
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "sharp": "^0.33.2",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "electron": "^40.8.0",
+    "electron-builder": "^24.9.1"
+  }
+}

@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import { sendNotification } from '@/lib/socket-server';
 import { sanitizeUserInput, sanitizeEmail, sanitizeString, validators, validatePasswordStrength } from '@/lib/sanitize';
 import { rateLimitMiddleware, getClientIP } from '@/lib/rateLimit';
+import { sendSubmissionNotificationEmail } from '@/lib/emailService';
 import { getVapidPublicKey, sendPushNotification, sendBulkPushNotifications } from '@/lib/push-notifications';
 import fs from 'fs/promises';
 import path from 'path';
@@ -76,11 +77,19 @@ async function handleCreateUser(request) {
       length: 32
     });
 
+    // Generate unique 6-digit monitor code
+    let monitorCode;
+    while (true) {
+      monitorCode = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+      const existing = await query('SELECT 1 FROM users WHERE monitor_code = $1', [monitorCode]);
+      if (existing.rows.length === 0) break;
+    }
+
     const result = await query(
-      `INSERT INTO users (email, password, name, role, division_id, two_factor_secret)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, email, name, role, division_id, is_active`,
-      [email, hashedPassword, name, role, divisionId || null, secret.base32]
+      `INSERT INTO users (email, password, name, role, division_id, two_factor_secret, monitor_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, email, name, role, division_id, is_active, monitor_code`,
+      [email, hashedPassword, name, role, divisionId || null, secret.base32, monitorCode]
     );
 
     const user = result.rows[0];
@@ -93,7 +102,8 @@ async function handleCreateUser(request) {
         name: user.name,
         role: user.role,
         divisionId: user.division_id,
-        isActive: user.is_active
+        isActive: user.is_active,
+        monitorCode: user.monitor_code
       }
     });
   } catch (error) {
@@ -1175,30 +1185,19 @@ async function handleCreateJobdeskSubmission(request, jobdeskId) {
     let isLate = false;
     let lateDays = 0;
 
-    // Calculate deadline if task type and period exist
-    if (taskType && jobdeskResult.rows.length > 0) {
+    // Calculate deadline: tanggal 5 bulan berikutnya dari period jobdesk
+    if (jobdeskResult.rows.length > 0) {
       const { period_month, period_year } = jobdeskResult.rows[0];
 
       if (period_month && period_year) {
-        // Import deadline calculation logic inline
-        // PPh types: deadline tgl 20 bulan berikutnya
-        // PPN: deadline tgl 28 + 7 hari bulan berikutnya
+        // Deadline = tanggal 5 bulan berikutnya
         let nextMonth = period_month + 1;
         let nextYear = period_year;
         if (nextMonth > 12) {
           nextMonth = 1;
           nextYear++;
         }
-
-        if (taskType === 'ppn') {
-          // PPN: Tanggal 28 + 7 hari di bulan berikutnya
-          const startDate = new Date(nextYear, nextMonth - 1, 28);
-          startDate.setDate(startDate.getDate() + 7);
-          deadline = startDate;
-        } else {
-          // PPh types: Tanggal 20 bulan berikutnya
-          deadline = new Date(nextYear, nextMonth - 1, 20);
-        }
+        deadline = new Date(nextYear, nextMonth - 1, 5);
 
         // Check if submission is late
         const now = new Date();
@@ -1234,6 +1233,39 @@ async function handleCreateJobdeskSubmission(request, jobdeskId) {
     ]);
 
     const s = result.rows[0];
+
+    // Send email notification to admins (async, non-blocking)
+    try {
+      // Get admin emails
+      const adminResult = await query(
+        "SELECT email FROM users WHERE role IN ('super_admin', 'owner') AND is_active = true"
+      );
+      const adminEmails = adminResult.rows.map(r => r.email);
+
+      // Get employee name and jobdesk title
+      const userResult = await query('SELECT name FROM users WHERE id = $1', [user.userId]);
+      const jobdeskInfo = await query('SELECT title, period_month, period_year FROM jobdesks WHERE id = $1', [jobdeskId]);
+
+      if (adminEmails.length > 0) {
+        sendSubmissionNotificationEmail({
+          adminEmails,
+          employeeName: userResult.rows[0]?.name || 'Unknown',
+          jobdeskTitle: jobdeskInfo.rows[0]?.title || 'Unknown',
+          taskType: taskType,
+          periodMonth: jobdeskInfo.rows[0]?.period_month,
+          periodYear: jobdeskInfo.rows[0]?.period_year,
+          submissionDate: new Date(),
+          isLate,
+          lateDays,
+          submissionType,
+          fileName: fileName || null,
+          notes: notes || null,
+        }).catch(err => console.error('[Email] Error:', err));
+      }
+    } catch (emailError) {
+      console.error('[Email] Failed to send notification:', emailError);
+    }
+
     return NextResponse.json({
       message: 'Submission created successfully',
       submission: {
@@ -1769,7 +1801,7 @@ async function handleGetUsers(request) {
     }
 
     const result = await query(
-      `SELECT id, email, name, role, division_id, is_active, profile_photo, created_at, updated_at
+      `SELECT id, email, name, role, division_id, is_active, profile_photo, monitor_code, created_at, updated_at
        FROM users
        WHERE is_active = TRUE
        ORDER BY name ASC`
@@ -1783,6 +1815,7 @@ async function handleGetUsers(request) {
       divisionId: u.division_id,
       isActive: u.is_active,
       profilePhoto: u.profile_photo,
+      monitorCode: u.monitor_code,
       createdAt: u.created_at,
       updatedAt: u.updated_at
     }));
@@ -4549,11 +4582,13 @@ async function handleGetSp2dkNotices(request) {
              c.npwp as client_npwp,
              u.name as handled_by_name,
              j.id as jobdesk_id,
-             j.title as jobdesk_title
+             j.title as jobdesk_title,
+             cu.name as confirmed_by_name
       FROM sp2dk_notices sp
       JOIN clients c ON c.id = sp.client_id
       LEFT JOIN users u ON u.id = sp.handled_by
       LEFT JOIN jobdesks j ON j.id = sp.jobdesk_id
+      LEFT JOIN users cu ON cu.id = sp.confirmed_by
       WHERE 1=1
     `;
     const params = [];
@@ -4607,6 +4642,12 @@ async function handleGetSp2dkNotices(request) {
         handledByName: sp.handled_by_name,
         jobdeskId: sp.jobdesk_id,
         jobdeskTitle: sp.jobdesk_title,
+        errorType: sp.error_type || 'unconfirmed',
+        penaltyPoints: parseFloat(sp.penalty_points) || 5,
+        confirmedBy: sp.confirmed_by,
+        confirmedByName: sp.confirmed_by_name,
+        confirmedAt: sp.confirmed_at,
+        confirmationNotes: sp.confirmation_notes,
         createdAt: sp.created_at
       }))
     });
@@ -4659,7 +4700,7 @@ async function handleUpdateSp2dkNotice(request, noticeId) {
     }
 
     const body = await request.json();
-    const { clientId, letterDate, letterNumber, description, deadline, responseDate, status, jobdeskId } = body;
+    const { clientId, letterDate, letterNumber, description, deadline, responseDate, status, jobdeskId, errorType, penaltyPoints, confirmationNotes } = body;
 
     // If letterDate changes, recalculate deadline
     let newDeadline = deadline;
@@ -4668,6 +4709,15 @@ async function handleUpdateSp2dkNotice(request, noticeId) {
       dl.setDate(dl.getDate() + 14);
       newDeadline = dl;
     }
+
+    // Determine penalty points based on error type
+    let resolvedPenaltyPoints = penaltyPoints;
+    if (errorType === 'employee_error') {
+      resolvedPenaltyPoints = 5;
+    } else if (errorType === 'kkp_sampling') {
+      resolvedPenaltyPoints = 0;
+    }
+    // For 'custom', use the provided penaltyPoints value
 
     const result = await query(
       `UPDATE sp2dk_notices SET
@@ -4678,10 +4728,15 @@ async function handleUpdateSp2dkNotice(request, noticeId) {
         deadline = COALESCE($5, deadline),
         response_date = $6,
         status = COALESCE($7, status),
-        jobdesk_id = $8
+        jobdesk_id = $8,
+        error_type = COALESCE($10, error_type),
+        penalty_points = COALESCE($11, penalty_points),
+        confirmed_by = CASE WHEN $10 IS NOT NULL AND $10 != 'unconfirmed' THEN $12::UUID ELSE confirmed_by END,
+        confirmed_at = CASE WHEN $10 IS NOT NULL AND $10 != 'unconfirmed' THEN NOW() ELSE confirmed_at END,
+        confirmation_notes = COALESCE($13, confirmation_notes)
        WHERE id = $9
        RETURNING *`,
-      [clientId, letterDate, letterNumber, description, newDeadline, responseDate, status, jobdeskId, noticeId]
+      [clientId, letterDate, letterNumber, description, newDeadline, responseDate, status, jobdeskId, noticeId, errorType || null, resolvedPenaltyPoints != null ? resolvedPenaltyPoints : null, user.userId, confirmationNotes || null]
     );
 
     if (result.rows.length === 0) {
@@ -4695,6 +4750,56 @@ async function handleUpdateSp2dkNotice(request, noticeId) {
   } catch (error) {
     console.error('Update SP2DK notice error:', error);
     return NextResponse.json({ error: 'Failed to update SP2DK notice' }, { status: 500 });
+  }
+}
+
+async function handleConfirmSp2dkNotice(request, noticeId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { errorType, penaltyPoints, confirmationNotes } = body;
+
+    if (!errorType || !['employee_error', 'kkp_sampling', 'custom'].includes(errorType)) {
+      return NextResponse.json({ error: 'Invalid error type. Must be employee_error, kkp_sampling, or custom' }, { status: 400 });
+    }
+
+    // Determine penalty points based on error type
+    let resolvedPenaltyPoints = 5;
+    if (errorType === 'employee_error') {
+      resolvedPenaltyPoints = 5;
+    } else if (errorType === 'kkp_sampling') {
+      resolvedPenaltyPoints = 0;
+    } else if (errorType === 'custom') {
+      resolvedPenaltyPoints = penaltyPoints != null ? parseFloat(penaltyPoints) : 5;
+    }
+
+    const result = await query(
+      `UPDATE sp2dk_notices SET
+        error_type = $1,
+        penalty_points = $2,
+        confirmed_by = $3,
+        confirmed_at = NOW(),
+        confirmation_notes = $4
+       WHERE id = $5
+       RETURNING *`,
+      [errorType, resolvedPenaltyPoints, user.userId, confirmationNotes || null, noticeId]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'SP2DK notice not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      message: 'SP2DK notice confirmed successfully',
+      sp2dkNotice: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Confirm SP2DK notice error:', error);
+    return NextResponse.json({ error: 'Failed to confirm SP2DK notice' }, { status: 500 });
   }
 }
 
@@ -4824,17 +4929,20 @@ async function handleGetKpiV2(request) {
         // Check for SP2DK linked to this jobdesk
         // OR linked to the same client (where the user is assigned to jobdesks for that client)
         const sp2dkResult = await query(`
-          SELECT COUNT(DISTINCT sp.id) as count FROM sp2dk_notices sp
+          SELECT COUNT(DISTINCT sp.id) as count,
+                 COALESCE(SUM(sp.penalty_points), 0) as total_penalty
+          FROM sp2dk_notices sp
           WHERE sp.jobdesk_id = $1
              OR (sp.client_id = $2 AND sp.client_id IS NOT NULL
                  AND EXTRACT(MONTH FROM sp.letter_date) = $3
                  AND EXTRACT(YEAR FROM sp.letter_date) = $4)
         `, [jd.id, jd.client_id, month, year]);
         const sp2dkCount = parseInt(sp2dkResult.rows[0].count) || 0;
+        const sp2dkPenaltyTotal = parseFloat(sp2dkResult.rows[0].total_penalty) || 0;
 
-        // Calculate deductions: -5 if late, -5 per late task type, -5 per warning letter, -5 per SP2DK
+        // Calculate deductions: -5 if late, -5 per late task type, -5 per warning letter, penalty per SP2DK (based on confirmed type)
         const warningDeduction = warningCount * 5;
-        const sp2dkDeduction = sp2dkCount * 5;
+        const sp2dkDeduction = sp2dkPenaltyTotal;
         const totalDeduction = lateDeduction + taskTypeDeduction + warningDeduction + sp2dkDeduction;
         const finalPoint = Math.max(0, basePoint - totalDeduction);
 
@@ -5220,6 +5328,105 @@ async function handleDeleteEmployeeWarning(request, warningId) {
 }
 
 // ============================================
+// SCREEN MONITORING ENDPOINTS
+// ============================================
+
+// Get active monitoring sessions (admin only)
+async function handleGetMonitorSessions(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const result = await query(`
+      SELECT ss.*, u.name as employee_name, u.email as employee_email,
+             u.role as employee_role, u.monitor_code,
+             d.name as division_name
+      FROM screen_sessions ss
+      JOIN users u ON u.id = ss.employee_id
+      LEFT JOIN divisions d ON d.id = u.division_id
+      WHERE ss.status = 'active'
+      ORDER BY ss.started_at DESC
+    `);
+
+    return NextResponse.json({ sessions: result.rows });
+  } catch (error) {
+    console.error('Get monitor sessions error:', error);
+    return NextResponse.json({ error: 'Failed to get sessions' }, { status: 500 });
+  }
+}
+
+// Connect to employee screen via monitor code (admin only)
+async function handleMonitorConnect(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { monitorCode } = body;
+
+    if (!monitorCode) {
+      return NextResponse.json({ error: 'Monitor code is required' }, { status: 400 });
+    }
+
+    // Find employee by monitor code
+    const employeeResult = await query(
+      'SELECT id, name, email, role FROM users WHERE monitor_code = $1 AND is_active = true',
+      [monitorCode]
+    );
+
+    if (employeeResult.rows.length === 0) {
+      return NextResponse.json({ error: 'Kode monitor tidak valid' }, { status: 404 });
+    }
+
+    const employee = employeeResult.rows[0];
+
+    // Create session record
+    const sessionResult = await query(
+      `INSERT INTO screen_sessions (employee_id, admin_id, status)
+       VALUES ($1, $2, 'active')
+       RETURNING *`,
+      [employee.id, user.userId]
+    );
+
+    return NextResponse.json({
+      message: 'Connected',
+      session: sessionResult.rows[0],
+      employee: {
+        id: employee.id,
+        name: employee.name,
+        email: employee.email,
+      }
+    });
+  } catch (error) {
+    console.error('Monitor connect error:', error);
+    return NextResponse.json({ error: 'Failed to connect' }, { status: 500 });
+  }
+}
+
+// Get monitor code for a user
+async function handleGetMonitorCode(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const result = await query('SELECT monitor_code FROM users WHERE id = $1', [userId]);
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ monitorCode: result.rows[0].monitor_code });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to get monitor code' }, { status: 500 });
+  }
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
@@ -5309,6 +5516,13 @@ export async function GET(request, { params }) {
     if (path === 'employee-warnings') return handleGetEmployeeWarnings(request);
     if (path === 'employee-warnings/stats') return handleGetEmployeeWarningStats(request);
 
+    // Screen Monitoring
+    if (path === 'monitor/sessions') return handleGetMonitorSessions(request);
+    if (path.match(/^users\/[^/]+\/monitor-code$/)) {
+      const userId = path.split('/')[1];
+      return handleGetMonitorCode(request, userId);
+    }
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
@@ -5394,6 +5608,9 @@ export async function POST(request, { params }) {
 
     // Employee Warnings (SP Karyawan)
     if (path === 'employee-warnings') return handleCreateEmployeeWarning(request);
+
+    // Screen Monitoring
+    if (path === 'monitor/connect') return handleMonitorConnect(request);
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
@@ -5487,6 +5704,12 @@ export async function PUT(request, { params }) {
     if (path.match(/^warning-letters\/[^/]+$/)) {
       const letterId = path.split('/')[1];
       return handleUpdateWarningLetter(request, letterId);
+    }
+
+    // SP2DK Notices - Confirm (must be before generic sp2dk update)
+    if (path.match(/^sp2dk\/[^/]+\/confirm$/)) {
+      const noticeId = path.split('/')[1];
+      return handleConfirmSp2dkNotice(request, noticeId);
     }
 
     // SP2DK Notices

@@ -19,7 +19,8 @@ import {
   Mail,
   FileText,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Monitor
 } from 'lucide-react';
 import { 
   getUser, 
@@ -57,9 +58,14 @@ import EmployeeWarningPage from './pages/EmployeeWarningPage';
 import KPIPageV2 from './pages/KPIPageV2';
 import WarningLettersPage from './pages/WarningLettersPage';
 import SP2DKPage from './pages/SP2DKPage';
+import ScreenMonitorPage from './pages/ScreenMonitorPage';
+import ActivityTracker from './ActivityTracker';
+import WelcomeWorkModal from './WelcomeWorkModal';
 
 export default function DashboardApp({ setIsLoggedIn }) {
   const [currentUser, setCurrentUser] = useState(null);
+  const [isWorkStarted, setIsWorkStarted] = useState(false);
+  const [workStartTime, setWorkStartTime] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
   const [socket, setSocket] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -92,6 +98,22 @@ export default function DashboardApp({ setIsLoggedIn }) {
             setNotifications(prev => [notification, ...prev]);
             toast.info(notification.title, { description: notification.message });
           });
+
+          // Activity tracking for karyawan/sdm
+          if (user && ['karyawan', 'sdm'].includes(user.role)) {
+            const emitActivity = () => {
+              socketInstance.emit('activity:online', {
+                userId: user.id,
+                page: 'home',
+                pageLabel: 'Dashboard'
+              });
+              socketInstance.emit('monitor:screen-available', { userId: user.id });
+            };
+            if (socketInstance.connected) {
+              emitActivity();
+            }
+            socketInstance.on('connect', emitActivity);
+          }
         }
       } catch (error) {
         console.warn('Socket.io not available, continuing without real-time features');
@@ -126,6 +148,21 @@ export default function DashboardApp({ setIsLoggedIn }) {
     };
   }, []);
 
+  const handleStartWork = (mood) => {
+    setIsWorkStarted(true);
+    setWorkStartTime(Date.now());
+
+    // Emit mood & start-working to server
+    const sock = initSocket();
+    if (sock?.connected) {
+      sock.emit('activity:start-working', { mood });
+    } else if (sock) {
+      sock.on('connect', () => {
+        sock.emit('activity:start-working', { mood });
+      });
+    }
+  };
+
   const handleLogout = () => {
     removeToken();
     removeUser();
@@ -151,12 +188,25 @@ export default function DashboardApp({ setIsLoggedIn }) {
         { id: 'employee-warnings', label: 'SP Karyawan', icon: AlertTriangle, roles: ['super_admin', 'owner', 'sdm'] },
       ]
     },
+    { id: 'monitor', label: 'Monitor', icon: Monitor, roles: ['super_admin', 'owner'] },
     { id: 'users', label: 'User', icon: Users, roles: ['super_admin', 'owner', 'pengurus'] },
     { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
     { id: 'chat', label: 'Chat', icon: MessageSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
   ];
+
+  // Get page label for activity tracking
+  const getPageLabel = (pageId) => {
+    for (const item of menuItems) {
+      if (item.id === pageId) return item.label;
+      if (item.submenu) {
+        const sub = item.submenu.find(s => s.id === pageId);
+        if (sub) return sub.label;
+      }
+    }
+    return 'Dashboard';
+  };
 
   // Check if current page is in surat submenu
   const isInSuratMenu = ['warning-letters', 'sp2dk', 'employee-warnings'].includes(currentPage);
@@ -182,6 +232,8 @@ export default function DashboardApp({ setIsLoggedIn }) {
         return <SP2DKPage user={currentUser} />;
       case 'employee-warnings':
         return <EmployeeWarningPage user={currentUser} />;
+      case 'monitor':
+        return <ScreenMonitorPage user={currentUser} />;
       case 'users':
         return <UserManagementPage user={currentUser} />;
       case 'divisions':
@@ -505,6 +557,14 @@ export default function DashboardApp({ setIsLoggedIn }) {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Welcome Work Modal for karyawan/sdm */}
+      {['karyawan', 'sdm'].includes(currentUser.role) && !isWorkStarted && (
+        <WelcomeWorkModal user={currentUser} onStartWork={handleStartWork} />
+      )}
+
+      {/* Activity Tracker for employees */}
+      <ActivityTracker user={currentUser} currentPage={currentPage} pageLabel={getPageLabel(currentPage)} isWorking={isWorkStarted} workStartTime={workStartTime} />
 
       {/* Mobile Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">

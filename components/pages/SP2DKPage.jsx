@@ -36,7 +36,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { sp2dkAPI, clientAPI, jobdeskAPI } from '@/lib/api';
-import { Plus, FileText, Trash2, Edit, Building2, Calendar, Clock, Search, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Plus, FileText, Trash2, Edit, Building2, Calendar, Clock, Search, AlertTriangle, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Menunggu Tanggapan', color: 'bg-yellow-100 text-yellow-800' },
@@ -52,10 +53,16 @@ export default function SP2DKPage({ user }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [filterStatus, setFilterStatus] = useState('all');
+  const [confirmData, setConfirmData] = useState({
+    errorType: 'employee_error',
+    penaltyPoints: 5,
+    confirmationNotes: '',
+  });
 
   const [formData, setFormData] = useState({
     clientId: '',
@@ -180,6 +187,31 @@ export default function SP2DKPage({ user }) {
     }
   };
 
+  const openConfirmModal = (notice) => {
+    setSelectedNotice(notice);
+    setConfirmData({
+      errorType: notice.errorType !== 'unconfirmed' ? notice.errorType : 'employee_error',
+      penaltyPoints: notice.penaltyPoints || 5,
+      confirmationNotes: notice.confirmationNotes || '',
+    });
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirm = async () => {
+    if (!selectedNotice) return;
+
+    try {
+      await sp2dkAPI.confirm(selectedNotice.id, confirmData);
+      toast.success('SP2DK berhasil dikonfirmasi');
+      setShowConfirmModal(false);
+      setSelectedNotice(null);
+      loadData();
+    } catch (error) {
+      console.error('Failed to confirm:', error);
+      toast.error(error.message || 'Gagal mengkonfirmasi SP2DK');
+    }
+  };
+
   const openEditModal = (notice) => {
     setSelectedNotice(notice);
     setFormData({
@@ -217,6 +249,23 @@ export default function SP2DKPage({ user }) {
   const pendingCount = notices.filter(n => n.status === 'pending' && !isOverdue(n)).length;
   const respondedCount = notices.filter(n => n.status === 'responded').length;
   const overdueCount = notices.filter(n => isOverdue(n)).length;
+
+  const getConfirmationBadge = (notice) => {
+    const errorType = notice.errorType || 'unconfirmed';
+    const points = notice.penaltyPoints;
+    switch (errorType) {
+      case 'unconfirmed':
+        return <Badge className="bg-yellow-100 text-yellow-800">Belum Dikonfirmasi</Badge>;
+      case 'employee_error':
+        return <Badge className="bg-red-100 text-red-800">Kesalahan Karyawan (-{points})</Badge>;
+      case 'kkp_sampling':
+        return <Badge className="bg-green-100 text-green-800">Sampling KKP (0)</Badge>;
+      case 'custom':
+        return <Badge className="bg-orange-100 text-orange-800">Custom (-{points})</Badge>;
+      default:
+        return <Badge className="bg-gray-100 text-gray-800">{errorType}</Badge>;
+    }
+  };
 
   const getStatusBadge = (notice) => {
     if (isOverdue(notice)) {
@@ -462,6 +511,7 @@ export default function SP2DKPage({ user }) {
                     <TableHead>Klien</TableHead>
                     <TableHead>Deadline</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Konfirmasi Error</TableHead>
                     <TableHead>Jobdesk Terkait</TableHead>
                     {canManage && <TableHead className="text-right">Aksi</TableHead>}
                   </TableRow>
@@ -509,6 +559,14 @@ export default function SP2DKPage({ user }) {
                           )}
                         </TableCell>
                         <TableCell>
+                          {getConfirmationBadge(notice)}
+                          {notice.confirmedByName && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              oleh {notice.confirmedByName}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           {notice.jobdeskTitle ? (
                             <Badge className="bg-blue-100 text-blue-800">
                               {notice.jobdeskTitle}
@@ -520,6 +578,15 @@ export default function SP2DKPage({ user }) {
                         {canManage && (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-blue-600 hover:text-blue-700"
+                                onClick={() => openConfirmModal(notice)}
+                                title="Konfirmasi Error"
+                              >
+                                <ShieldCheck className="w-4 h-4" />
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -681,6 +748,96 @@ export default function SP2DKPage({ user }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirmation Modal */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Jenis Error SP2DK</DialogTitle>
+            <DialogDescription>
+              Konfirmasi jenis kesalahan untuk SP2DK "{selectedNotice?.letterNumber}" - {selectedNotice?.clientName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-3 block">Jenis Kesalahan</Label>
+              <RadioGroup
+                value={confirmData.errorType}
+                onValueChange={(val) => {
+                  const newData = { ...confirmData, errorType: val };
+                  if (val === 'employee_error') newData.penaltyPoints = 5;
+                  else if (val === 'kkp_sampling') newData.penaltyPoints = 0;
+                  setConfirmData(newData);
+                }}
+                className="space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="employee_error" id="err_employee" />
+                  <Label htmlFor="err_employee" className="font-normal cursor-pointer">
+                    Kesalahan Karyawan <span className="text-red-600 text-sm">(-5 poin)</span>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="kkp_sampling" id="err_kkp" />
+                  <Label htmlFor="err_kkp" className="font-normal cursor-pointer">
+                    Sampling KKP <span className="text-green-600 text-sm">(tanpa pengurangan)</span>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="custom" id="err_custom" />
+                  <Label htmlFor="err_custom" className="font-normal cursor-pointer">
+                    Custom pengurangan
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {confirmData.errorType === 'custom' && (
+              <div>
+                <Label>Jumlah Pengurangan Poin</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={confirmData.penaltyPoints}
+                  onChange={(e) => setConfirmData({ ...confirmData, penaltyPoints: parseFloat(e.target.value) || 0 })}
+                  placeholder="Masukkan jumlah poin"
+                />
+              </div>
+            )}
+
+            <div>
+              <Label>Catatan Konfirmasi</Label>
+              <Textarea
+                value={confirmData.confirmationNotes}
+                onChange={(e) => setConfirmData({ ...confirmData, confirmationNotes: e.target.value })}
+                placeholder="Catatan tambahan (opsional)..."
+                rows={3}
+              />
+            </div>
+
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-700">
+                <strong>Ringkasan:</strong>{' '}
+                {confirmData.errorType === 'employee_error' && 'Kesalahan Karyawan, pengurangan -5 poin KPI'}
+                {confirmData.errorType === 'kkp_sampling' && 'Sampling KKP, tanpa pengurangan poin KPI'}
+                {confirmData.errorType === 'custom' && `Custom, pengurangan -${confirmData.penaltyPoints} poin KPI`}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setShowConfirmModal(false)}>
+                Batal
+              </Button>
+              <Button onClick={handleConfirm}>
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                Konfirmasi
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -379,13 +379,14 @@ export default function UserManagementPage({ user }) {
                   <TableHead>Role</TableHead>
                   <TableHead>Divisi</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Kode Monitor</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500 py-4">
+                    <TableCell colSpan={7} className="text-center text-gray-500 py-4">
                       Tidak ada user
                     </TableCell>
                   </TableRow>
@@ -405,6 +406,13 @@ export default function UserManagementPage({ user }) {
                           <Badge className="bg-green-100 text-green-800">Aktif</Badge>
                         ) : (
                           <Badge className="bg-red-100 text-red-800">Nonaktif</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {u.monitorCode ? (
+                          <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">{u.monitorCode}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

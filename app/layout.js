@@ -5,12 +5,15 @@ export const metadata = {
   title: 'Dashboard Ruang Kerja Kolaborasi',
   description: 'Sistem kolaborasi untuk karyawan',
   manifest: '/manifest.json',
-  themeColor: '#3b82f6',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Workspace',
   },
+};
+
+export const viewport = {
+  themeColor: '#3b82f6',
 };
 
 export default function RootLayout({ children }) {

@@ -134,8 +134,19 @@ export default function AttachmentSection({ jobdesk, user }) {
       // Check if it's previewable
       const isImage = attachment.fileType?.includes('image');
       const isPdf = attachment.fileType?.includes('pdf');
-      
-      if (isImage || isPdf) {
+      const isVideo = attachment.fileType?.includes('video');
+      const isAudio = attachment.fileType?.includes('audio');
+      const isOffice = attachment.fileType?.includes('word') ||
+                       attachment.fileType?.includes('document') ||
+                       attachment.fileType?.includes('excel') ||
+                       attachment.fileType?.includes('sheet') ||
+                       attachment.fileType?.includes('powerpoint') ||
+                       attachment.fileType?.includes('presentation') ||
+                       attachment.fileName?.match(/\.(docx?|xlsx?|pptx?)$/i);
+      const isText = attachment.fileType?.includes('text') ||
+                     attachment.fileName?.match(/\.(txt|csv|json|xml|md)$/i);
+
+      if (isImage || isPdf || isVideo || isAudio || isOffice || isText) {
         setPreviewAttachment(attachment);
         setShowPreviewModal(true);
       } else {
@@ -158,11 +169,14 @@ export default function AttachmentSection({ jobdesk, user }) {
 
   const getFileIcon = (fileType) => {
     if (fileType?.includes('pdf')) return '📄';
-    if (fileType?.includes('word')) return '📝';
+    if (fileType?.includes('word') || fileType?.includes('document')) return '📝';
     if (fileType?.includes('excel') || fileType?.includes('sheet')) return '📊';
     if (fileType?.includes('powerpoint') || fileType?.includes('presentation')) return '📽️';
     if (fileType?.includes('image')) return '🖼️';
-    if (fileType?.includes('zip')) return '📦';
+    if (fileType?.includes('video')) return '🎬';
+    if (fileType?.includes('audio')) return '🎵';
+    if (fileType?.includes('zip') || fileType?.includes('rar') || fileType?.includes('archive')) return '📦';
+    if (fileType?.includes('text')) return '📃';
     return '📎';
   };
 
@@ -207,7 +221,7 @@ export default function AttachmentSection({ jobdesk, user }) {
                 <DialogHeader>
                   <DialogTitle>Upload File</DialogTitle>
                   <DialogDescription>
-                    Upload file dokumen, excel, ppt, pdf (Max 10MB)
+                    Upload file: PDF, Word, Excel, PPT, gambar, video, audio (Max 10MB)
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -217,7 +231,7 @@ export default function AttachmentSection({ jobdesk, user }) {
                       id="file-upload"
                       type="file"
                       onChange={handleFileSelect}
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.jpg,.jpeg,.png,.gif"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.jpg,.jpeg,.png,.gif,.mp4,.webm,.mov,.mp3,.wav,.ogg,.txt,.csv"
                     />
                     {uploadFile && (
                       <p className="text-sm text-gray-600 mt-2">
@@ -397,38 +411,140 @@ export default function AttachmentSection({ jobdesk, user }) {
 
       {/* Preview Modal */}
       <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogContent className="max-w-5xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>Preview - {previewAttachment?.fileName}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">{previewAttachment && getFileIcon(previewAttachment.fileType)}</span>
+              <span className="truncate">{previewAttachment?.fileName}</span>
+            </DialogTitle>
           </DialogHeader>
-          <div className="overflow-auto max-h-[70vh]">
+          <div className="overflow-auto max-h-[75vh]">
             {previewAttachment && (
               <>
-                {previewAttachment.fileType?.includes('image') ? (
-                  <img 
-                    src={previewAttachment.url} 
+                {/* Image Preview */}
+                {previewAttachment.fileType?.includes('image') && (
+                  <img
+                    src={previewAttachment.url}
                     alt={previewAttachment.fileName}
-                    className="w-full h-auto"
+                    className="w-full h-auto max-h-[70vh] object-contain mx-auto"
                   />
-                ) : previewAttachment.fileType?.includes('pdf') ? (
+                )}
+
+                {/* PDF Preview */}
+                {previewAttachment.fileType?.includes('pdf') && (
                   <iframe
                     src={previewAttachment.url}
-                    className="w-full h-[70vh]"
+                    className="w-full h-[75vh]"
                     title="PDF Preview"
                   />
-                ) : (
+                )}
+
+                {/* Video Preview */}
+                {previewAttachment.fileType?.includes('video') && (
+                  <video
+                    src={previewAttachment.url}
+                    controls
+                    className="w-full max-h-[70vh] mx-auto"
+                  >
+                    Browser Anda tidak mendukung video player.
+                  </video>
+                )}
+
+                {/* Audio Preview */}
+                {previewAttachment.fileType?.includes('audio') && (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-6">
+                    <div className="text-6xl">🎵</div>
+                    <p className="text-lg font-medium">{previewAttachment.fileName}</p>
+                    <audio
+                      src={previewAttachment.url}
+                      controls
+                      className="w-full max-w-md"
+                    >
+                      Browser Anda tidak mendukung audio player.
+                    </audio>
+                  </div>
+                )}
+
+                {/* Office Documents (Word, Excel, PowerPoint) via Google Docs Viewer */}
+                {(previewAttachment.fileType?.includes('word') ||
+                  previewAttachment.fileType?.includes('document') ||
+                  previewAttachment.fileType?.includes('excel') ||
+                  previewAttachment.fileType?.includes('sheet') ||
+                  previewAttachment.fileType?.includes('powerpoint') ||
+                  previewAttachment.fileType?.includes('presentation') ||
+                  previewAttachment.fileName?.match(/\.(docx?|xlsx?|pptx?)$/i)) && (
+                  <div className="space-y-4">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                      <p className="font-medium">Preview menggunakan Google Docs Viewer</p>
+                      <p className="text-xs mt-1">Jika preview tidak muncul, file mungkin memerlukan akses publik atau gunakan tombol download.</p>
+                    </div>
+                    <iframe
+                      src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAttachment.url)}&embedded=true`}
+                      className="w-full h-[65vh] border rounded"
+                      title="Document Preview"
+                    />
+                  </div>
+                )}
+
+                {/* Text Files Preview */}
+                {(previewAttachment.fileType?.includes('text') ||
+                  previewAttachment.fileName?.match(/\.(txt|csv|json|xml|md)$/i)) &&
+                  !previewAttachment.fileType?.includes('word') &&
+                  !previewAttachment.fileType?.includes('excel') &&
+                  !previewAttachment.fileType?.includes('powerpoint') && (
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 border rounded-lg p-4">
+                      <p className="text-sm text-gray-600 mb-2">File teks akan dibuka di tab baru karena keterbatasan browser.</p>
+                      <Button onClick={() => window.open(previewAttachment.url, '_blank')}>
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Buka File Teks
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Fallback for unsupported types */}
+                {!previewAttachment.fileType?.includes('image') &&
+                 !previewAttachment.fileType?.includes('pdf') &&
+                 !previewAttachment.fileType?.includes('video') &&
+                 !previewAttachment.fileType?.includes('audio') &&
+                 !previewAttachment.fileType?.includes('word') &&
+                 !previewAttachment.fileType?.includes('document') &&
+                 !previewAttachment.fileType?.includes('excel') &&
+                 !previewAttachment.fileType?.includes('sheet') &&
+                 !previewAttachment.fileType?.includes('powerpoint') &&
+                 !previewAttachment.fileType?.includes('presentation') &&
+                 !previewAttachment.fileType?.includes('text') &&
+                 !previewAttachment.fileName?.match(/\.(docx?|xlsx?|pptx?|txt|csv|json|xml|md)$/i) && (
                   <div className="text-center py-8 text-gray-500">
-                    <p>Preview tidak tersedia untuk file ini</p>
-                    <Button 
-                      className="mt-4"
+                    <div className="text-5xl mb-4">📎</div>
+                    <p className="text-lg font-medium mb-2">Preview tidak tersedia untuk file ini</p>
+                    <p className="text-sm text-gray-400 mb-4">Tipe file: {previewAttachment.fileType || 'Unknown'}</p>
+                    <Button
                       onClick={() => window.open(previewAttachment.url, '_blank')}
                     >
+                      <ExternalLink className="w-4 h-4 mr-2" />
                       Buka di Tab Baru
                     </Button>
                   </div>
                 )}
               </>
             )}
+          </div>
+          {/* Action buttons */}
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            {previewAttachment?.type === 'file' && (
+              <Button variant="outline" asChild>
+                <a href={previewAttachment.url} download target="_blank" rel="noopener noreferrer">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </a>
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => window.open(previewAttachment?.url, '_blank')}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Buka di Tab Baru
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

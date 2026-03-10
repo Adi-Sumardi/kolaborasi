@@ -472,6 +472,55 @@ const migrations = [
   `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS jobdesk_id UUID REFERENCES jobdesks(id) ON DELETE SET NULL;`,
   `CREATE INDEX IF NOT EXISTS idx_warning_letters_jobdesk ON warning_letters(jobdesk_id);`,
   `CREATE INDEX IF NOT EXISTS idx_sp2dk_notices_jobdesk ON sp2dk_notices(jobdesk_id);`,
+
+  // SP2DK error confirmation columns
+  `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS error_type VARCHAR(30) DEFAULT 'unconfirmed';`,
+  `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS penalty_points DECIMAL(5,2) DEFAULT 5;`,
+  `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS confirmed_by UUID REFERENCES users(id);`,
+  `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE;`,
+  `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS confirmation_notes TEXT;`,
+
+  // =====================================================
+  // SCREEN MONITORING SYSTEM (Live Monitor)
+  // =====================================================
+
+  // Monitor code for each user (permanent, generated once)
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS monitor_code VARCHAR(6) UNIQUE;`,
+
+  // Screen monitoring sessions table
+  `CREATE TABLE IF NOT EXISTS screen_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    employee_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    admin_id UUID REFERENCES users(id),
+    ip_address VARCHAR(45),
+    device_info TEXT,
+    location TEXT,
+    status VARCHAR(20) DEFAULT 'active',
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    ended_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_screen_sessions_employee ON screen_sessions(employee_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_screen_sessions_status ON screen_sessions(status);`,
+
+  // Generate monitor codes for existing users that don't have one
+  `DO $$
+  DECLARE
+    r RECORD;
+    new_code VARCHAR(6);
+  BEGIN
+    FOR r IN SELECT id FROM users WHERE monitor_code IS NULL LOOP
+      LOOP
+        new_code := LPAD(FLOOR(RANDOM() * 1000000)::TEXT, 6, '0');
+        BEGIN
+          UPDATE users SET monitor_code = new_code WHERE id = r.id;
+          EXIT;
+        EXCEPTION WHEN unique_violation THEN
+          -- Try again with a different code
+        END;
+      END LOOP;
+    END LOOP;
+  END $$;`,
 ];
 
 async function migrate() {
@@ -509,6 +558,8 @@ async function migrate() {
     console.log('   - warning_letters');
     console.log('   - sp2dk_notices');
     console.log('   - kpi_scores');
+    console.log('\n📊 Screen Monitoring Tables:');
+    console.log('   - screen_sessions');
 
   } catch (error) {
     console.error('\n❌ Migration failed:', error.message);
