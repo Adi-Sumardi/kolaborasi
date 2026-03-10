@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, systemPreferences, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, systemPreferences, shell, Notification } = require('electron');
 const path = require('path');
 const store = require('./src/store');
 const socketAgent = require('./src/socket-agent');
@@ -9,6 +9,8 @@ let mainWindow = null;
 let tray = null;
 let currentUser = null;
 let serverUrl = null;
+let workSessionTimer = null;
+let workClockInTime = null;
 
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock();
@@ -292,6 +294,29 @@ async function startAgent(token, user) {
     socket.on('connect', () => {
       updateTrayMenu('Terhubung');
       console.log('[Main] Agent socket connected');
+
+      // Auto clock-in when connected
+      socketAgent.emitClockIn();
+      workClockInTime = Date.now();
+
+      // Show notification
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'KKP Anwar KPI - Absensi',
+          body: 'Clock-in berhasil. Aplikasi ini harus tetap terbuka selama jam kerja untuk menghitung jam kerja Anda.',
+          silent: true
+        }).show();
+      }
+
+      // Update tray with elapsed time every minute
+      if (workSessionTimer) clearInterval(workSessionTimer);
+      workSessionTimer = setInterval(() => {
+        if (!workClockInTime) return;
+        const diff = Date.now() - workClockInTime;
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        updateTrayMenu(`Bekerja ${h}j ${m}m`);
+      }, 60000);
     });
 
     socket.on('disconnect', () => {
@@ -327,6 +352,13 @@ async function startAgent(token, user) {
 
 function stopAgent() {
   console.log('[Main] Stopping agent');
+  // Clock-out before disconnecting
+  socketAgent.emitClockOut();
+  workClockInTime = null;
+  if (workSessionTimer) {
+    clearInterval(workSessionTimer);
+    workSessionTimer = null;
+  }
   capture.stopCapture();
   idleDetector.stop();
   socketAgent.disconnect();
@@ -381,6 +413,12 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  socketAgent.emitClockOut();
+  workClockInTime = null;
+  if (workSessionTimer) {
+    clearInterval(workSessionTimer);
+    workSessionTimer = null;
+  }
   capture.stopCapture();
   idleDetector.stop();
   socketAgent.disconnect();

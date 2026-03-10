@@ -20,15 +20,19 @@ import {
   FileText,
   ChevronDown,
   ChevronRight,
-  Monitor
+  Monitor,
+  Clock,
+  Eye,
+  Building2
 } from 'lucide-react';
-import { 
-  getUser, 
-  removeToken, 
-  removeUser, 
-  authAPI, 
+import {
+  getUser,
+  removeToken,
+  removeUser,
+  authAPI,
   jobdeskAPI,
-  notificationAPI
+  notificationAPI,
+  workSessionAPI
 } from '@/lib/api';
 import { toast } from 'sonner';
 import { initSocket, disconnectSocket } from '@/lib/socket-client';
@@ -59,6 +63,7 @@ import KPIPageV2 from './pages/KPIPageV2';
 import WarningLettersPage from './pages/WarningLettersPage';
 import SP2DKPage from './pages/SP2DKPage';
 import ScreenMonitorPage from './pages/ScreenMonitorPage';
+import WorkHoursPage from './pages/WorkHoursPage';
 import ActivityTracker from './ActivityTracker';
 import WelcomeWorkModal from './WelcomeWorkModal';
 
@@ -161,6 +166,11 @@ export default function DashboardApp({ setIsLoggedIn }) {
         sock.emit('activity:start-working', { mood });
       });
     }
+
+    // Clock-in via API (persists to database)
+    workSessionAPI.clockIn({ mood, source: 'browser' }).catch(err => {
+      console.error('Clock-in error:', err);
+    });
   };
 
   const handleLogout = () => {
@@ -188,9 +198,26 @@ export default function DashboardApp({ setIsLoggedIn }) {
         { id: 'employee-warnings', label: 'SP Karyawan', icon: AlertTriangle, roles: ['super_admin', 'owner', 'sdm'] },
       ]
     },
-    { id: 'monitor', label: 'Monitor', icon: Monitor, roles: ['super_admin', 'owner'] },
-    { id: 'users', label: 'User', icon: Users, roles: ['super_admin', 'owner', 'pengurus'] },
-    { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
+    {
+      id: 'monitoring',
+      label: 'Monitoring',
+      icon: Eye,
+      roles: ['super_admin', 'owner', 'sdm'],
+      submenu: [
+        { id: 'monitor', label: 'Monitor Layar', icon: Monitor, roles: ['super_admin', 'owner'] },
+        { id: 'work-hours', label: 'Jam Kerja', icon: Clock, roles: ['super_admin', 'owner', 'sdm'] },
+      ]
+    },
+    {
+      id: 'manajemen',
+      label: 'Manajemen',
+      icon: Building2,
+      roles: ['super_admin', 'owner', 'pengurus', 'sdm'],
+      submenu: [
+        { id: 'users', label: 'User', icon: Users, roles: ['super_admin', 'owner', 'pengurus'] },
+        { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
+      ]
+    },
     { id: 'chat', label: 'Chat', icon: MessageSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
@@ -208,8 +235,11 @@ export default function DashboardApp({ setIsLoggedIn }) {
     return 'Dashboard';
   };
 
-  // Check if current page is in surat submenu
-  const isInSuratMenu = ['warning-letters', 'sp2dk', 'employee-warnings'].includes(currentPage);
+  // Check if current page is in a submenu
+  const isInSubmenu = (parentId) => {
+    const parent = menuItems.find(item => item.id === parentId);
+    return parent?.submenu?.some(sub => sub.id === currentPage) || false;
+  };
 
   const filteredMenuItems = currentUser 
     ? menuItems.filter(item => item.roles.includes(currentUser.role))
@@ -234,6 +264,8 @@ export default function DashboardApp({ setIsLoggedIn }) {
         return <EmployeeWarningPage user={currentUser} />;
       case 'monitor':
         return <ScreenMonitorPage user={currentUser} />;
+      case 'work-hours':
+        return <WorkHoursPage user={currentUser} />;
       case 'users':
         return <UserManagementPage user={currentUser} />;
       case 'divisions':
@@ -324,7 +356,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
                     <DropdownMenu key={item.id}>
                       <DropdownMenuTrigger asChild>
                         <Button
-                          variant={isInSuratMenu ? 'default' : 'ghost'}
+                          variant={isInSubmenu(item.id) ? 'default' : 'ghost'}
                           size="sm"
                           className="flex items-center space-x-2"
                         >
@@ -479,7 +511,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
                   <Collapsible key={item.id} open={suratMenuOpen} onOpenChange={setSuratMenuOpen}>
                     <CollapsibleTrigger asChild>
                       <Button
-                        variant={isInSuratMenu ? 'default' : 'ghost'}
+                        variant={isInSubmenu(item.id) ? 'default' : 'ghost'}
                         size="sm"
                         className="w-full justify-between flex items-center"
                       >
@@ -581,7 +613,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
                 <DropdownMenu key={item.id}>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant={isInSuratMenu ? 'default' : 'ghost'}
+                      variant={isInSubmenu(item.id) ? 'default' : 'ghost'}
                       size="sm"
                       className="flex flex-col items-center space-y-1 h-auto py-2"
                     >

@@ -5496,6 +5496,160 @@ async function handleGetMonitorCode(request, userId) {
 }
 
 // ============================================
+// WORK SESSIONS (Jam Kerja)
+// ============================================
+
+async function handleClockIn(request) {
+  const user = verifyToken(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const body = await request.json();
+  const { mood, source = 'browser' } = body;
+
+  // Check for existing open session
+  const existing = await query(
+    'SELECT id, clock_in, mood, source FROM work_sessions WHERE user_id = $1 AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1',
+    [user.userId]
+  );
+
+  if (existing.rows.length > 0) {
+    return NextResponse.json({ session: existing.rows[0], message: 'Session already active' });
+  }
+
+  const result = await query(
+    'INSERT INTO work_sessions (user_id, clock_in, mood, source, date) VALUES ($1, NOW(), $2, $3, CURRENT_DATE) RETURNING *',
+    [user.userId, mood || null, source]
+  );
+
+  return NextResponse.json({ session: result.rows[0] }, { status: 201 });
+}
+
+async function handleClockOut(request) {
+  const user = verifyToken(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const result = await query(
+    `UPDATE work_sessions
+     SET clock_out = NOW(),
+         duration_minutes = EXTRACT(EPOCH FROM (NOW() - clock_in)) / 60
+     WHERE user_id = $1 AND clock_out IS NULL
+     RETURNING *`,
+    [user.userId]
+  );
+
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: 'No active session found' }, { status: 404 });
+  }
+
+  return NextResponse.json({ session: result.rows[0] });
+}
+
+async function handleGetWorkSessions(request) {
+  const user = verifyToken(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { searchParams } = new URL(request.url);
+  const targetUserId = searchParams.get('userId');
+  const date = searchParams.get('date');
+  const startDate = searchParams.get('startDate');
+  const endDate = searchParams.get('endDate');
+
+  // Admin can view any user, karyawan only own
+  const userId = ['super_admin', 'owner', 'sdm'].includes(user.role) && targetUserId
+    ? targetUserId
+    : user.userId;
+
+  let sql = 'SELECT * FROM work_sessions WHERE user_id = $1';
+  const params = [userId];
+
+  if (date) {
+    params.push(date);
+    sql += ` AND date = $${params.length}`;
+  } else if (startDate && endDate) {
+    params.push(startDate, endDate);
+    sql += ` AND date BETWEEN $${params.length - 1} AND $${params.length}`;
+  }
+
+  sql += ' ORDER BY clock_in DESC';
+
+  const result = await query(sql, params);
+
+  // Calculate summary
+  const sessions = result.rows;
+  const completedSessions = sessions.filter(s => s.clock_out);
+  const totalMinutes = completedSessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = Math.round(totalMinutes % 60);
+
+  // Check if there's an active (open) session
+  const activeSession = sessions.find(s => !s.clock_out);
+
+  return NextResponse.json({
+    sessions,
+    activeSession: activeSession || null,
+    summary: {
+      totalMinutes: Math.round(totalMinutes),
+      totalFormatted: `${hours}j ${mins}m`,
+      sessionCount: sessions.length,
+      completedCount: completedSessions.length,
+    }
+  });
+}
+
+async function handleGetWorkSessionsSummary(request) {
+  const user = verifyToken(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!['super_admin', 'owner', 'sdm'].includes(user.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+  const period = searchParams.get('period') || 'day'; // day, week, month
+
+  // Validate date format to prevent injection
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+  }
+
+  let dateCondition;
+  if (period === 'day') {
+    dateCondition = `ws.date = $1`;
+  } else if (period === 'week') {
+    dateCondition = `ws.date BETWEEN $1::date - INTERVAL '6 days' AND $1::date`;
+  } else {
+    dateCondition = `ws.date >= DATE_TRUNC('month', $1::date) AND ws.date < DATE_TRUNC('month', $1::date) + INTERVAL '1 month'`;
+  }
+
+  const result = await query(`
+    SELECT
+      u.id as user_id,
+      u.name,
+      u.email,
+      u.role,
+      u.profile_photo,
+      COALESCE(SUM(ws.duration_minutes), 0)::integer as total_minutes,
+      COUNT(ws.id)::integer as session_count,
+      MIN(ws.clock_in) as first_clock_in,
+      MAX(ws.clock_out) as last_clock_out,
+      (SELECT clock_in FROM work_sessions WHERE user_id = u.id AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1) as active_since
+    FROM users u
+    LEFT JOIN work_sessions ws ON u.id = ws.user_id AND ${dateCondition}
+    WHERE u.role IN ('karyawan', 'sdm') AND u.is_active = true
+    GROUP BY u.id, u.name, u.email, u.role, u.profile_photo
+    ORDER BY total_minutes DESC
+  `, [date]);
+
+  const employees = result.rows.map(row => ({
+    ...row,
+    totalFormatted: `${Math.floor(row.total_minutes / 60)}j ${Math.round(row.total_minutes % 60)}m`,
+    isWorking: !!row.active_since,
+  }));
+
+  return NextResponse.json({ employees, period, date });
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
@@ -5587,6 +5741,11 @@ export async function GET(request, { params }) {
 
     // Screen Monitoring
     if (path === 'monitor/sessions') return handleGetMonitorSessions(request);
+
+    // Work Sessions
+    if (path === 'work-sessions') return handleGetWorkSessions(request);
+    if (path === 'work-sessions/summary') return handleGetWorkSessionsSummary(request);
+
     if (path.match(/^users\/[^/]+\/monitor-code$/)) {
       const userId = path.split('/')[1];
       return handleGetMonitorCode(request, userId);
@@ -5660,6 +5819,9 @@ export async function POST(request, { params }) {
     if (path === 'pwa/save-subscription') return handleSavePushSubscription(request);
     if (path === 'pwa/remove-subscription') return handleRemovePushSubscription(request);
     if (path === 'pwa/send-notification') return handleSendPushNotification(request);
+
+    // Work Sessions
+    if (path === 'work-sessions/clock-in') return handleClockIn(request);
 
     // Clients (Tax Consulting)
     if (path === 'clients') return handleCreateClient(request);
@@ -5795,6 +5957,9 @@ export async function PUT(request, { params }) {
       const warningId = path.split('/')[1];
       return handleUpdateEmployeeWarning(request, warningId);
     }
+
+    // Work Sessions
+    if (path === 'work-sessions/clock-out') return handleClockOut(request);
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {

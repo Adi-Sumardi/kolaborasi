@@ -79,6 +79,18 @@ function emitActive() {
   }
 }
 
+function emitClockIn(mood) {
+  if (socket?.connected) {
+    socket.emit('worksession:clock-in', { source: 'electron', mood });
+  }
+}
+
+function emitClockOut() {
+  if (socket?.connected) {
+    socket.emit('worksession:clock-out');
+  }
+}
+
 function onConfig(callback) {
   onConfigCallback = callback;
 }
@@ -90,5 +102,7 @@ module.exports = {
   emitScreenshot,
   emitIdle,
   emitActive,
+  emitClockIn,
+  emitClockOut,
   onConfig
 };

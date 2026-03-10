@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getSocket, initSocket } from '@/lib/socket-client';
+import { workSessionAPI } from '@/lib/api';
 
 const IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
 
 export default function ActivityTracker({ user, currentPage, pageLabel, isWorking, workStartTime }) {
   const [elapsed, setElapsed] = useState('');
+  const [todayTotal, setTodayTotal] = useState(null);
   const streamRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const idleTimerRef = useRef(null);
@@ -209,8 +211,30 @@ export default function ActivityTracker({ user, currentPage, pageLabel, isWorkin
     return () => clearInterval(timer);
   }, [workStartTime]);
 
+  // Fetch today's total work hours
+  useEffect(() => {
+    if (!isWorking || !user) return;
+    const today = new Date().toISOString().split('T')[0];
+    workSessionAPI.getSessions({ date: today }).then(data => {
+      if (data.summary) {
+        setTodayTotal(data.summary.totalFormatted);
+      }
+    }).catch(() => {});
+
+    // Refresh every 5 minutes
+    const refreshTimer = setInterval(() => {
+      workSessionAPI.getSessions({ date: today }).then(data => {
+        if (data.summary) setTodayTotal(data.summary.totalFormatted);
+      }).catch(() => {});
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(refreshTimer);
+  }, [isWorking, user]);
+
   if (!['karyawan', 'sdm'].includes(user?.role)) return null;
   if (!isWorking) return null;
+
+  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
 
   return (
     <div className="fixed bottom-20 right-4 md:bottom-4 md:right-4 z-40">
@@ -221,7 +245,9 @@ export default function ActivityTracker({ user, currentPage, pageLabel, isWorkin
         </span>
         <div className="flex flex-col">
           <span className="text-xs font-semibold text-green-700">Sedang Bekerja</span>
-          {elapsed && <span className="text-[10px] text-gray-500">{elapsed}</span>}
+          {elapsed && <span className="text-[10px] text-gray-500">Sesi: {elapsed}</span>}
+          {todayTotal && <span className="text-[10px] text-blue-600 font-medium">Hari ini: {todayTotal}</span>}
+          {isElectron && <span className="text-[9px] text-orange-500">App harus tetap terbuka</span>}
         </div>
       </div>
     </div>

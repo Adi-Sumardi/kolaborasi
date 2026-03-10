@@ -6,6 +6,11 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
 const compression = require('compression');
+const { Pool } = require('pg');
+const dbPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
 
 // ===========================================
 // ENVIRONMENT VALIDATION
@@ -244,6 +249,79 @@ app.prepare().then(() => {
       console.log(`🏢 ${socket.userEmail} started working (mood: ${data.mood})`);
     });
 
+    // Work Session: Clock-in (from Electron or browser)
+    socket.on('worksession:clock-in', async (data) => {
+      if (!['karyawan', 'sdm'].includes(socket.userRole)) return;
+
+      try {
+        // Check for existing open session
+        const existing = await dbPool.query(
+          'SELECT id FROM work_sessions WHERE user_id = $1 AND clock_out IS NULL',
+          [socket.userId]
+        );
+
+        if (existing.rows.length === 0) {
+          await dbPool.query(
+            'INSERT INTO work_sessions (user_id, clock_in, mood, source, date) VALUES ($1, NOW(), $2, $3, CURRENT_DATE)',
+            [socket.userId, data?.mood || null, data?.source || socket.source]
+          );
+          console.log(`⏰ ${socket.userEmail} clocked in (${data?.source || socket.source})`);
+        }
+
+        // Update activity map
+        const ea = employeeActivity.get(socket.userId) || {};
+        employeeActivity.set(socket.userId, {
+          ...ea,
+          workSessionActive: true,
+          workClockIn: new Date().toISOString(),
+          lastActivity: new Date().toISOString()
+        });
+
+        io.to('room:admin-monitor').emit('activity:update', {
+          userId: socket.userId,
+          ...employeeActivity.get(socket.userId)
+        });
+
+        socket.emit('worksession:session-started', { clockIn: new Date().toISOString() });
+      } catch (err) {
+        console.error('[WorkSession] Clock-in error:', err.message);
+      }
+    });
+
+    // Work Session: Clock-out
+    socket.on('worksession:clock-out', async () => {
+      if (!['karyawan', 'sdm'].includes(socket.userRole)) return;
+
+      try {
+        const result = await dbPool.query(
+          `UPDATE work_sessions
+           SET clock_out = NOW(), duration_minutes = EXTRACT(EPOCH FROM (NOW() - clock_in)) / 60
+           WHERE user_id = $1 AND clock_out IS NULL RETURNING duration_minutes`,
+          [socket.userId]
+        );
+
+        if (result.rows.length > 0) {
+          const mins = Math.round(result.rows[0].duration_minutes);
+          console.log(`⏰ ${socket.userEmail} clocked out (${Math.floor(mins/60)}h ${mins%60}m)`);
+        }
+
+        // Update activity map
+        const ea = employeeActivity.get(socket.userId) || {};
+        employeeActivity.set(socket.userId, {
+          ...ea,
+          workSessionActive: false,
+          lastActivity: new Date().toISOString()
+        });
+
+        io.to('room:admin-monitor').emit('activity:update', {
+          userId: socket.userId,
+          ...employeeActivity.get(socket.userId)
+        });
+      } catch (err) {
+        console.error('[WorkSession] Clock-out error:', err.message);
+      }
+    });
+
     // Screen share ready/stopped (from "Mulai Bekerja" / "Selesai Bekerja")
     socket.on('monitor:screen-ready', () => {
       const existing = employeeActivity.get(socket.userId) || {};
@@ -361,7 +439,7 @@ app.prepare().then(() => {
     });
 
     // Disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`❌ User disconnected: ${socket.userEmail} (source: ${socket.source})`);
 
       // Mark as offline in activity store
@@ -385,6 +463,24 @@ app.prepare().then(() => {
           userId: socket.userId,
           ...employeeActivity.get(socket.userId)
         });
+      }
+
+      // Auto clock-out if no more sockets for this user
+      const userRoom = io.sockets.adapter.rooms.get(`user:${socket.userId}`);
+      if (!userRoom || userRoom.size === 0) {
+        try {
+          const result = await dbPool.query(
+            `UPDATE work_sessions
+             SET clock_out = NOW(), duration_minutes = EXTRACT(EPOCH FROM (NOW() - clock_in)) / 60
+             WHERE user_id = $1 AND clock_out IS NULL RETURNING duration_minutes`,
+            [socket.userId]
+          );
+          if (result.rows.length > 0) {
+            console.log(`⏰ ${socket.userEmail} auto clock-out (disconnect, no remaining sockets)`);
+          }
+        } catch (err) {
+          console.error('[WorkSession] Auto clock-out error:', err.message);
+        }
       }
     });
   });

@@ -473,6 +473,27 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_warning_letters_jobdesk ON warning_letters(jobdesk_id);`,
   `CREATE INDEX IF NOT EXISTS idx_sp2dk_notices_jobdesk ON sp2dk_notices(jobdesk_id);`,
 
+  // Work Sessions (Jam Kerja Karyawan)
+  `CREATE TABLE IF NOT EXISTS work_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    clock_in TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    clock_out TIMESTAMP WITH TIME ZONE,
+    duration_minutes INTEGER DEFAULT 0,
+    source VARCHAR(20) DEFAULT 'electron',
+    mood VARCHAR(20),
+    notes TEXT,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_work_sessions_user_date ON work_sessions(user_id, date);`,
+  `CREATE INDEX IF NOT EXISTS idx_work_sessions_user_clockin ON work_sessions(user_id, clock_in);`,
+  `CREATE INDEX IF NOT EXISTS idx_work_sessions_date ON work_sessions(date);`,
+  `DROP TRIGGER IF EXISTS update_work_sessions_updated_at ON work_sessions;
+  CREATE TRIGGER update_work_sessions_updated_at BEFORE UPDATE ON work_sessions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`,
+
   // SP2DK error confirmation columns
   `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS error_type VARCHAR(30) DEFAULT 'unconfirmed';`,
   `ALTER TABLE sp2dk_notices ADD COLUMN IF NOT EXISTS penalty_points DECIMAL(5,2) DEFAULT 5;`,
@@ -560,6 +581,7 @@ async function migrate() {
     console.log('   - kpi_scores');
     console.log('\n📊 Screen Monitoring Tables:');
     console.log('   - screen_sessions');
+    console.log('   - work_sessions');
 
   } catch (error) {
     console.error('\n❌ Migration failed:', error.message);
