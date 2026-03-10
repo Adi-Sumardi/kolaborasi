@@ -2796,7 +2796,7 @@ async function handleDeleteUser(request, userId) {
     }
 
     // Prevent deleting yourself
-    if (user.userId === userId) {
+    if (user.userId == userId) {
       return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 });
     }
 
@@ -5357,6 +5357,75 @@ async function handleGetMonitorSessions(request) {
   }
 }
 
+// Desktop App Download
+async function handleGetDesktopDownload(request) {
+  try {
+    const userAgent = request.headers.get('user-agent') || '';
+    const isWindows = userAgent.includes('Windows');
+    const isMac = userAgent.includes('Macintosh') || userAgent.includes('Mac OS');
+
+    // Look for installer files in public/downloads/
+    const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
+
+    let files = [];
+    try {
+      const dirEntries = await fs.readdir(downloadsDir);
+      files = dirEntries.filter(f =>
+        f.endsWith('.exe') || f.endsWith('.dmg') || f.endsWith('.AppImage') || f.endsWith('.zip')
+      );
+    } catch {
+      // downloads dir doesn't exist yet
+    }
+
+    const winFile = files.find(f => f.endsWith('.exe'));
+    const macFile = files.find(f => f.endsWith('.dmg'));
+    const linuxFile = files.find(f => f.endsWith('.AppImage'));
+
+    // If specific file requested via ?platform=
+    const url = new URL(request.url);
+    const platform = url.searchParams.get('platform');
+
+    if (platform) {
+      let targetFile;
+      if (platform === 'windows') targetFile = winFile;
+      else if (platform === 'mac') targetFile = macFile;
+      else if (platform === 'linux') targetFile = linuxFile;
+
+      if (!targetFile) {
+        return NextResponse.json({
+          error: 'Installer belum tersedia untuk platform ini. Hubungi admin.',
+          available: false
+        }, { status: 404 });
+      }
+
+      const filePath = path.join(downloadsDir, targetFile);
+      const fileBuffer = await fs.readFile(filePath);
+      const stat = await fs.stat(filePath);
+
+      return new NextResponse(fileBuffer, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${targetFile}"`,
+          'Content-Length': stat.size.toString(),
+        }
+      });
+    }
+
+    // Return available downloads info
+    return NextResponse.json({
+      downloads: {
+        windows: winFile ? { file: winFile, url: `/downloads/${winFile}` } : null,
+        mac: macFile ? { file: macFile, url: `/downloads/${macFile}` } : null,
+        linux: linuxFile ? { file: linuxFile, url: `/downloads/${linuxFile}` } : null,
+      },
+      detected: isWindows ? 'windows' : isMac ? 'mac' : 'linux',
+    });
+  } catch (error) {
+    console.error('Download error:', error);
+    return NextResponse.json({ error: 'Download gagal' }, { status: 500 });
+  }
+}
+
 // Connect to employee screen via monitor code (admin only)
 async function handleMonitorConnect(request) {
   try {
@@ -5522,6 +5591,9 @@ export async function GET(request, { params }) {
       const userId = path.split('/')[1];
       return handleGetMonitorCode(request, userId);
     }
+
+    // Desktop App Download
+    if (path === 'download/desktop') return handleGetDesktopDownload(request);
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {

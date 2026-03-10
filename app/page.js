@@ -9,11 +9,80 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { authAPI, getToken, setToken, setUser, getUser, notifyElectronAuth } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Users, BarChart3, MessageSquare, CheckSquare, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Users, BarChart3, MessageSquare, CheckSquare, Eye, EyeOff, Monitor, Download } from 'lucide-react';
 import DashboardApp from '@/components/DashboardApp';
 import InstallPrompt from '@/components/InstallPrompt';
 import OnlineStatus from '@/components/OnlineStatus';
 import { registerServiceWorker } from '@/lib/pwa-utils';
+
+function DesktopDownloadSection() {
+  const [downloads, setDownloads] = useState(null);
+  const [detected, setDetected] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/download/desktop')
+      .then(r => r.json())
+      .then(data => {
+        setDownloads(data.downloads);
+        setDetected(data.detected);
+      })
+      .catch(() => {});
+  }, []);
+
+  const platformInfo = {
+    windows: { label: 'Windows', icon: '🪟', ext: '.exe' },
+    mac: { label: 'macOS', icon: '🍎', ext: '.dmg' },
+    linux: { label: 'Linux', icon: '🐧', ext: '.AppImage' },
+  };
+
+  const detectedPlatform = detected || 'windows';
+  const primary = downloads?.[detectedPlatform];
+  const otherPlatforms = downloads
+    ? Object.entries(downloads).filter(([k, v]) => k !== detectedPlatform && v)
+    : [];
+
+  return (
+    <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-5 rounded-xl text-white mt-6">
+      <div className="flex items-center gap-3 mb-3">
+        <Monitor className="w-6 h-6" />
+        <div>
+          <h3 className="font-semibold text-lg">Aplikasi Desktop</h3>
+          <p className="text-blue-100 text-sm">Install untuk monitoring & kolaborasi lebih optimal</p>
+        </div>
+      </div>
+
+      {primary ? (
+        <a
+          href={primary.url}
+          download
+          className="flex items-center justify-center gap-2 w-full bg-white text-blue-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-blue-50 transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          Download untuk {platformInfo[detectedPlatform]?.label} ({primary.file})
+        </a>
+      ) : (
+        <div className="text-center py-2 text-blue-200 text-sm">
+          <p>Installer belum tersedia. Hubungi admin untuk mendapatkan aplikasi desktop.</p>
+        </div>
+      )}
+
+      {otherPlatforms.length > 0 && (
+        <div className="mt-3 flex gap-2 justify-center">
+          {otherPlatforms.map(([platform, info]) => (
+            <a
+              key={platform}
+              href={info.url}
+              download
+              className="text-xs text-blue-200 hover:text-white underline"
+            >
+              {platformInfo[platform]?.icon} {platformInfo[platform]?.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -127,6 +196,11 @@ export default function App() {
               <p className="text-sm text-gray-600">Kelola tugas harian</p>
             </div>
           </div>
+
+          {/* Desktop App Download — hide inside Electron */}
+          {typeof window !== 'undefined' && !window.electronAPI?.isElectron && (
+            <DesktopDownloadSection />
+          )}
         </div>
 
         {/* Right Side - Login Form */}

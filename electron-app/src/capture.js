@@ -1,5 +1,12 @@
 const { desktopCapturer, systemPreferences } = require('electron');
-const sharp = require('sharp');
+
+// Lazy load sharp to handle native module loading in packaged apps
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  console.error('[Capture] Sharp not available:', e.message);
+}
 
 let captureInterval = null;
 let currentFps = 0;
@@ -50,7 +57,7 @@ async function captureScreen() {
       return null;
     }
 
-    // Convert NativeImage to JPEG buffer via sharp
+    // Convert NativeImage to buffer
     const pngBuffer = thumbnail.toPNG();
 
     // Detect blank frame (permission denied gives black frame on macOS)
@@ -59,12 +66,18 @@ async function captureScreen() {
       console.error('[Capture] Screen recording permission likely not granted - frame is blank/black');
     }
 
-    const jpegBuffer = await sharp(pngBuffer)
-      .resize({ width: 1280, withoutEnlargement: true })
-      .jpeg({ quality: 60 })
-      .toBuffer();
+    // Use sharp if available, otherwise send raw PNG
+    if (sharp) {
+      const jpegBuffer = await sharp(pngBuffer)
+        .resize({ width: 1280, withoutEnlargement: true })
+        .jpeg({ quality: 60 })
+        .toBuffer();
+      return jpegBuffer;
+    }
 
-    return jpegBuffer;
+    // Fallback: use NativeImage resize + JPEG
+    const resized = thumbnail.resize({ width: 1280 });
+    return resized.toJPEG(60);
   } catch (err) {
     console.error('[Capture] Error:', err.message);
     return null;

@@ -26,13 +26,16 @@ if (!gotLock) {
 
 // --- Server URL ---
 
+// Default server URL — change this before building for production
+const DEFAULT_SERVER_URL = 'http://localhost:3000';
+
 async function getServerUrl() {
-  // 1. Environment variable (for dev or baked production builds)
+  // 1. Environment variable (for dev override)
   if (process.env.KOLABORASI_SERVER_URL) {
     return process.env.KOLABORASI_SERVER_URL;
   }
 
-  // 2. Stored URL from previous session
+  // 2. Stored URL from previous session (user changed it)
   try {
     const stored = store.get('serverUrl');
     if (stored) return stored;
@@ -41,7 +44,12 @@ async function getServerUrl() {
     store.clear();
   }
 
-  // 3. Prompt user for URL on first run
+  // 3. Use default URL (baked at build time)
+  if (DEFAULT_SERVER_URL) {
+    return DEFAULT_SERVER_URL;
+  }
+
+  // 4. Prompt user for URL (fallback)
   return await promptForServerUrl();
 }
 
@@ -142,6 +150,10 @@ function createWindow() {
       e.preventDefault();
       mainWindow.hide();
     }
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 
   // Handle page title
@@ -360,8 +372,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
+  } else if (!mainWindow) {
+    createWindow();
   }
 });
 

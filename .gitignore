@@ -98,3 +98,10 @@ public/uploads/profiles/*
 # Backup files
 backups/
 *.bak
+
+# Desktop app installers (too large for git)
+public/downloads/*.dmg
+public/downloads/*.exe
+public/downloads/*.AppImage
+!public/downloads/.gitkeep
+electron-app/dist/

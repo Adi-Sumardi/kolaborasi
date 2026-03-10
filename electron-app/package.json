@@ -5,9 +5,13 @@
   "main": "main.js",
   "scripts": {
     "start": "unset ELECTRON_RUN_AS_NODE && electron .",
-    "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --win --mac"
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --mac --win --linux",
+    "postbuild:mac": "cp dist/*.dmg ../public/downloads/ 2>/dev/null || true",
+    "postbuild:win": "cp dist/*.exe ../public/downloads/ 2>/dev/null || true",
+    "postbuild:linux": "cp dist/*.AppImage ../public/downloads/ 2>/dev/null || true"
   },
   "build": {
     "appId": "com.kkpanwar.kpi",
@@ -21,18 +25,38 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png",
+      "category": "Office"
+    },
+    "dmg": {
+      "title": "KKP Anwar KPI",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     },
     "nsis": {
       "oneClick": true,
       "allowToChangeInstallationDirectory": false,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     },
     "files": [
       "main.js",
       "preload.js",
       "src/**/*",
+      "build/icon.png",
       "build/tray-icon.png"
+    ],
+    "asarUnpack": [
+      "node_modules/sharp/**",
+      "node_modules/@img/**"
     ]
   },
   "dependencies": {

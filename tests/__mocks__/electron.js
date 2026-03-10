@@ -1,0 +1,47 @@
+module.exports = {
+  app: {
+    requestSingleInstanceLock: jest.fn(() => true),
+    on: jest.fn(),
+    whenReady: jest.fn(() => Promise.resolve()),
+    setName: jest.fn(),
+    isPackaged: false,
+    quit: jest.fn(),
+    isQuitting: false,
+    setLoginItemSettings: jest.fn(),
+    dock: { setIcon: jest.fn() },
+  },
+  BrowserWindow: jest.fn(() => ({
+    loadURL: jest.fn(),
+    on: jest.fn(),
+    show: jest.fn(),
+    hide: jest.fn(),
+    focus: jest.fn(),
+    close: jest.fn(),
+    isMinimized: jest.fn(() => false),
+    restore: jest.fn(),
+    setTitle: jest.fn(),
+    webContents: { on: jest.fn() },
+  })),
+  Tray: jest.fn(() => ({
+    setContextMenu: jest.fn(),
+    setToolTip: jest.fn(),
+    on: jest.fn(),
+  })),
+  Menu: { buildFromTemplate: jest.fn(() => ({})) },
+  ipcMain: { on: jest.fn(), once: jest.fn() },
+  ipcRenderer: { send: jest.fn(), on: jest.fn() },
+  contextBridge: { exposeInMainWorld: jest.fn() },
+  nativeImage: {
+    createFromBuffer: jest.fn(() => ({ isEmpty: () => false })),
+    createFromPath: jest.fn(() => ({ isEmpty: () => false })),
+  },
+  dialog: { showMessageBox: jest.fn(() => Promise.resolve({ response: 0 })) },
+  systemPreferences: { getMediaAccessStatus: jest.fn(() => 'granted') },
+  shell: { openExternal: jest.fn() },
+  desktopCapturer: {
+    getSources: jest.fn(() => Promise.resolve([])),
+  },
+  powerMonitor: {
+    getSystemIdleTime: jest.fn(() => 0),
+  },
+};
