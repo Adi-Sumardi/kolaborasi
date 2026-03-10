@@ -26,8 +26,10 @@
     "mac": {
       "target": "dmg",
       "icon": "build/icon.icns",
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "identity": null
     },
+    "afterPack": "./scripts/remove-quarantine.js",
     "linux": {
       "target": "AppImage",
       "icon": "build/icon.png",

@@ -18,6 +18,7 @@ import { registerServiceWorker } from '@/lib/pwa-utils';
 function DesktopDownloadSection() {
   const [downloads, setDownloads] = useState(null);
   const [detected, setDetected] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     fetch('/api/download/desktop')
@@ -52,14 +53,40 @@ function DesktopDownloadSection() {
       </div>
 
       {primary ? (
-        <a
-          href={primary.url}
-          download
-          className="flex items-center justify-center gap-2 w-full bg-white text-blue-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-blue-50 transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Download untuk {platformInfo[detectedPlatform]?.label} ({primary.file})
-        </a>
+        <>
+          <a
+            href={primary.url}
+            download
+            className="flex items-center justify-center gap-2 w-full bg-white text-blue-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-blue-50 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download untuk {platformInfo[detectedPlatform]?.label} ({primary.file})
+          </a>
+          <button
+            onClick={() => setShowGuide(!showGuide)}
+            className="mt-2 text-xs text-blue-200 hover:text-white underline w-full text-center"
+          >
+            {showGuide ? 'Tutup panduan' : 'Panduan instalasi'}
+          </button>
+          {showGuide && (
+            <div className="mt-3 bg-blue-800/50 rounded-lg p-3 text-xs text-blue-100 space-y-2">
+              <p className="font-semibold text-white">Windows:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Buka file .exe yang sudah didownload</li>
+                <li>Jika muncul &quot;Windows protected your PC&quot;, klik <strong className="text-white">More info</strong></li>
+                <li>Klik <strong className="text-white">Run anyway</strong></li>
+                <li>Aplikasi akan terinstall otomatis</li>
+              </ol>
+              <p className="font-semibold text-white mt-2">macOS:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Buka file .dmg dan drag app ke folder Applications</li>
+                <li>Jika muncul &quot;app is damaged&quot;, buka <strong className="text-white">Terminal</strong> dan jalankan:</li>
+                <li><code className="bg-blue-900 px-1.5 py-0.5 rounded text-blue-200">xattr -cr /Applications/KKP\ Anwar\ KPI.app</code></li>
+                <li>Buka kembali aplikasinya</li>
+              </ol>
+            </div>
+          )}
+        </>
       ) : (
         <div className="text-center py-2 text-blue-200 text-sm">
           <p>Installer belum tersedia. Hubungi admin untuk mendapatkan aplikasi desktop.</p>
