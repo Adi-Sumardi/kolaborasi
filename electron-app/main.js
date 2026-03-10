@@ -29,7 +29,7 @@ if (!gotLock) {
 // --- Server URL ---
 
 // Default server URL — change this before building for production
-const DEFAULT_SERVER_URL = 'http://localhost:3000';
+const DEFAULT_SERVER_URL = 'https://kolaborasi.adilabs.id';
 
 async function getServerUrl() {
   // 1. Environment variable (for dev override)
