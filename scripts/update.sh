@@ -39,24 +39,11 @@ fi
 
 cd ${APP_DIR}
 
-# Step 1: Backup current .env
-log_info "Backing up .env file..."
-cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
-
-# Step 2: Pull latest changes
+# Step 1: Pull latest changes (preserve untracked files like uploads, .env)
 log_info "Pulling latest changes from ${BRANCH}..."
 git fetch origin
 git reset --hard origin/${BRANCH}
-git clean -fd
 log_success "Repository updated"
-
-# Step 3: Restore .env
-log_info "Restoring .env file..."
-LATEST_BACKUP=$(ls -t .env.backup.* 2>/dev/null | head -1)
-if [ -n "$LATEST_BACKUP" ]; then
-    cp "$LATEST_BACKUP" .env
-    log_success ".env restored from backup"
-fi
 
 # Step 4: Install dependencies
 log_info "Installing dependencies..."
