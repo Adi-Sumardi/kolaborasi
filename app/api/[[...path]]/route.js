@@ -874,6 +874,41 @@ async function handleUpdateJobdeskStatus(request, jobdeskId) {
       [status, jobdeskId]
     );
 
+    // Notify admin/owner/pengurus when jobdesk is completed
+    if (status === 'completed') {
+      try {
+        const jobdeskResult = await query('SELECT title FROM jobdesks WHERE id = $1', [jobdeskId]);
+        const jobdeskTitle = jobdeskResult.rows[0]?.title || 'Jobdesk';
+
+        const adminResult = await query(
+          `SELECT id FROM users WHERE role IN ('super_admin', 'owner', 'pengurus') AND id != $1`,
+          [user.userId]
+        );
+
+        const message = `${user.email} menyelesaikan jobdesk: ${jobdeskTitle}`;
+
+        for (const admin of adminResult.rows) {
+          await query(
+            `INSERT INTO notifications (user_id, title, message, type)
+             VALUES ($1, $2, $3, $4)`,
+            [admin.id, 'Jobdesk Selesai', message, 'jobdesk_completed']
+          );
+
+          try {
+            sendNotification(admin.id, {
+              type: 'jobdesk_completed',
+              title: 'Jobdesk Selesai',
+              message
+            });
+          } catch (err) {
+            console.error('Socket notification error:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to send completion notification:', err);
+      }
+    }
+
     return NextResponse.json({
       message: 'Status updated',
       status
@@ -1149,6 +1184,56 @@ async function handleGetJobdeskSubmissions(request, jobdeskId) {
   }
 }
 
+// Helper: send late submission notifications to karyawan + admins
+async function notifyLateSubmission({ userId, userEmail, jobdeskId, jobdeskTitle, taskType, lateDays }) {
+  try {
+    const TASK_LABELS = {
+      pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25',
+      ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan'
+    };
+    const taskLabel = taskType ? (TASK_LABELS[taskType] || taskType) : null;
+    const taskSuffix = taskLabel ? ` (${taskLabel})` : '';
+    const daysSuffix = lateDays ? ` ${lateDays} hari` : '';
+
+    // Notify the karyawan who submitted
+    const selfMessage = `Pengumpulan terlambat${daysSuffix} di jobdesk: ${jobdeskTitle}${taskSuffix}`;
+    await query(
+      `INSERT INTO notifications (user_id, title, message, type)
+       VALUES ($1, $2, $3, $4)`,
+      [userId, 'Pengumpulan Terlambat', selfMessage, 'submission_late']
+    );
+    try {
+      sendNotification(userId, {
+        type: 'submission_late',
+        title: 'Pengumpulan Terlambat',
+        message: selfMessage
+      });
+    } catch (err) { console.error('Socket notification error:', err); }
+
+    // Notify admins
+    const adminResult = await query(
+      `SELECT id FROM users WHERE role IN ('super_admin', 'owner', 'pengurus') AND is_active = true`
+    );
+    const adminMessage = `${userEmail} terlambat${daysSuffix} mengumpulkan di jobdesk: ${jobdeskTitle}${taskSuffix}`;
+    for (const admin of adminResult.rows) {
+      await query(
+        `INSERT INTO notifications (user_id, title, message, type)
+         VALUES ($1, $2, $3, $4)`,
+        [admin.id, 'Pengumpulan Terlambat', adminMessage, 'submission_late']
+      );
+      try {
+        sendNotification(admin.id, {
+          type: 'submission_late',
+          title: 'Pengumpulan Terlambat',
+          message: adminMessage
+        });
+      } catch (err) { console.error('Socket notification error:', err); }
+    }
+  } catch (err) {
+    console.error('Failed to send late submission notification:', err);
+  }
+}
+
 // Create submission for a jobdesk
 async function handleCreateJobdeskSubmission(request, jobdeskId) {
   try {
@@ -1237,6 +1322,19 @@ async function handleCreateJobdeskSubmission(request, jobdeskId) {
     ]);
 
     const s = result.rows[0];
+
+    // Send in-app + push notification when submission is late
+    if (isLate) {
+      const jobdeskRow = await query('SELECT title FROM jobdesks WHERE id = $1', [jobdeskId]);
+      await notifyLateSubmission({
+        userId: user.userId,
+        userEmail: user.email,
+        jobdeskId,
+        jobdeskTitle: jobdeskRow.rows[0]?.title || 'Jobdesk',
+        taskType,
+        lateDays
+      });
+    }
 
     // Send email notification to admins (async, non-blocking)
     try {
@@ -1473,6 +1571,20 @@ async function handleUploadSubmissionFile(request, jobdeskId) {
     ]);
 
     const s = result.rows[0];
+
+    // Send in-app + push notification when submission is late
+    if (isLate) {
+      const jobdeskRow = await query('SELECT title FROM jobdesks WHERE id = $1', [jobdeskId]);
+      await notifyLateSubmission({
+        userId: user.userId,
+        userEmail: user.email,
+        jobdeskId,
+        jobdeskTitle: jobdeskRow.rows[0]?.title || 'Jobdesk',
+        taskType,
+        lateDays
+      });
+    }
+
     return NextResponse.json({
       message: 'File uploaded successfully',
       submission: {

@@ -7,6 +7,8 @@
 - `jobdesk_assigned` — Jobdesk baru ditugaskan ke karyawan
 - `jobdesk_assigned` (update) — Karyawan baru ditambahkan ke jobdesk existing
 - `attachment_added` — Karyawan menambah lampiran di jobdesk (notif ke pengurus)
+- ✅ `jobdesk_completed` — Karyawan menyelesaikan jobdesk (notif ke admin/owner/pengurus)
+- ✅ `submission_late` — Pengumpulan terlambat (notif ke karyawan + admin)
 
 **Infrastruktur siap:**
 - Tabel `notifications` ✓
@@ -16,7 +18,7 @@
 
 ### Yang Perlu Ditambahkan
 
-1. **Notifikasi Jobdesk Selesai**
+1. ~~**Notifikasi Jobdesk Selesai**~~ ✅ DONE
    - Trigger saat karyawan ubah status jadi `completed`
    - Penerima: admin/owner/pengurus terkait
    - Lokasi: `handleUpdateJobdeskStatus` di route.js
@@ -28,7 +30,7 @@
    - Untuk `rekap_laporan`: pakai `rekap_laporan_deadline` dari jobdesk
    - Bisa pakai `node-cron` atau scheduled job di server.js
 
-3. **Notifikasi Deadline Terlewat**
+3. ~~**Notifikasi Deadline Terlewat**~~ ✅ DONE
    - Sistem sudah deteksi `is_late` di submission, tinggal kirim notif
    - Penerima: karyawan yang assigned + pengurus
 
