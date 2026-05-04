@@ -1223,7 +1223,7 @@ export default function JobdeskPage({ user }) {
                   )}
                   
                   <div className="flex flex-wrap gap-2">
-                    {/* Detail & Submissions Button */}
+                    {/* Detail & Submissions Button - disabled for karyawan until they click "Mulai" */}
                     <Button
                       size="sm"
                       variant="default"
@@ -1232,6 +1232,7 @@ export default function JobdeskPage({ user }) {
                         loadJobdeskDetail(job.id);
                         setShowDetailModal(true);
                       }}
+                      disabled={user.role === 'karyawan' && job.assignedTo?.includes(user.id) && userStatus === 'pending'}
                       className="flex-1 sm:flex-none"
                     >
                       <Eye className="w-4 h-4 mr-1" />
@@ -1239,8 +1240,8 @@ export default function JobdeskPage({ user }) {
                       <span className="sm:hidden">Detail</span>
                     </Button>
 
-                    {/* Settings dropdown - for super_admin, pengurus, and karyawan (for their own jobdesk) */}
-                    {(user.role === 'super_admin' || user.role === 'pengurus' || (user.role === 'karyawan' && job.assignedTo?.includes(user.id))) && (
+                    {/* Settings dropdown - only for super_admin and pengurus (admin/owner) */}
+                    {(user.role === 'super_admin' || user.role === 'pengurus') && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -1254,8 +1255,8 @@ export default function JobdeskPage({ user }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
-                          {/* Edit option - for super_admin, pengurus, and karyawan (their own jobdesk) */}
-                          {(user.role === 'super_admin' || user.role === 'pengurus' || (user.role === 'karyawan' && job.assignedTo?.includes(user.id))) && (
+                          {/* Edit option - for super_admin and pengurus */}
+                          {(user.role === 'super_admin' || user.role === 'pengurus') && (
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedJobdesk(job);
