@@ -88,6 +88,31 @@ Halaman baru di dashboard admin/owner untuk merekap hasil kerja karyawan.
 
 ---
 
+---
+
+## 📈 Filter Group PT di Rincian Klien KPI
+
+### Konsep
+Di halaman KPI, bagian **Rincian Klien yang Ditangani** untuk setiap karyawan
+harus bisa difilter berdasarkan **group PT**.
+
+### Yang Dibutuhkan
+- Pastikan tabel `clients` punya field `group_name` (atau relasi ke groups)
+  - Cek migrasi: kalau belum ada, tambah `ALTER TABLE clients ADD COLUMN group_name VARCHAR(255);`
+- Backend: endpoint KPI/rincian klien menerima query param `?group=...`
+- Frontend (`KPIPageV2.jsx`):
+  - Tambah dropdown filter "Group PT" di section Rincian Klien
+  - Populate dropdown dari list group unik milik klien yang di-handle karyawan
+  - Filter list klien sesuai group yang dipilih
+  - Default: "Semua Group"
+
+### Catatan
+- Cek dulu apakah field `group_name` sudah ada di tabel clients (di create client form
+  ada `groupName` di newClientData — kemungkinan sudah ada kolomnya)
+- Filter ini per-karyawan (di card/section masing-masing karyawan), bukan global
+
+---
+
 ## Catatan Implementasi
 
 - Saat implement notifikasi reminder, jangan lupa konfigurasi VAPID keys di production
