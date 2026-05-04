@@ -679,6 +679,7 @@ async function handleGetJobdesks(request) {
       periodMonth: j.period_month,
       periodYear: j.period_year,
       taskTypes: j.task_types || [],
+      rekapLaporanDeadline: j.rekap_laporan_deadline,
       submissionCount: parseInt(j.submission_count) || 0,
       createdAt: j.created_at,
       updatedAt: j.updated_at
@@ -715,7 +716,7 @@ async function handleCreateJobdesk(request) {
     const {
       title, description, assignedTo, dueDate, priority, submissionLink,
       // New fields for client integration
-      clientId, newClient, periodMonth, periodYear, taskTypes
+      clientId, newClient, periodMonth, periodYear, taskTypes, rekapLaporanDeadline
     } = body;
 
     if (!title || !assignedTo || assignedTo.length === 0) {
@@ -752,8 +753,8 @@ async function handleCreateJobdesk(request) {
 
       // Create jobdesk with new fields
       const jobdeskResult = await client.query(
-        `INSERT INTO jobdesks (title, description, status, priority, due_date, submission_link, created_by, client_id, period_month, period_year, task_types)
-         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO jobdesks (title, description, status, priority, due_date, submission_link, created_by, client_id, period_month, period_year, task_types, rekap_laporan_deadline)
+         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           title,
@@ -765,7 +766,8 @@ async function handleCreateJobdesk(request) {
           finalClientId,
           periodMonth || null,
           periodYear || null,
-          taskTypes && taskTypes.length > 0 ? taskTypes : null
+          taskTypes && taskTypes.length > 0 ? taskTypes : null,
+          rekapLaporanDeadline ? new Date(rekapLaporanDeadline) : null
         ]
       );
 
@@ -824,6 +826,7 @@ async function handleCreateJobdesk(request) {
         periodMonth: jobdesk.period_month,
         periodYear: jobdesk.period_year,
         taskTypes: jobdesk.task_types || [],
+        rekapLaporanDeadline: jobdesk.rekap_laporan_deadline,
         createdAt: jobdesk.created_at
       }
     });
@@ -1575,6 +1578,7 @@ async function handleGetJobdeskDetail(request, jobdeskId) {
         periodMonth: j.period_month,
         periodYear: j.period_year,
         taskTypes: j.task_types || [],
+        rekapLaporanDeadline: j.rekap_laporan_deadline,
         submissionCount: parseInt(j.submission_count) || 0,
         createdAt: j.created_at,
         updatedAt: j.updated_at

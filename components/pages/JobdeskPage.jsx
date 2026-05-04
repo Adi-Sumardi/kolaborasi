@@ -45,10 +45,16 @@ const TASK_TYPES = [
   { id: 'ppn', label: 'PPN', description: 'Pajak Pertambahan Nilai' },
   { id: 'pph_badan', label: 'PPh Badan', description: 'Pajak Penghasilan Badan' },
   { id: 'pph_05', label: 'PPh 0,5%', description: 'PPh Final 0,5% (UMKM)' },
+  { id: 'rekap_laporan', label: 'Rekap Laporan', description: 'Rekap laporan dengan deadline kustom' },
 ];
 
 // Helper function to calculate deadline - universal tanggal 5 bulan berikutnya
-const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
+// For rekap_laporan, use custom deadline if provided
+const calculateTaskDeadline = (taskType, periodMonth, periodYear, rekapLaporanDeadline = null) => {
+  if (taskType === 'rekap_laporan') {
+    return rekapLaporanDeadline ? new Date(rekapLaporanDeadline) : null;
+  }
+
   if (!periodMonth || !periodYear) return null;
 
   // Calculate next month
@@ -110,7 +116,8 @@ export default function JobdeskPage({ user }) {
     newClient: null,
     periodMonth: new Date().getMonth() + 1,
     periodYear: new Date().getFullYear(),
-    taskTypes: DEFAULT_TASK_TYPES
+    taskTypes: DEFAULT_TASK_TYPES,
+    rekapLaporanDeadline: ''
   });
   const [editFormData, setEditFormData] = useState({
     title: '',
@@ -316,7 +323,8 @@ export default function JobdeskPage({ user }) {
       setFormData({
         title: '', description: '', assignedTo: [], dueDate: '', submissionLink: '',
         clientId: '', newClient: null, periodMonth: new Date().getMonth() + 1,
-        periodYear: new Date().getFullYear(), taskTypes: DEFAULT_TASK_TYPES
+        periodYear: new Date().getFullYear(), taskTypes: DEFAULT_TASK_TYPES,
+        rekapLaporanDeadline: ''
       });
       setClientMode('existing');
       setNewClientData({ name: '', groupName: '', npwp: '', address: '', contactPerson: '', phone: '', email: '', isPkp: false, isUmkm: true });
@@ -828,6 +836,22 @@ export default function JobdeskPage({ user }) {
                     ))}
                   </div>
                 </div>
+
+                {/* Rekap Laporan Deadline - shown when rekap_laporan task is selected */}
+                {formData.taskTypes.includes('rekap_laporan') && (
+                  <div>
+                    <Label htmlFor="rekapLaporanDeadline">Deadline Rekap Laporan *</Label>
+                    <Input
+                      id="rekapLaporanDeadline"
+                      type="date"
+                      value={formData.rekapLaporanDeadline}
+                      onChange={(e) => setFormData({ ...formData, rekapLaporanDeadline: e.target.value })}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Tanggal batas pengumpulan rekap laporan oleh karyawan
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="title">Judul Jobdesk *</Label>
@@ -1721,7 +1745,7 @@ export default function JobdeskPage({ user }) {
                         const isActive = activeTaskTypeForm === taskTypeId;
 
                         // Calculate deadline for this task type
-                        const deadline = calculateTaskDeadline(taskTypeId, detailData?.periodMonth, detailData?.periodYear);
+                        const deadline = calculateTaskDeadline(taskTypeId, detailData?.periodMonth, detailData?.periodYear, detailData?.rekapLaporanDeadline);
                         const deadlinePassed = isDeadlinePassed(deadline);
 
                         // Check if any submission for this task type is late

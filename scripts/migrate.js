@@ -102,6 +102,7 @@ const migrations = [
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS period_month INTEGER CHECK (period_month BETWEEN 1 AND 12);`,
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS period_year INTEGER CHECK (period_year >= 2020);`,
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS task_types TEXT[];`, // Array: pph_payment, pph_filing, ppn_payment, ppn_filing, bookkeeping, annual_filing
+  `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS rekap_laporan_deadline DATE;`,
 
   // Jobdesk submissions (pengumpulan hasil kerja)
   `CREATE TABLE IF NOT EXISTS jobdesk_submissions (
