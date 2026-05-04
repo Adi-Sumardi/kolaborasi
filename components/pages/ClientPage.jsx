@@ -53,6 +53,7 @@ export default function ClientPage({ user }) {
 
   const [formData, setFormData] = useState({
     name: '',
+    groupName: '',
     npwp: '',
     address: '',
     contactPerson: '',
@@ -182,6 +183,7 @@ export default function ClientPage({ user }) {
   const resetForm = () => {
     setFormData({
       name: '',
+      groupName: '',
       npwp: '',
       address: '',
       contactPerson: '',
@@ -198,6 +200,7 @@ export default function ClientPage({ user }) {
     setSelectedClient(client);
     setFormData({
       name: client.name,
+      groupName: client.groupName || '',
       npwp: client.npwp || '',
       address: client.address || '',
       contactPerson: client.contactPerson || '',
@@ -296,6 +299,15 @@ export default function ClientPage({ user }) {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="PT. Contoh Indonesia"
                       required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="groupName">Group PT</Label>
+                    <Input
+                      id="groupName"
+                      value={formData.groupName}
+                      onChange={(e) => setFormData({ ...formData, groupName: e.target.value })}
+                      placeholder="Group XYZ (opsional)"
                     />
                   </div>
                   <div>
@@ -703,6 +715,15 @@ export default function ClientPage({ user }) {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-groupName">Group PT</Label>
+                <Input
+                  id="edit-groupName"
+                  value={formData.groupName}
+                  onChange={(e) => setFormData({ ...formData, groupName: e.target.value })}
+                  placeholder="Group XYZ (opsional)"
                 />
               </div>
               <div>

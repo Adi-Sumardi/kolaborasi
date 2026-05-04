@@ -36,6 +36,7 @@ export default function KPIPageV2({ user }) {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState('overview');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [clientGroupFilter, setClientGroupFilter] = useState('all');
 
   useEffect(() => {
     loadData();
@@ -655,13 +656,42 @@ export default function KPIPageV2({ user }) {
           </div>
 
           {/* Client Performance Table */}
-          {myKpi.jobdeskPoints && myKpi.jobdeskPoints.length > 0 && (
+          {myKpi.jobdeskPoints && myKpi.jobdeskPoints.length > 0 && (() => {
+            const uniqueGroups = Array.from(
+              new Set(myKpi.jobdeskPoints.map(jp => jp.clientGroupName).filter(Boolean))
+            ).sort();
+            const filteredJobdeskPoints = clientGroupFilter === 'all'
+              ? myKpi.jobdeskPoints
+              : clientGroupFilter === '__none__'
+                ? myKpi.jobdeskPoints.filter(jp => !jp.clientGroupName)
+                : myKpi.jobdeskPoints.filter(jp => jp.clientGroupName === clientGroupFilter);
+
+            return (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5" />
-                  Rincian Klien yang Ditangani
-                </CardTitle>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5" />
+                    Rincian Klien yang Ditangani
+                  </CardTitle>
+                  {uniqueGroups.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm whitespace-nowrap">Filter Group PT:</Label>
+                      <Select value={clientGroupFilter} onValueChange={setClientGroupFilter}>
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua Group</SelectItem>
+                          {uniqueGroups.map(group => (
+                            <SelectItem key={group} value={group}>{group}</SelectItem>
+                          ))}
+                          <SelectItem value="__none__">Tanpa Group</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -670,6 +700,7 @@ export default function KPIPageV2({ user }) {
                       <TableRow>
                         <TableHead>No</TableHead>
                         <TableHead>Klien</TableHead>
+                        <TableHead>Group PT</TableHead>
                         <TableHead>Jobdesk</TableHead>
                         <TableHead className="text-center">Poin Dasar</TableHead>
                         <TableHead className="text-center">Keterlambatan Jobdesk</TableHead>
@@ -681,7 +712,14 @@ export default function KPIPageV2({ user }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {myKpi.jobdeskPoints.map((jp, idx) => (
+                      {filteredJobdeskPoints.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={11} className="text-center text-gray-500 py-6">
+                            Tidak ada data untuk filter group ini
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {filteredJobdeskPoints.map((jp, idx) => (
                         <TableRow key={jp.jobdeskId || idx} className={jp.isLate || jp.lateTaskTypeCount > 0 ? 'bg-orange-50' : ''}>
                           <TableCell>{idx + 1}</TableCell>
                           <TableCell className="font-medium">{jp.clientName || '-'}</TableCell>
@@ -773,7 +811,8 @@ export default function KPIPageV2({ user }) {
                 </div>
               </CardContent>
             </Card>
-          )}
+            );
+          })()}
         </div>
       )}
 

@@ -733,11 +733,12 @@ async function handleCreateJobdesk(request) {
       // Create new client if provided
       if (newClient && newClient.name) {
         const clientResult = await client.query(
-          `INSERT INTO clients (name, npwp, address, contact_person, phone, email, is_pkp, is_umkm, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `INSERT INTO clients (name, group_name, npwp, address, contact_person, phone, email, is_pkp, is_umkm, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING id`,
           [
             sanitizeString(newClient.name),
+            sanitizeString(newClient.groupName || ''),
             sanitizeString(newClient.npwp || ''),
             sanitizeString(newClient.address || ''),
             sanitizeString(newClient.contactPerson || ''),
@@ -3443,6 +3444,7 @@ async function handleGetClients(request) {
       clients: result.rows.map(c => ({
         id: c.id,
         name: c.name,
+        groupName: c.group_name,
         npwp: c.npwp,
         address: c.address,
         contactPerson: c.contact_person,
@@ -3554,7 +3556,7 @@ async function handleCreateClient(request) {
     }
 
     const body = await request.json();
-    const { name, npwp, address, contactPerson, phone, email, isPkp, isUmkm, clientType } = body;
+    const { name, groupName, npwp, address, contactPerson, phone, email, isPkp, isUmkm, clientType } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -3572,10 +3574,10 @@ async function handleCreateClient(request) {
     }
 
     const result = await query(
-      `INSERT INTO clients (name, npwp, address, contact_person, phone, email, is_pkp, is_umkm, client_type, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO clients (name, group_name, npwp, address, contact_person, phone, email, is_pkp, is_umkm, client_type, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [name, npwp || null, address || null, contactPerson || null, phone || null, email || null,
+      [name, groupName || null, npwp || null, address || null, contactPerson || null, phone || null, email || null,
        isPkp || false, isUmkm || false, clientType || 'badan', user.userId]
     );
 
@@ -3585,6 +3587,7 @@ async function handleCreateClient(request) {
       client: {
         id: c.id,
         name: c.name,
+        groupName: c.group_name,
         npwp: c.npwp,
         address: c.address,
         contactPerson: c.contact_person,
@@ -3616,7 +3619,7 @@ async function handleUpdateClient(request, clientId) {
     }
 
     const body = await request.json();
-    const { name, npwp, address, contactPerson, phone, email, isPkp, isUmkm, clientType, isActive } = body;
+    const { name, groupName, npwp, address, contactPerson, phone, email, isPkp, isUmkm, clientType, isActive } = body;
 
     // Check if client exists
     const existingClient = await query('SELECT id FROM clients WHERE id = $1', [clientId]);
@@ -3638,19 +3641,20 @@ async function handleUpdateClient(request, clientId) {
     const result = await query(
       `UPDATE clients SET
         name = COALESCE($1, name),
-        npwp = $2,
-        address = $3,
-        contact_person = $4,
-        phone = $5,
-        email = $6,
-        is_pkp = COALESCE($7, is_pkp),
-        is_umkm = COALESCE($8, is_umkm),
-        client_type = COALESCE($9, client_type),
-        is_active = COALESCE($10, is_active),
+        group_name = $2,
+        npwp = $3,
+        address = $4,
+        contact_person = $5,
+        phone = $6,
+        email = $7,
+        is_pkp = COALESCE($8, is_pkp),
+        is_umkm = COALESCE($9, is_umkm),
+        client_type = COALESCE($10, client_type),
+        is_active = COALESCE($11, is_active),
         updated_at = NOW()
-       WHERE id = $11
+       WHERE id = $12
        RETURNING *`,
-      [name, npwp || null, address || null, contactPerson || null, phone || null, email || null,
+      [name, groupName || null, npwp || null, address || null, contactPerson || null, phone || null, email || null,
        isPkp, isUmkm, clientType, isActive, clientId]
     );
 
@@ -3660,6 +3664,7 @@ async function handleUpdateClient(request, clientId) {
       client: {
         id: c.id,
         name: c.name,
+        groupName: c.group_name,
         npwp: c.npwp,
         address: c.address,
         contactPerson: c.contact_person,
@@ -4920,7 +4925,7 @@ async function handleGetKpiV2(request) {
       // Get completed jobdesks for this user in the specified month/year
       const jobdesksResult = await query(`
         SELECT j.id, j.title, j.status, j.client_id, j.period_month, j.period_year,
-               c.name as client_name,
+               c.name as client_name, c.group_name as client_group_name,
                j.due_date, j.created_at, j.updated_at
         FROM jobdesks j
         LEFT JOIN clients c ON j.client_id = c.id
@@ -4929,7 +4934,7 @@ async function handleGetKpiV2(request) {
           AND j.status = 'completed'
           AND EXTRACT(MONTH FROM j.updated_at) = $2
           AND EXTRACT(YEAR FROM j.updated_at) = $3
-        GROUP BY j.id, c.name
+        GROUP BY j.id, c.name, c.group_name
       `, [u.id, month, year]);
 
       const completedJobdesks = jobdesksResult.rows;
@@ -4998,6 +5003,7 @@ async function handleGetKpiV2(request) {
           jobdeskId: jd.id,
           jobdeskTitle: jd.title,
           clientName: jd.client_name,
+          clientGroupName: jd.client_group_name,
           dueDate: jd.due_date,
           completedAt: jd.updated_at,
           isLate,
