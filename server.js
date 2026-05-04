@@ -488,6 +488,14 @@ app.prepare().then(() => {
   // Make io accessible globally
   global.io = io;
 
+  // Start cron scheduler (deadline reminders)
+  try {
+    const { startScheduler } = require('./lib/scheduler');
+    startScheduler();
+  } catch (err) {
+    console.error('[Scheduler] Failed to start:', err);
+  }
+
   server
     .once('error', (err) => {
       console.error(err);

@@ -64,6 +64,7 @@ import WarningLettersPage from './pages/WarningLettersPage';
 import SP2DKPage from './pages/SP2DKPage';
 import ScreenMonitorPage from './pages/ScreenMonitorPage';
 import WorkHoursPage from './pages/WorkHoursPage';
+import RekapJobdeskPage from './pages/RekapJobdeskPage';
 import ActivityTracker from './ActivityTracker';
 import WelcomeWorkModal from './WelcomeWorkModal';
 
@@ -218,6 +219,7 @@ export default function DashboardApp({ setIsLoggedIn }) {
         { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
       ]
     },
+    { id: 'rekap-jobdesk', label: 'Rekap Hasil Jobdesk', icon: FileText, roles: ['super_admin', 'owner', 'pengurus'] },
     { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
   ];
@@ -271,6 +273,8 @@ export default function DashboardApp({ setIsLoggedIn }) {
         return <DivisionPage user={currentUser} />;
       case 'chat':
         return <ChatPage user={currentUser} socket={socket} />;
+      case 'rekap-jobdesk':
+        return <RekapJobdeskPage user={currentUser} />;
       case 'todo':
         return <TodoPageKanban user={currentUser} />;
       case 'settings':

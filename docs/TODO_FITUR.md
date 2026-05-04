@@ -23,12 +23,12 @@
    - Penerima: admin/owner/pengurus terkait
    - Lokasi: `handleUpdateJobdeskStatus` di route.js
 
-2. **Reminder Deadline Jobdesk**
-   - Butuh scheduler/cron (belum ada di app)
-   - Trigger H-3, H-1, dan di hari deadline
-   - Untuk task type biasa: deadline = tanggal 5 bulan berikutnya
-   - Untuk `rekap_laporan`: pakai `rekap_laporan_deadline` dari jobdesk
-   - Bisa pakai `node-cron` atau scheduled job di server.js
+2. ~~**Reminder Deadline Jobdesk**~~ ✅ DONE
+   - `node-cron` runs daily 08:00 WIB (`lib/scheduler.js`)
+   - Trigger H-3, H-1, hari-H untuk due_date dan tiap task type
+   - Skip task type yang sudah disubmit
+   - Idempotent (check 2 hari terakhir untuk hindari duplicate)
+   - Type: `deadline_reminder`
 
 3. ~~**Notifikasi Deadline Terlewat**~~ ✅ DONE
    - Sistem sudah deteksi `is_late` di submission, tinggal kirim notif
@@ -48,7 +48,7 @@
 
 ---
 
-## 📊 Rekap Hasil Jobdesk (Dashboard Admin)
+## ✅ DONE — Rekap Hasil Jobdesk (Dashboard Admin)
 
 ### Konsep
 Halaman baru di dashboard admin/owner untuk merekap hasil kerja karyawan.

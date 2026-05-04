@@ -5816,6 +5816,179 @@ async function handleGetWorkSessionsSummary(request) {
 }
 
 // ============================================
+// REKAP HASIL JOBDESK
+// ============================================
+
+async function handleGetRekapKaryawan(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const search = (searchParams.get('search') || '').trim();
+
+    let queryText = `
+      SELECT u.id, u.name, u.email, u.role, d.name as division_name,
+        COUNT(DISTINCT j.id) as total_jobdesks,
+        COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'completed') as completed_jobdesks,
+        COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'in_progress') as in_progress_jobdesks,
+        COUNT(DISTINCT j.id) FILTER (WHERE j.status = 'pending') as pending_jobdesks,
+        COUNT(DISTINCT s.id) as total_submissions,
+        COUNT(DISTINCT s.id) FILTER (WHERE s.is_late = true) as late_submissions,
+        COUNT(DISTINCT j.client_id) FILTER (WHERE j.client_id IS NOT NULL) as total_clients
+      FROM users u
+      LEFT JOIN divisions d ON d.id = u.division_id
+      LEFT JOIN jobdesk_assignments ja ON ja.user_id = u.id
+      LEFT JOIN jobdesks j ON j.id = ja.jobdesk_id
+      LEFT JOIN jobdesk_submissions s ON s.jobdesk_id = j.id AND s.submitted_by = u.id
+      WHERE u.role = 'karyawan' AND u.is_active = true
+    `;
+    const params = [];
+    if (search) {
+      queryText += ` AND (u.name ILIKE $1 OR u.email ILIKE $1)`;
+      params.push(`%${search}%`);
+    }
+    queryText += ` GROUP BY u.id, d.name ORDER BY u.name ASC`;
+
+    const result = await query(queryText, params);
+    return NextResponse.json({
+      karyawan: result.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        role: r.role,
+        divisionName: r.division_name,
+        totalJobdesks: parseInt(r.total_jobdesks) || 0,
+        completedJobdesks: parseInt(r.completed_jobdesks) || 0,
+        inProgressJobdesks: parseInt(r.in_progress_jobdesks) || 0,
+        pendingJobdesks: parseInt(r.pending_jobdesks) || 0,
+        totalSubmissions: parseInt(r.total_submissions) || 0,
+        lateSubmissions: parseInt(r.late_submissions) || 0,
+        totalClients: parseInt(r.total_clients) || 0,
+      }))
+    });
+  } catch (error) {
+    console.error('Get rekap karyawan error:', error);
+    return NextResponse.json({ error: 'Failed to load rekap' }, { status: 500 });
+  }
+}
+
+async function handleGetRekapKaryawanDetail(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // Karyawan info
+    const userRes = await query(
+      `SELECT u.id, u.name, u.email, u.role, d.name as division_name
+       FROM users u LEFT JOIN divisions d ON d.id = u.division_id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    if (userRes.rows.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    const u = userRes.rows[0];
+
+    // Jobdesks assigned to this user with client info
+    const jobdesksRes = await query(`
+      SELECT j.id, j.title, j.description, j.status, j.due_date, j.period_month, j.period_year,
+             j.task_types, j.rekap_laporan_deadline, j.created_at, j.updated_at,
+             c.id as client_id, c.name as client_name, c.group_name as client_group_name,
+             c.npwp as client_npwp
+      FROM jobdesks j
+      JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+      LEFT JOIN clients c ON c.id = j.client_id
+      WHERE ja.user_id = $1
+      ORDER BY j.created_at DESC
+    `, [userId]);
+
+    const jobdeskIds = jobdesksRes.rows.map(j => j.id);
+
+    // Submissions for those jobdesks (only by this user)
+    let submissions = [];
+    if (jobdeskIds.length > 0) {
+      const subRes = await query(`
+        SELECT s.id, s.jobdesk_id, s.submission_type, s.title, s.content,
+               s.file_name, s.file_size, s.mime_type, s.task_type, s.notes,
+               s.deadline, s.is_late, s.late_days, s.created_at
+        FROM jobdesk_submissions s
+        WHERE s.jobdesk_id = ANY($1::uuid[]) AND s.submitted_by = $2
+        ORDER BY s.created_at DESC
+      `, [jobdeskIds, userId]);
+      submissions = subRes.rows;
+    }
+
+    // Group jobdesks by client
+    const clientsMap = new Map();
+    for (const j of jobdesksRes.rows) {
+      const clientKey = j.client_id || 'no-client';
+      if (!clientsMap.has(clientKey)) {
+        clientsMap.set(clientKey, {
+          clientId: j.client_id,
+          clientName: j.client_name || 'Tanpa Klien',
+          clientGroupName: j.client_group_name,
+          clientNpwp: j.client_npwp,
+          jobdesks: []
+        });
+      }
+      const jobSubmissions = submissions
+        .filter(s => s.jobdesk_id === j.id)
+        .map(s => ({
+          id: s.id,
+          submissionType: s.submission_type,
+          title: s.title,
+          content: s.content,
+          fileName: s.file_name,
+          fileSize: s.file_size,
+          mimeType: s.mime_type,
+          taskType: s.task_type,
+          notes: s.notes,
+          deadline: s.deadline,
+          isLate: s.is_late,
+          lateDays: s.late_days,
+          createdAt: s.created_at
+        }));
+      clientsMap.get(clientKey).jobdesks.push({
+        id: j.id,
+        title: j.title,
+        description: j.description,
+        status: j.status,
+        dueDate: j.due_date,
+        periodMonth: j.period_month,
+        periodYear: j.period_year,
+        taskTypes: j.task_types || [],
+        rekapLaporanDeadline: j.rekap_laporan_deadline,
+        createdAt: j.created_at,
+        updatedAt: j.updated_at,
+        submissions: jobSubmissions
+      });
+    }
+
+    return NextResponse.json({
+      karyawan: {
+        id: u.id, name: u.name, email: u.email, role: u.role,
+        divisionName: u.division_name
+      },
+      stats: {
+        totalJobdesks: jobdesksRes.rows.length,
+        totalClients: clientsMap.size - (clientsMap.has('no-client') ? 1 : 0),
+        totalSubmissions: submissions.length,
+        lateSubmissions: submissions.filter(s => s.is_late).length
+      },
+      clients: Array.from(clientsMap.values())
+    });
+  } catch (error) {
+    console.error('Get rekap karyawan detail error:', error);
+    return NextResponse.json({ error: 'Failed to load detail' }, { status: 500 });
+  }
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
@@ -5848,6 +6021,13 @@ export async function GET(request, { params }) {
     if (path === 'kpi') return handleGetKPI(request);
     if (path === 'kpi-v2') return handleGetKpiV2(request);
     if (path === 'kpi-v2/summary') return handleGetKpiV2Summary(request);
+
+    // Rekap hasil jobdesk
+    if (path === 'rekap/karyawan') return handleGetRekapKaryawan(request);
+    if (path.match(/^rekap\/karyawan\/[^/]+$/)) {
+      const userId = path.split('/')[2];
+      return handleGetRekapKaryawanDetail(request, userId);
+    }
     if (path === 'users') return handleGetUsers(request);
     if (path === 'users/list') return handleGetUsersList(request);
 
