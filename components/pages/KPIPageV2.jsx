@@ -895,13 +895,12 @@ export default function KPIPageV2({ user }) {
               </ul>
             </div>
             <div className="md:col-span-2">
-              <h4 className="font-semibold mb-2">Skala Grade</h4>
+              <h4 className="font-semibold mb-2">Poin Penilaian Karyawan</h4>
               <div className="flex flex-wrap gap-2">
-                <Badge className="bg-green-100 text-green-800">A: 90-100 (Sangat Baik)</Badge>
-                <Badge className="bg-blue-100 text-blue-800">B: 80-89 (Baik)</Badge>
-                <Badge className="bg-yellow-100 text-yellow-800">C: 70-79 (Cukup)</Badge>
-                <Badge className="bg-orange-100 text-orange-800">D: 60-69 (Kurang)</Badge>
-                <Badge className="bg-red-100 text-red-800">E: &lt;60 (Sangat Kurang)</Badge>
+                <Badge className="bg-green-100 text-green-800">A: 91-100 (Sangat Baik)</Badge>
+                <Badge className="bg-blue-100 text-blue-800">B: 81-90 (Baik)</Badge>
+                <Badge className="bg-yellow-100 text-yellow-800">C: 70-80 (Cukup)</Badge>
+                <Badge className="bg-red-100 text-red-800">D: dibawah 70 (Out)</Badge>
               </div>
             </div>
           </div>
