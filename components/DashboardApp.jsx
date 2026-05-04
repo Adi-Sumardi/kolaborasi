@@ -203,10 +203,11 @@ export default function DashboardApp({ setIsLoggedIn }) {
       id: 'monitoring',
       label: 'Monitoring',
       icon: Eye,
-      roles: ['super_admin', 'owner', 'sdm'],
+      roles: ['super_admin', 'owner', 'pengurus', 'sdm'],
       submenu: [
         { id: 'monitor', label: 'Monitor Layar', icon: Monitor, roles: ['super_admin', 'owner'] },
         { id: 'work-hours', label: 'Jam Kerja', icon: Clock, roles: ['super_admin', 'owner', 'sdm'] },
+        { id: 'rekap-jobdesk', label: 'Rekap Hasil Jobdesk', icon: FileText, roles: ['super_admin', 'owner', 'pengurus'] },
       ]
     },
     {
@@ -219,7 +220,6 @@ export default function DashboardApp({ setIsLoggedIn }) {
         { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
       ]
     },
-    { id: 'rekap-jobdesk', label: 'Rekap Hasil Jobdesk', icon: FileText, roles: ['super_admin', 'owner', 'pengurus'] },
     { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
   ];
