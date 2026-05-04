@@ -1,4 +1,4 @@
-const CACHE_NAME = 'workspace-v1.1.0';
+const CACHE_NAME = 'workspace-v1.2.0';
 const OFFLINE_URL = '/offline.html';
 
 // Static assets to cache immediately on install
@@ -133,18 +133,18 @@ self.addEventListener('fetch', (event) => {
           })
       );
     } else {
-      // For non-GET or non-cacheable requests, just try network
+      // For non-GET or non-cacheable requests (e.g. POST login), pass through directly
       event.respondWith(
         fetch(request).catch(() => {
           return new Response(
-            JSON.stringify({ 
+            JSON.stringify({
               error: 'You are offline. This action will be synced when back online.',
               offline: true,
               queued: true
             }),
             {
-              status: 503,
-              headers: { 'Content-Type': 'application/json' }
+              status: 0,
+              headers: { 'Content-Type': 'application/json', 'X-SW-Offline': 'true' }
             }
           );
         })
@@ -280,4 +280,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW] Service worker v1.1.0 loaded');
+console.log('[SW] Service worker v1.2.0 loaded');
