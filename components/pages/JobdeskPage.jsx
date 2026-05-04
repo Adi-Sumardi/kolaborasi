@@ -1891,7 +1891,7 @@ export default function JobdeskPage({ user }) {
                                         ) : null}
                                       </div>
                                     </div>
-                                    {(user.role === 'super_admin' || user.role === 'owner' || sub.submittedBy === user.id) && (
+                                    {(user.role === 'super_admin' || user.role === 'owner') && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -2037,7 +2037,7 @@ export default function JobdeskPage({ user }) {
                                         {sub.submittedByName} • {new Date(sub.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                       </p>
                                     </div>
-                                    {(user.role === 'super_admin' || user.role === 'owner' || sub.submittedBy === user.id) && (
+                                    {(user.role === 'super_admin' || user.role === 'owner') && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
