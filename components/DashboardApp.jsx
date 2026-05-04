@@ -218,7 +218,6 @@ export default function DashboardApp({ setIsLoggedIn }) {
         { id: 'divisions', label: 'Divisi', icon: Users, roles: ['super_admin', 'owner', 'pengurus', 'sdm'] },
       ]
     },
-    { id: 'chat', label: 'Chat', icon: MessageSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'todo', label: 'To-Do', icon: CheckSquare, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
     { id: 'settings', label: 'Pengaturan', icon: Settings, roles: ['super_admin', 'owner', 'pengurus', 'sdm', 'karyawan'] },
   ];
