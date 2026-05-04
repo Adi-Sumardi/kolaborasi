@@ -2703,12 +2703,26 @@ async function handleDeleteAttachment(request, attachmentId) {
 async function handleUpdateUser(request, userId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const isSelfUpdate = user.userId === userId;
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus']);
+
+    if (!isSelfUpdate && !isAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { name, email, role, divisionId } = body;
+    let { name, email, role, divisionId } = body;
+
+    // Self-update only allows name change
+    if (isSelfUpdate && !isAdmin) {
+      email = undefined;
+      role = undefined;
+      divisionId = undefined;
+    }
 
     // Check if email already exists (excluding current user)
     if (email) {
@@ -2863,12 +2877,19 @@ async function handleUpdateUserDivision(request, userId) {
 async function handleUpdateUserPassword(request, userId) {
   try {
     const user = verifyToken(request);
-    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const isSelfUpdate = user.userId === userId;
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner']);
+
+    if (!isSelfUpdate && !isAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { newPassword } = body;
+    const { newPassword, currentPassword } = body;
 
     if (!newPassword || newPassword.length < 6) {
       return NextResponse.json(
@@ -2877,10 +2898,33 @@ async function handleUpdateUserPassword(request, userId) {
       );
     }
 
-    // Check if user exists
-    const userResult = await query('SELECT id FROM users WHERE id = $1', [userId]);
-    if (userResult.rows.length === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    // Self-update requires current password verification
+    if (isSelfUpdate && !isAdmin) {
+      if (!currentPassword) {
+        return NextResponse.json(
+          { error: 'Current password is required' },
+          { status: 400 }
+        );
+      }
+
+      const userResult = await query('SELECT password FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length === 0) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password);
+      if (!valid) {
+        return NextResponse.json(
+          { error: 'Current password is incorrect' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Admin update: just check user exists
+      const userResult = await query('SELECT id FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length === 0) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
     }
 
     // Hash new password

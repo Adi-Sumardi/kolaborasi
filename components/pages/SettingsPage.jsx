@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { authAPI } from '@/lib/api';
+import { authAPI, userAPI } from '@/lib/api';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Shield, QrCode, Bell, Smartphone } from 'lucide-react';
+import { Shield, QrCode, Bell, Smartphone, User, Lock } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import NotificationSettings from '@/components/NotificationSettings';
@@ -19,6 +19,57 @@ export default function SettingsPage({ user }) {
   const [secret, setSecret] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [name, setName] = useState(user.name || '');
+  const [savingName, setSavingName] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  const handleUpdateName = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast.error('Nama tidak boleh kosong');
+      return;
+    }
+    try {
+      setSavingName(true);
+      await userAPI.updateOwnProfile(user.id, name.trim());
+      toast.success('Nama berhasil diperbarui');
+    } catch (error) {
+      console.error('Failed to update name:', error);
+      toast.error(error.message || 'Gagal memperbarui nama');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error('Password baru minimal 6 karakter');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Konfirmasi password tidak cocok');
+      return;
+    }
+    try {
+      setSavingPassword(true);
+      await userAPI.changeOwnPassword(user.id, currentPassword, newPassword);
+      toast.success('Password berhasil diubah');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error) {
+      console.error('Failed to change password:', error);
+      toast.error(error.message || 'Gagal mengubah password');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
 
   const handleEnable2FA = async () => {
     try {
@@ -77,36 +128,108 @@ export default function SettingsPage({ user }) {
           {/* Profile Info */}
           <Card>
             <CardHeader>
-              <CardTitle>Informasi Profil</CardTitle>
-              <CardDescription>Detail akun Anda</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Nama</Label>
-                <Input value={user.name} disabled />
-              </div>
-              <div>
-                <Label>Email</Label>
-                <Input value={user.email} disabled />
-              </div>
-              <div>
-                <Label>Role</Label>
-                <Input 
-                  value={
-                    user.role === 'super_admin' ? 'Super Admin' :
-                    user.role === 'pengurus' ? 'Pengurus' :
-                    user.role === 'sdm' ? 'SDM' :
-                    user.role === 'karyawan' ? 'Karyawan' : user.role
-                  } 
-                  disabled 
-                />
-              </div>
-              {user.division && (
+              <div className="flex items-center justify-between">
                 <div>
-                  <Label>Divisi</Label>
-                  <Input value={user.division.name} disabled />
+                  <CardTitle>Informasi Profil</CardTitle>
+                  <CardDescription>Perbarui nama tampilan akun Anda</CardDescription>
                 </div>
-              )}
+                <User className="w-8 h-8 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUpdateName} className="space-y-4">
+                <div>
+                  <Label htmlFor="profile-name">Nama</Label>
+                  <Input
+                    id="profile-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Input value={user.email} disabled />
+                </div>
+                <div>
+                  <Label>Role</Label>
+                  <Input
+                    value={
+                      user.role === 'super_admin' ? 'Super Admin' :
+                      user.role === 'pengurus' ? 'Pengurus' :
+                      user.role === 'sdm' ? 'SDM' :
+                      user.role === 'karyawan' ? 'Karyawan' : user.role
+                    }
+                    disabled
+                  />
+                </div>
+                {user.division && (
+                  <div>
+                    <Label>Divisi</Label>
+                    <Input value={user.division.name} disabled />
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={savingName || name.trim() === (user.name || '').trim()}>
+                    {savingName ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Change Password */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Ubah Password</CardTitle>
+                  <CardDescription>Gunakan password yang kuat dan tidak digunakan di tempat lain</CardDescription>
+                </div>
+                <Lock className="w-8 h-8 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div>
+                  <Label htmlFor="current-password">Password Saat Ini</Label>
+                  <Input
+                    id="current-password"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="new-password">Password Baru</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    minLength={6}
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Minimal 6 karakter</p>
+                </div>
+                <div>
+                  <Label htmlFor="confirm-password">Konfirmasi Password Baru</Label>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    minLength={6}
+                    required
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}>
+                    {savingPassword ? 'Menyimpan...' : 'Ubah Password'}
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
 
