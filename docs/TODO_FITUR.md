@@ -90,6 +90,52 @@ Halaman baru di dashboard admin/owner untuk merekap hasil kerja karyawan.
 
 ---
 
+## 💬 Komentar Admin untuk Jobdesk Selesai
+
+### Konsep
+Saat karyawan menyelesaikan jobdesk (status `completed`), admin/owner/pengurus
+bisa memberi komentar/review:
+- **Komentar di level Jobdesk** (komentar umum untuk seluruh jobdesk)
+- **Komentar di level Task Type** (komentar spesifik per jenis tugas, misal komentar
+  hanya untuk PPh 21, atau khusus Rekap Laporan)
+
+### Yang Dibutuhkan (Backend)
+- Tabel baru: `jobdesk_comments`
+  ```sql
+  CREATE TABLE jobdesk_comments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    jobdesk_id UUID REFERENCES jobdesks(id) ON DELETE CASCADE,
+    task_type VARCHAR(50), -- NULL = komentar umum jobdesk, non-null = per task type
+    comment TEXT NOT NULL,
+    commented_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  ```
+- Endpoint:
+  - `POST /api/jobdesks/:id/comments` — body: `{ comment, taskType? }`
+  - `GET /api/jobdesks/:id/comments` — list semua komentar
+  - `PUT /api/jobdesks/:id/comments/:commentId` — edit (only by author)
+  - `DELETE /api/jobdesks/:id/comments/:commentId` — delete (only by author/super_admin)
+- Validasi: hanya admin/owner/pengurus bisa add komentar
+- Trigger notif ke karyawan saat ada komentar baru (`comment_added`)
+
+### Yang Dibutuhkan (Frontend)
+- Di modal Detail Jobdesk:
+  - Section komentar di tab Detail (komentar level jobdesk)
+  - Section komentar di tiap task type card di tab Hasil Kerja
+- Form input komentar (textarea + tombol Kirim)
+- List komentar dengan info penulis + timestamp
+- Tombol edit/delete untuk komentar sendiri
+- Karyawan: read-only (hanya bisa lihat komentar admin)
+- Admin: bisa add/edit/delete komentar
+
+### Catatan
+- Karyawan yang assigned ke jobdesk dapat notifikasi saat ada komentar baru
+- Komentar muncul setelah jobdesk `completed`, atau bisa juga kapan saja (perlu konfirmasi)
+
+---
+
 ## 📈 Filter Group PT di Rincian Klien KPI
 
 ### Konsep
