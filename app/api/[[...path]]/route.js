@@ -3811,8 +3811,6 @@ async function handleGetClients(request) {
     `;
     const params = [];
     let paramIndex = 1;
-
-    const url = new URL(request.url);
     const assignedOnly = url.searchParams.get('assigned_only') === 'true';
 
     // If explicitly requested, only show assigned clients
