@@ -1250,6 +1250,7 @@ export default function JobdeskPage({ user }) {
               </form>
             </DialogContent>
           </Dialog>
+        </div>
       </div>
 
       {/* Filters UI */}
