@@ -66,6 +66,8 @@ const migrations = [
 
   // Add submission_link column if not exists (for existing databases)
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS submission_link TEXT;`,
+  `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS admin_point_adjustment INTEGER DEFAULT 0;`,
+  `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS admin_adjustment_reason TEXT;`,
 
   // Clients table - MUST be created before jobdesks references it
   `CREATE TABLE IF NOT EXISTS clients (

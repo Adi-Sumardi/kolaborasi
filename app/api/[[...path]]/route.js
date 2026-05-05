@@ -1204,6 +1204,32 @@ async function handleUpdateJobdesk(request, jobdeskId) {
   }
 }
 
+// Update admin adjustment for KPI points
+async function handleUpdateJobdeskAdjustment(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || (user.role !== 'super_admin' && user.role !== 'pengurus')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { adminPointAdjustment, adminAdjustmentReason } = body;
+
+    await query(
+      `UPDATE jobdesks SET admin_point_adjustment = $1, admin_adjustment_reason = $2 WHERE id = $3`,
+      [adminPointAdjustment || 0, adminAdjustmentReason || null, jobdeskId]
+    );
+
+    return NextResponse.json({ message: 'Penyesuaian poin berhasil disimpan' });
+  } catch (error) {
+    console.error('Update jobdesk adjustment error:', error);
+    return NextResponse.json(
+      { error: 'Gagal menyimpan penyesuaian poin' },
+      { status: 500 }
+    );
+  }
+}
+
 // Delete jobdesk
 async function handleDeleteJobdesk(request, jobdeskId) {
   try {
@@ -3786,8 +3812,11 @@ async function handleGetClients(request) {
     const params = [];
     let paramIndex = 1;
 
-    // For karyawan, only show assigned clients
-    if (user.role === 'karyawan') {
+    const url = new URL(request.url);
+    const assignedOnly = url.searchParams.get('assigned_only') === 'true';
+
+    // If explicitly requested, only show assigned clients
+    if (user.role === 'karyawan' && assignedOnly) {
       queryText += ` AND c.id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
       params.push(user.userId);
       paramIndex++;
@@ -5313,7 +5342,8 @@ async function handleGetKpiV2(request) {
       const jobdesksResult = await query(`
         SELECT j.id, j.title, j.status, j.client_id, j.period_month, j.period_year,
                c.name as client_name, c.group_name as client_group_name,
-               j.due_date, j.created_at, j.updated_at
+               j.due_date, j.created_at, j.updated_at,
+               j.admin_point_adjustment, j.admin_adjustment_reason
         FROM jobdesks j
         LEFT JOIN clients c ON j.client_id = c.id
         LEFT JOIN jobdesk_assignments ja ON j.id = ja.jobdesk_id
@@ -5380,11 +5410,17 @@ async function handleGetKpiV2(request) {
         const sp2dkCount = parseInt(sp2dkResult.rows[0].count) || 0;
         const sp2dkPenaltyTotal = parseFloat(sp2dkResult.rows[0].total_penalty) || 0;
 
+        const adminAdjustment = jd.admin_point_adjustment || 0;
+        const adminAdjustmentReason = jd.admin_adjustment_reason || '';
+
         // Calculate deductions: -5 if late, -5 per late task type, -5 per warning letter, penalty per SP2DK (based on confirmed type)
         const warningDeduction = warningCount * 5;
         const sp2dkDeduction = sp2dkPenaltyTotal;
         const totalDeduction = lateDeduction + taskTypeDeduction + warningDeduction + sp2dkDeduction;
-        const finalPoint = Math.max(0, basePoint - totalDeduction);
+        
+        // Final point is basePoint - deductions + admin adjustments (capping between 0 and 100)
+        let finalPoint = basePoint - totalDeduction + adminAdjustment;
+        finalPoint = Math.max(0, Math.min(100, finalPoint));
 
         return {
           jobdeskId: jd.id,
@@ -5404,6 +5440,8 @@ async function handleGetKpiV2(request) {
           warningDeduction,
           sp2dkDeduction,
           totalDeduction,
+          adminAdjustment,
+          adminAdjustmentReason,
           finalPoint
         };
       }));
@@ -6779,6 +6817,10 @@ export async function PUT(request, { params }) {
     if (path.match(/^jobdesks\/[^/]+\/status$/)) {
       const jobdeskId = path.split('/')[1];
       return handleUpdateJobdeskStatus(request, jobdeskId);
+    }
+    if (path.match(/^jobdesks\/[^/]+\/adjustment$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleUpdateJobdeskAdjustment(request, jobdeskId);
     }
     if (path.match(/^jobdesks\/[^/]+\/comments\/[^/]+$/)) {
       const parts = path.split('/');

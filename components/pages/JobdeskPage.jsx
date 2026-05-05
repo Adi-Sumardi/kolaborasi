@@ -159,6 +159,7 @@ export default function JobdeskPage({ user }) {
     file: null
   });
   const [copyingLastMonth, setCopyingLastMonth] = useState(false);
+  const [showCopyModal, setShowCopyModal] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedClientsToGenerate, setSelectedClientsToGenerate] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -293,7 +294,7 @@ export default function JobdeskPage({ user }) {
     try {
       const promises = [
         user.role !== 'karyawan' ? userAPI.getList() : Promise.resolve({ users: [] }),
-        clientAPI.getAll().catch(() => ({ clients: [] }))
+        clientAPI.getAll({ all: true }).catch(() => ({ clients: [] }))
       ];
 
       if (user.role !== 'karyawan') {
@@ -381,8 +382,6 @@ export default function JobdeskPage({ user }) {
   };
 
   const handleCopyLastMonth = async () => {
-    if (!confirm('Apakah Anda yakin ingin menyalin semua jobdesk yang Anda kerjakan di bulan lalu ke bulan ini?')) return;
-    
     setCopyingLastMonth(true);
     try {
       const now = new Date();
@@ -436,11 +435,13 @@ export default function JobdeskPage({ user }) {
       if (jobdesksToCreate.length === 0) {
         toast.info('Semua klien dari bulan lalu sudah ada di bulan ini.');
         setCopyingLastMonth(false);
+        setShowCopyModal(false);
         return;
       }
 
       await jobdeskAPI.bulkCreate(jobdesksToCreate);
       toast.success(`${jobdesksToCreate.length} Jobdesk berhasil disalin dari bulan lalu!`);
+      setShowCopyModal(false);
       loadJobdesks();
     } catch (error) {
       console.error('Failed to copy last month jobdesks:', error);
@@ -736,10 +737,34 @@ export default function JobdeskPage({ user }) {
         <div className="flex gap-2 w-full sm:w-auto flex-col sm:flex-row">
           {user.role === 'karyawan' && (
             <>
-              <Button variant="outline" onClick={handleCopyLastMonth} disabled={copyingLastMonth}>
+              <Button variant="outline" onClick={() => setShowCopyModal(true)} disabled={copyingLastMonth}>
                 <Copy className="w-4 h-4 mr-2" />
                 {copyingLastMonth ? 'Menyalin...' : 'Salin Klien Bulan Lalu'}
               </Button>
+              
+              {/* Copy Modal */}
+              <Dialog open={showCopyModal} onOpenChange={setShowCopyModal}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Salin Jobdesk Bulan Lalu</DialogTitle>
+                    <DialogDescription>
+                      Apakah Anda yakin ingin menyalin semua jobdesk (klien) yang Anda kerjakan di bulan lalu ke bulan berjalan ini?
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="py-4 text-sm text-gray-600">
+                    <p>Sistem akan secara otomatis mengecek jobdesk bulan lalu dan menduplikasinya ke bulan ini. Jika sebuah klien sudah Anda kerjakan di bulan ini, sistem <strong>tidak akan</strong> menggandakannya.</p>
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button variant="outline" onClick={() => setShowCopyModal(false)} disabled={copyingLastMonth}>
+                      Batal
+                    </Button>
+                    <Button onClick={handleCopyLastMonth} disabled={copyingLastMonth}>
+                      {copyingLastMonth ? 'Menyalin...' : 'Ya, Salin Sekarang'}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               <Dialog open={showGenerateModal} onOpenChange={setShowGenerateModal}>
                 <DialogTrigger asChild>
                   <Button variant="outline">

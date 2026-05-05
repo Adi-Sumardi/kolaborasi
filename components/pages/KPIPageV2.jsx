@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { kpiV2API, userAPI } from '@/lib/api';
+import { kpiV2API, userAPI, jobdeskAPI } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   TrendingUp, Clock, CheckCircle2, AlertCircle, BarChart3,
-  ChevronLeft, ChevronRight, Users, Building2, AlertTriangle, FileWarning, Target, Printer, Download
+  ChevronLeft, ChevronRight, Users, Building2, AlertTriangle, FileWarning, Target, Printer, Download, Eye, Edit
 } from 'lucide-react';
 import {
   Table,
@@ -22,6 +22,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 const MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -37,6 +40,18 @@ export default function KPIPageV2({ user }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [clientGroupFilter, setClientGroupFilter] = useState('all');
+
+  // Employee Detail View State
+  const [selectedEmployeeKpi, setSelectedEmployeeKpi] = useState(null);
+  const [showEmployeeDetail, setShowEmployeeDetail] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    jobdeskId: null,
+    jobdeskTitle: '',
+    clientName: '',
+    adminPointAdjustment: 0,
+    adminAdjustmentReason: ''
+  });
 
   useEffect(() => {
     loadData();
@@ -59,6 +74,35 @@ export default function KPIPageV2({ user }) {
       toast.error('Gagal memuat data KPI');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveAdjustment = async () => {
+    try {
+      await jobdeskAPI.updateAdjustment(adjustmentForm.jobdeskId, {
+        adminPointAdjustment: parseInt(adjustmentForm.adminPointAdjustment) || 0,
+        adminAdjustmentReason: adjustmentForm.adminAdjustmentReason
+      });
+      toast.success('Revisi poin berhasil disimpan');
+      setShowAdjustmentModal(false);
+      
+      // Reload data to reflect changes
+      await loadData();
+      
+      // Update selectedEmployeeKpi manually to avoid closing the modal
+      if (selectedEmployeeKpi) {
+        // Find the updated KPI data for this user
+        // Note: loadData sets kpiData, but because setKpiData is async, 
+        // we might need to fetch directly or just close the modal.
+        // Easiest is to close detail modal and let them click Eye again, OR
+        // fetch single user KPI. Since loadData is called, let's just close the detail modal
+        // or re-find it from the new kpiData.
+        setShowEmployeeDetail(false); 
+        toast.info('Silakan buka ulang detail karyawan untuk melihat perubahan');
+      }
+    } catch (error) {
+      console.error('Failed to update adjustment:', error);
+      toast.error('Gagal menyimpan revisi poin');
     }
   };
 
@@ -908,14 +952,27 @@ export default function KPIPageV2({ user }) {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => generateIndividualPdf(kpi)}
-                            title="Download KPI PDF"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
+                          <div className="flex justify-center items-center space-x-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedEmployeeKpi(kpi);
+                                setShowEmployeeDetail(true);
+                              }}
+                              title="Lihat Detail Klien"
+                            >
+                              <Eye className="w-4 h-4 text-blue-600" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => generateIndividualPdf(kpi)}
+                              title="Download KPI PDF"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -961,6 +1018,155 @@ export default function KPIPageV2({ user }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Employee KPI Detail Modal (For Manager/Admin) */}
+      <Dialog open={showEmployeeDetail} onOpenChange={setShowEmployeeDetail}>
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detail KPI: {selectedEmployeeKpi?.userName}</DialogTitle>
+            <DialogDescription>
+              Rincian poin dan pemotongan berdasarkan setiap jobdesk klien
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="overflow-x-auto mt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Klien</TableHead>
+                  <TableHead>Jobdesk</TableHead>
+                  <TableHead className="text-center">Poin Dasar</TableHead>
+                  <TableHead className="text-center">Terlambat</TableHead>
+                  <TableHead className="text-center">Task Telat</TableHead>
+                  <TableHead className="text-center">Teguran</TableHead>
+                  <TableHead className="text-center">SP2DK</TableHead>
+                  <TableHead className="text-center">Revisi Poin</TableHead>
+                  <TableHead className="text-center">Total Potongan</TableHead>
+                  <TableHead className="text-center">Skor Akhir</TableHead>
+                  {user.role !== 'karyawan' && <TableHead className="text-center">Aksi</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedEmployeeKpi?.jobdeskPoints?.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center text-gray-500 py-6">
+                      Belum ada data jobdesk selesai di bulan ini
+                    </TableCell>
+                  </TableRow>
+                )}
+                {selectedEmployeeKpi?.jobdeskPoints?.map((jp, idx) => (
+                  <TableRow key={jp.jobdeskId || idx} className={jp.isLate || jp.lateTaskTypeCount > 0 ? 'bg-orange-50' : ''}>
+                    <TableCell className="font-medium">{jp.clientName || '-'}</TableCell>
+                    <TableCell>
+                      {jp.jobdeskTitle}
+                      {jp.isLate && <Badge className="ml-2 bg-orange-100 text-orange-800 text-xs">Terlambat</Badge>}
+                    </TableCell>
+                    <TableCell className="text-center">{jp.basePoint}</TableCell>
+                    <TableCell className="text-center">
+                      {jp.isLate ? <span className="text-orange-600">-{jp.lateDeduction}</span> : <span className="text-green-600">0</span>}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {jp.lateTaskTypeCount > 0 ? (
+                        <div>
+                          <span className="text-orange-600">-{jp.taskTypeDeduction}</span>
+                          <div className="text-xs text-gray-500 mt-1">{(jp.lateTaskTypes || []).join(', ')}</div>
+                        </div>
+                      ) : <span className="text-gray-400">0</span>}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {jp.warningCount > 0 ? <span className="text-red-600">-{jp.warningDeduction}</span> : <span className="text-gray-400">0</span>}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {jp.sp2dkCount > 0 ? <span className="text-red-600">-{jp.sp2dkDeduction}</span> : <span className="text-gray-400">0</span>}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {jp.adminAdjustment !== 0 ? (
+                        <div title={jp.adminAdjustmentReason}>
+                          <span className={jp.adminAdjustment > 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                            {jp.adminAdjustment > 0 ? '+' : ''}{jp.adminAdjustment}
+                          </span>
+                        </div>
+                      ) : <span className="text-gray-400">0</span>}
+                    </TableCell>
+                    <TableCell className="text-center text-red-600">
+                      {jp.totalDeduction > 0 ? `-${jp.totalDeduction}` : '0'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className={`font-bold ${jp.finalPoint >= 90 ? 'text-green-600' : jp.finalPoint >= 60 ? 'text-blue-600' : 'text-red-600'}`}>
+                        {jp.finalPoint}
+                      </span>
+                    </TableCell>
+                    {user.role !== 'karyawan' && (
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setAdjustmentForm({
+                              jobdeskId: jp.jobdeskId,
+                              jobdeskTitle: jp.jobdeskTitle,
+                              clientName: jp.clientName,
+                              adminPointAdjustment: jp.adminAdjustment || 0,
+                              adminAdjustmentReason: jp.adminAdjustmentReason || ''
+                            });
+                            setShowAdjustmentModal(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Revisi
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex justify-end mt-4">
+            <Button onClick={() => setShowEmployeeDetail(false)}>Tutup</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Point Adjustment Modal */}
+      <Dialog open={showAdjustmentModal} onOpenChange={setShowAdjustmentModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revisi Poin Jobdesk</DialogTitle>
+            <DialogDescription>
+              Penyesuaian manual poin untuk klien {adjustmentForm.clientName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Jobdesk</Label>
+              <Input value={adjustmentForm.jobdeskTitle} disabled />
+            </div>
+            <div>
+              <Label>Penyesuaian Poin (Contoh: 5 atau -5)</Label>
+              <Input 
+                type="number" 
+                value={adjustmentForm.adminPointAdjustment}
+                onChange={e => setAdjustmentForm({...adjustmentForm, adminPointAdjustment: e.target.value})}
+              />
+              <p className="text-xs text-gray-500 mt-1">Gunakan angka positif (misal: 5) untuk kompensasi sakit/cuti. Gunakan angka negatif untuk penalti tambahan.</p>
+            </div>
+            <div>
+              <Label>Alasan Penyesuaian</Label>
+              <Textarea 
+                value={adjustmentForm.adminAdjustmentReason}
+                onChange={e => setAdjustmentForm({...adjustmentForm, adminAdjustmentReason: e.target.value})}
+                placeholder="Contoh: Karyawan sakit 3 hari dengan surat dokter"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowAdjustmentModal(false)}>Batal</Button>
+            <Button onClick={handleSaveAdjustment}>Simpan Revisi</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
