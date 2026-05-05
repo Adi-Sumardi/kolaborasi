@@ -5816,6 +5816,202 @@ async function handleGetWorkSessionsSummary(request) {
 }
 
 // ============================================
+// JOBDESK COMMENTS (admin review per jobdesk / task type)
+// ============================================
+
+async function handleGetJobdeskComments(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Karyawan can only view comments for jobdesks they're assigned to
+    const isAdmin = hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm']);
+    if (!isAdmin) {
+      const access = await query(
+        'SELECT 1 FROM jobdesk_assignments WHERE jobdesk_id = $1 AND user_id = $2',
+        [jobdeskId, user.userId]
+      );
+      if (access.rows.length === 0) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
+    const result = await query(
+      `SELECT c.id, c.jobdesk_id, c.task_type, c.comment, c.commented_by,
+              c.created_at, c.updated_at, u.name as commenter_name, u.email as commenter_email,
+              u.role as commenter_role
+       FROM jobdesk_comments c
+       LEFT JOIN users u ON u.id = c.commented_by
+       WHERE c.jobdesk_id = $1
+       ORDER BY c.created_at ASC`,
+      [jobdeskId]
+    );
+
+    return NextResponse.json({
+      comments: result.rows.map(c => ({
+        id: c.id,
+        jobdeskId: c.jobdesk_id,
+        taskType: c.task_type,
+        comment: c.comment,
+        commentedBy: c.commented_by,
+        commenterName: c.commenter_name,
+        commenterEmail: c.commenter_email,
+        commenterRole: c.commenter_role,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      }))
+    });
+  } catch (error) {
+    console.error('Get jobdesk comments error:', error);
+    return NextResponse.json({ error: 'Failed to load comments' }, { status: 500 });
+  }
+}
+
+async function handleCreateJobdeskComment(request, jobdeskId) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { comment, taskType } = body;
+
+    if (!comment || !comment.trim()) {
+      return NextResponse.json({ error: 'Comment is required' }, { status: 400 });
+    }
+
+    const jobdeskRes = await query(
+      `SELECT j.title, ARRAY_AGG(DISTINCT ja.user_id) as assignees
+       FROM jobdesks j
+       LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+       WHERE j.id = $1
+       GROUP BY j.id`,
+      [jobdeskId]
+    );
+    if (jobdeskRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Jobdesk not found' }, { status: 404 });
+    }
+    const jobdesk = jobdeskRes.rows[0];
+
+    const result = await query(
+      `INSERT INTO jobdesk_comments (jobdesk_id, task_type, comment, commented_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [jobdeskId, taskType || null, sanitizeString(comment.trim()), user.userId]
+    );
+    const c = result.rows[0];
+
+    // Notify all assigned karyawan
+    const TASK_LABELS = {
+      pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25',
+      ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan'
+    };
+    const taskLabel = taskType ? (TASK_LABELS[taskType] || taskType) : null;
+    const suffix = taskLabel ? ` (${taskLabel})` : '';
+    const message = `Komentar baru di jobdesk: ${jobdesk.title}${suffix}`;
+    const assignees = (jobdesk.assignees || []).filter(id => id !== null);
+    for (const userId of assignees) {
+      try {
+        await query(
+          `INSERT INTO notifications (user_id, title, message, type)
+           VALUES ($1, $2, $3, $4)`,
+          [userId, 'Komentar Baru', message, 'comment_added']
+        );
+        sendNotification(userId, { type: 'comment_added', title: 'Komentar Baru', message });
+      } catch (err) { console.error('Comment notify error:', err); }
+    }
+
+    return NextResponse.json({
+      message: 'Comment added',
+      comment: {
+        id: c.id,
+        jobdeskId: c.jobdesk_id,
+        taskType: c.task_type,
+        comment: c.comment,
+        commentedBy: c.commented_by,
+        commenterName: user.email,
+        commenterRole: user.role,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      }
+    });
+  } catch (error) {
+    console.error('Create comment error:', error);
+    return NextResponse.json({ error: 'Failed to create comment' }, { status: 500 });
+  }
+}
+
+async function handleUpdateJobdeskComment(request, jobdeskId, commentId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const existing = await query(
+      'SELECT commented_by FROM jobdesk_comments WHERE id = $1 AND jobdesk_id = $2',
+      [commentId, jobdeskId]
+    );
+    if (existing.rows.length === 0) {
+      return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
+    }
+
+    const isAuthor = existing.rows[0].commented_by === user.userId;
+    if (!isAuthor) {
+      return NextResponse.json({ error: 'Only the author can edit this comment' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { comment } = body;
+    if (!comment || !comment.trim()) {
+      return NextResponse.json({ error: 'Comment is required' }, { status: 400 });
+    }
+
+    await query(
+      `UPDATE jobdesk_comments SET comment = $1, updated_at = NOW() WHERE id = $2`,
+      [sanitizeString(comment.trim()), commentId]
+    );
+
+    return NextResponse.json({ message: 'Comment updated' });
+  } catch (error) {
+    console.error('Update comment error:', error);
+    return NextResponse.json({ error: 'Failed to update comment' }, { status: 500 });
+  }
+}
+
+async function handleDeleteJobdeskComment(request, jobdeskId, commentId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const existing = await query(
+      'SELECT commented_by FROM jobdesk_comments WHERE id = $1 AND jobdesk_id = $2',
+      [commentId, jobdeskId]
+    );
+    if (existing.rows.length === 0) {
+      return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
+    }
+
+    const isAuthor = existing.rows[0].commented_by === user.userId;
+    const isSuperAdmin = user.role === 'super_admin';
+    if (!isAuthor && !isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await query('DELETE FROM jobdesk_comments WHERE id = $1', [commentId]);
+    return NextResponse.json({ message: 'Comment deleted' });
+  } catch (error) {
+    console.error('Delete comment error:', error);
+    return NextResponse.json({ error: 'Failed to delete comment' }, { status: 500 });
+  }
+}
+
+// ============================================
 // REKAP HASIL JOBDESK
 // ============================================
 
@@ -6028,6 +6224,12 @@ export async function GET(request, { params }) {
       const userId = path.split('/')[2];
       return handleGetRekapKaryawanDetail(request, userId);
     }
+
+    // Jobdesk comments
+    if (path.match(/^jobdesks\/[^/]+\/comments$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleGetJobdeskComments(request, jobdeskId);
+    }
     if (path === 'users') return handleGetUsers(request);
     if (path === 'users/list') return handleGetUsersList(request);
 
@@ -6135,6 +6337,10 @@ export async function POST(request, { params }) {
       const jobdeskId = path.split('/')[1];
       return handleCreateJobdeskSubmission(request, jobdeskId);
     }
+    if (path.match(/^jobdesks\/[^/]+\/comments$/)) {
+      const jobdeskId = path.split('/')[1];
+      return handleCreateJobdeskComment(request, jobdeskId);
+    }
 
     // Daily logs
     if (path === 'daily-logs') return handleCreateDailyLog(request);
@@ -6235,6 +6441,10 @@ export async function PUT(request, { params }) {
       const jobdeskId = path.split('/')[1];
       return handleUpdateJobdeskStatus(request, jobdeskId);
     }
+    if (path.match(/^jobdesks\/[^/]+\/comments\/[^/]+$/)) {
+      const parts = path.split('/');
+      return handleUpdateJobdeskComment(request, parts[1], parts[3]);
+    }
     if (path.match(/^jobdesks\/[^/]+$/)) {
       const jobdeskId = path.split('/')[1];
       return handleUpdateJobdesk(request, jobdeskId);
@@ -6334,6 +6544,10 @@ export async function DELETE(request, { params }) {
     }
 
     // Jobdesks
+    if (path.match(/^jobdesks\/[^/]+\/comments\/[^/]+$/)) {
+      const parts = path.split('/');
+      return handleDeleteJobdeskComment(request, parts[1], parts[3]);
+    }
     if (path.match(/^jobdesks\/[^/]+$/)) {
       const jobdeskId = path.split('/')[1];
       return handleDeleteJobdesk(request, jobdeskId);

@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import JobdeskComments from '@/components/JobdeskComments';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -105,6 +106,7 @@ export default function JobdeskPage({ user }) {
   const [selectedJobdesk, setSelectedJobdesk] = useState(null);
   const [detailData, setDetailData] = useState(null);
   const [submissions, setSubmissions] = useState([]);
+  const [comments, setComments] = useState([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -338,12 +340,14 @@ export default function JobdeskPage({ user }) {
   // Load jobdesk detail and submissions
   const loadJobdeskDetail = async (jobdeskId) => {
     try {
-      const [detailRes, submissionsRes] = await Promise.all([
+      const [detailRes, submissionsRes, commentsRes] = await Promise.all([
         jobdeskAPI.getById(jobdeskId),
-        jobdeskAPI.getSubmissions(jobdeskId)
+        jobdeskAPI.getSubmissions(jobdeskId),
+        jobdeskAPI.getComments(jobdeskId).catch(() => ({ comments: [] }))
       ]);
       setDetailData(detailRes.jobdesk);
       setSubmissions(submissionsRes.submissions || []);
+      setComments(commentsRes.comments || []);
     } catch (error) {
       console.error('Failed to load detail:', error);
       toast.error('Gagal memuat detail jobdesk');
@@ -1730,6 +1734,17 @@ export default function JobdeskPage({ user }) {
                     <p className="text-sm whitespace-pre-wrap">{detailData.description}</p>
                   </div>
                 )}
+
+                {/* Jobdesk-level comments */}
+                <div className="p-3 border rounded-lg">
+                  <JobdeskComments
+                    user={user}
+                    jobdeskId={selectedJobdesk.id}
+                    comments={comments}
+                    onCommentsChange={setComments}
+                    title="Komentar Admin (Jobdesk)"
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="submissions" className="space-y-4 mt-4">
@@ -1930,6 +1945,18 @@ export default function JobdeskPage({ user }) {
                                 ))}
                               </div>
                             )}
+
+                            {/* Per-task-type comments */}
+                            <div className="px-3 py-2 bg-gray-50 border-t">
+                              <JobdeskComments
+                                user={user}
+                                jobdeskId={selectedJobdesk.id}
+                                taskType={taskTypeId}
+                                comments={comments}
+                                onCommentsChange={setComments}
+                                title={`Komentar Admin (${taskType?.label || taskTypeId})`}
+                              />
+                            </div>
                           </div>
                         );
                       })}

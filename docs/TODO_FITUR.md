@@ -92,7 +92,7 @@ Halaman baru di dashboard admin/owner untuk merekap hasil kerja karyawan.
 
 ---
 
-## 💬 Komentar Admin untuk Jobdesk Selesai
+## ✅ DONE — Komentar Admin untuk Jobdesk Selesai
 
 ### Konsep
 Saat karyawan menyelesaikan jobdesk (status `completed`), admin/owner/pengurus

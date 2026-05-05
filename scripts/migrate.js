@@ -105,6 +105,19 @@ const migrations = [
   `ALTER TABLE jobdesks ADD COLUMN IF NOT EXISTS rekap_laporan_deadline DATE;`,
   `ALTER TABLE clients ADD COLUMN IF NOT EXISTS group_name VARCHAR(255);`,
 
+  // Jobdesk comments (komentar admin pada jobdesk / per task type)
+  `CREATE TABLE IF NOT EXISTS jobdesk_comments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    jobdesk_id UUID NOT NULL REFERENCES jobdesks(id) ON DELETE CASCADE,
+    task_type VARCHAR(50),
+    comment TEXT NOT NULL,
+    commented_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_jobdesk_comments_jobdesk ON jobdesk_comments(jobdesk_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_jobdesk_comments_task_type ON jobdesk_comments(jobdesk_id, task_type);`,
+
   // Jobdesk submissions (pengumpulan hasil kerja)
   `CREATE TABLE IF NOT EXISTS jobdesk_submissions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
