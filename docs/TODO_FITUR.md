@@ -163,7 +163,7 @@ harus bisa difilter berdasarkan **group PT**.
 
 ---
 
-## 📄 Pagination, Indexing & Filter di Menu Jobdesk
+## ✅ DONE — Pagination, Indexing & Filter di Menu Jobdesk
 
 ### Konsep
 Halaman Jobdesk saat ini memuat semua jobdesk sekaligus. Untuk skala produksi
@@ -201,7 +201,7 @@ butuh pagination, indexing DB, dan filter data.
 
 ---
 
-## 📧 Update/Ganti Email di Menu Pengaturan
+## ✅ DONE — Update/Ganti Email di Menu Pengaturan
 
 ### Konsep
 Saat ini di Settings, field email karyawan disabled (read-only). Karyawan
@@ -233,7 +233,7 @@ harus bisa update emailnya sendiri.
 
 ---
 
-## 🌅 Modal Pengingat Task & Deadline saat Login Pertama Karyawan
+## ✅ DONE — Modal Pengingat Task & Deadline saat Login Pertama Karyawan
 
 ### Konsep
 Ganti modal sekarang yang muncul setelah login karyawan ("Selamat Pagi,
@@ -278,12 +278,12 @@ tampilkan ringkasan:
 
 ## 🚀 Permintaan Fitur Baru (Update)
 
-1. **Pindah Komentar Admin:** Komentar admin dipindah ke menu Rekap Hasil Jobdesk di detail karyawannya, bukan di menu Jobdesknya.
-2. **Hapus Input Tenggat Waktu:** Di form create jobdesk hapus input tenggat waktu karena sudah tidak relevan.
-3. **Automasi Tanggal Laporan Rekap:** Tanggal Laporan Rekap menjadi otomatis tanggalnya seperti task type, yaitu 1 bulan + 5 (tanggal 5 di bulan berikutnya), mengikuti pola seperti deadline task type.
-4. **History File Lampiran (Dashboard Karyawan):** History file lampiran pada section Portfolio & Lampiran berdasarkan PT di dashboard karyawan masih belum muncul. Tambahkan pagination dan filter.
-5. **Filter Data Hasil Jobdesk:** Tambahkan filter pada Data Hasil Jobdesk agar bisa per bulan, dan pastikan tampilan data sesuai dengan bulan lapor.
-6. **Download KPI Individual:** Pada saat download KPI Individual, tambahkan daftar client PT yang di-handle oleh karyawan.
+1. ~~**Pindah Komentar Admin:** Komentar admin dipindah ke menu Rekap Hasil Jobdesk di detail karyawannya, bukan di menu Jobdesknya.~~ ✅ DONE
+2. ~~**Hapus Input Tenggat Waktu:** Di form create jobdesk hapus input tenggat waktu karena sudah tidak relevan.~~ ✅ DONE
+3. ~~**Automasi Tanggal Laporan Rekap:** Tanggal Laporan Rekap menjadi otomatis tanggalnya seperti task type, yaitu 1 bulan + 5 (tanggal 5 di bulan berikutnya), mengikuti pola seperti deadline task type.~~ ✅ DONE
+4. ~~**History File Lampiran (Dashboard Karyawan):** History file lampiran pada section Portfolio & Lampiran berdasarkan PT di dashboard karyawan masih belum muncul. Tambahkan pagination dan filter.~~ ✅ DONE
+5. ~~**Filter Data Hasil Jobdesk:** Tambahkan filter pada Data Hasil Jobdesk agar bisa per bulan, dan pastikan tampilan data sesuai dengan bulan lapor.~~ ✅ DONE
+6. ~~**Download KPI Individual:** Pada saat download KPI Individual, tambahkan daftar client PT yang di-handle oleh karyawan.~~ ✅ DONE
 
 ---
 

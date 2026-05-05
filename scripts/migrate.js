@@ -242,6 +242,7 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_users_division ON users(division_id);`,
   `CREATE INDEX IF NOT EXISTS idx_jobdesks_status ON jobdesks(status);`,
   `CREATE INDEX IF NOT EXISTS idx_jobdesks_created_by ON jobdesks(created_by);`,
+  `CREATE INDEX IF NOT EXISTS idx_jobdesks_created_at ON jobdesks(created_at DESC);`,
   `CREATE INDEX IF NOT EXISTS idx_jobdesk_assignments_user ON jobdesk_assignments(user_id);`,
   `CREATE INDEX IF NOT EXISTS idx_jobdesk_assignments_jobdesk ON jobdesk_assignments(jobdesk_id);`,
   `CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, date);`,

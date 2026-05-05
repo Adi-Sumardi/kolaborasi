@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Play } from 'lucide-react';
+import { Play, Calendar, AlertCircle } from 'lucide-react';
+import { jobdeskAPI } from '@/lib/api';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -23,9 +24,41 @@ const moods = [
 
 export default function WelcomeWorkModal({ user, onStartWork }) {
   const [selectedMood, setSelectedMood] = useState(null);
+  const [upcomingJobdesks, setUpcomingJobdesks] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+
+  useEffect(() => {
+    const loadTasks = async () => {
+      try {
+        const res = await jobdeskAPI.getAll({ status: 'pending,in_progress', limit: 10 });
+        setUpcomingJobdesks(res.jobdesks || []);
+      } catch (error) {
+        console.error('Failed to load upcoming tasks:', error);
+      } finally {
+        setLoadingTasks(false);
+      }
+    };
+    loadTasks();
+  }, []);
 
   const handleStartWork = () => {
     onStartWork(selectedMood || 'biasa');
+  };
+
+  const isDeadlineNear = (dateString) => {
+    if (!dateString) return false;
+    const deadline = new Date(dateString);
+    const today = new Date();
+    const diffTime = deadline - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays <= 3;
+  };
+
+  const isLate = (dateString) => {
+    if (!dateString) return false;
+    const deadline = new Date(dateString);
+    deadline.setHours(23, 59, 59, 999);
+    return new Date() > deadline;
   };
 
   return (
@@ -39,8 +72,8 @@ export default function WelcomeWorkModal({ user, onStartWork }) {
           </div>
 
           {/* Mood Selection */}
-          <div className="mb-6">
-            <p className="text-sm text-gray-500 mb-3">Bagaimana perasaanmu hari ini?</p>
+          <div className="mb-4">
+            <p className="text-sm text-gray-500 mb-2">Bagaimana perasaanmu hari ini?</p>
             <div className="flex justify-center gap-3">
               {moods.map((mood) => (
                 <button
@@ -57,6 +90,37 @@ export default function WelcomeWorkModal({ user, onStartWork }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Task & Deadline Reminder */}
+          <div className="mb-6 bg-blue-50 rounded-lg p-4 text-left border border-blue-100 max-h-48 overflow-y-auto">
+            <h3 className="font-semibold text-blue-900 flex items-center mb-3">
+              <Calendar className="w-4 h-4 mr-2" />
+              Prioritas Jobdesk Anda
+            </h3>
+            
+            {loadingTasks ? (
+              <p className="text-sm text-gray-500">Memuat data task...</p>
+            ) : upcomingJobdesks.length === 0 ? (
+              <p className="text-sm text-green-600">Tidak ada jobdesk tertunda! 🎉</p>
+            ) : (
+              <div className="space-y-2">
+                {upcomingJobdesks.map(job => (
+                  <div key={job.id} className="flex justify-between items-center text-sm p-2 bg-white rounded border">
+                    <span className="truncate pr-2 font-medium">{job.title}</span>
+                    {job.dueDate && (
+                      <span className={`flex-shrink-0 text-xs px-2 py-1 rounded-full ${
+                        isLate(job.dueDate) ? 'bg-red-100 text-red-700' : 
+                        isDeadlineNear(job.dueDate) ? 'bg-orange-100 text-orange-700' : 
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {new Date(job.dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Start Work Button */}

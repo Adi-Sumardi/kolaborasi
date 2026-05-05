@@ -102,6 +102,20 @@ export default function JobdeskPage({ user }) {
   const [detailData, setDetailData] = useState(null);
   const [submissions, setSubmissions] = useState([]);
 
+  // Pagination & Filter States
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalJobdesks, setTotalJobdesks] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterClient, setFilterClient] = useState('');
+  const [filterAssignedTo, setFilterAssignedTo] = useState('');
+  const [filterPeriodMonth, setFilterPeriodMonth] = useState('');
+  const [filterPeriodYear, setFilterPeriodYear] = useState('');
+  const [filterTaskType, setFilterTaskType] = useState('');
+  const [loadingJobdesks, setLoadingJobdesks] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -262,15 +276,21 @@ export default function JobdeskPage({ user }) {
   };
 
   useEffect(() => {
-    loadData();
+    loadStaticData();
   }, []);
 
-  const loadData = async () => {
+  useEffect(() => {
+    const t = setTimeout(() => {
+      loadJobdesks();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [currentPage, pageSize, filterSearch, filterStatus, filterClient, filterAssignedTo, filterPeriodMonth, filterPeriodYear, filterTaskType]);
+
+  const loadStaticData = async () => {
     try {
       const promises = [
-        jobdeskAPI.getAll(),
         user.role !== 'karyawan' ? userAPI.getList() : Promise.resolve({ users: [] }),
-        clientAPI.getAll().catch(() => ({ clients: [] })) // Graceful fallback if clients fail
+        clientAPI.getAll().catch(() => ({ clients: [] }))
       ];
 
       if (user.role !== 'karyawan') {
@@ -279,17 +299,42 @@ export default function JobdeskPage({ user }) {
 
       const results = await Promise.all(promises);
 
-      setJobdesks(results[0].jobdesks || []);
-      setUsers(results[1].users || []);
-      setClients(results[2].clients || []);
-      if (results[3]) {
-        setDivisions(results[3].divisions || []);
+      setUsers(results[0].users || []);
+      setClients(results[1].clients || []);
+      if (results[2]) {
+        setDivisions(results[2].divisions || []);
       }
+    } catch (error) {
+      console.error('Failed to load static data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadJobdesks = async () => {
+    try {
+      setLoadingJobdesks(true);
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+      };
+      if (filterSearch) params.search = filterSearch;
+      if (filterStatus) params.status = filterStatus;
+      if (filterClient) params.clientId = filterClient;
+      if (filterAssignedTo) params.assignedTo = filterAssignedTo;
+      if (filterPeriodMonth) params.periodMonth = filterPeriodMonth;
+      if (filterPeriodYear) params.periodYear = filterPeriodYear;
+      if (filterTaskType) params.taskType = filterTaskType;
+
+      const res = await jobdeskAPI.getAll(params);
+      setJobdesks(res.jobdesks || []);
+      setTotalPages(Math.ceil((res.total || 0) / pageSize) || 1);
+      setTotalJobdesks(res.total || 0);
     } catch (error) {
       console.error('Failed to load jobdesks:', error);
       toast.error('Gagal memuat data jobdesk');
     } finally {
-      setLoading(false);
+      setLoadingJobdesks(false);
     }
   };
 
@@ -1024,6 +1069,68 @@ export default function JobdeskPage({ user }) {
           </Dialog>
       </div>
 
+      {/* Filters UI */}
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <Label>Pencarian</Label>
+              <Input
+                placeholder="Cari jobdesk..."
+                value={filterSearch}
+                onChange={e => { setFilterSearch(e.target.value); setCurrentPage(1); }}
+              />
+            </div>
+            <div className="w-full md:w-32">
+              <Label>Status</Label>
+              <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}>
+                <SelectTrigger><SelectValue placeholder="Semua" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {user.role !== 'karyawan' && (
+              <div className="w-full md:w-48">
+                <Label>Karyawan</Label>
+                <Select value={filterAssignedTo} onValueChange={(v) => { setFilterAssignedTo(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Semua" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Karyawan</SelectItem>
+                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="w-full md:w-48">
+              <Label>Klien</Label>
+              <Select value={filterClient} onValueChange={(v) => { setFilterClient(v); setCurrentPage(1); }}>
+                <SelectTrigger><SelectValue placeholder="Semua" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Klien</SelectItem>
+                  {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full md:w-full flex justify-end items-end gap-2">
+              <Button variant="outline" onClick={() => {
+                setFilterSearch('');
+                setFilterStatus('');
+                setFilterClient('');
+                setFilterAssignedTo('');
+                setFilterPeriodMonth('');
+                setFilterPeriodYear('');
+                setFilterTaskType('');
+                setCurrentPage(1);
+              }}>Reset Filter</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Jobdesk List */}
       <div className="grid gap-4">
         {jobdesks.length === 0 ? (
@@ -1339,6 +1446,33 @@ export default function JobdeskPage({ user }) {
           })
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between py-4">
+          <div className="text-sm text-gray-500">
+            Halaman {currentPage} dari {totalPages} ({totalJobdesks} jobdesk)
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            >
+              Sebelumnya
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            >
+              Selanjutnya
+            </Button>
+          </div>
+        </div>
+      )}
       
       {/* Log Activity Modal */}
       <Dialog open={showLogModal} onOpenChange={setShowLogModal}>

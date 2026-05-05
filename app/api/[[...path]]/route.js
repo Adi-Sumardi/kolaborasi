@@ -612,56 +612,88 @@ async function handleGetJobdesks(request) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
     const offset = (page - 1) * limit;
 
-    let countQuery, dataQuery;
-    let params = [];
+    const search = searchParams.get('search');
+    const status = searchParams.get('status');
+    const clientId = searchParams.get('clientId');
+    const assignedTo = searchParams.get('assignedTo');
+    const periodMonth = searchParams.get('periodMonth');
+    const periodYear = searchParams.get('periodYear');
+    const taskType = searchParams.get('taskType');
 
-    // Karyawan only see their own jobdesks
+    let conditions = [];
+    let countParams = [];
+
     if (user.role === 'karyawan') {
-      countQuery = `
-        SELECT COUNT(DISTINCT j.id) as total
-        FROM jobdesks j
-        JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
-        WHERE ja.user_id = $1
-      `;
-      dataQuery = `
-        SELECT j.*,
-               c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
-               ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
-               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count,
-               (SELECT COUNT(*) FROM jobdesk_comments WHERE jobdesk_id = j.id) as comment_count
-        FROM jobdesks j
-        LEFT JOIN clients c ON c.id = j.client_id
-        JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
-        WHERE j.id IN (
-          SELECT jobdesk_id FROM jobdesk_assignments WHERE user_id = $1
-        )
-        GROUP BY j.id, c.id
-        ORDER BY j.created_at DESC
-        LIMIT $2 OFFSET $3
-      `;
-      params = [user.userId, limit, offset];
-    } else {
-      countQuery = 'SELECT COUNT(*) as total FROM jobdesks';
-      dataQuery = `
-        SELECT j.*,
-               c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
-               ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
-               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count,
-               (SELECT COUNT(*) FROM jobdesk_comments WHERE jobdesk_id = j.id) as comment_count
-        FROM jobdesks j
-        LEFT JOIN clients c ON c.id = j.client_id
-        LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
-        GROUP BY j.id, c.id
-        ORDER BY j.created_at DESC
-        LIMIT $1 OFFSET $2
-      `;
-      params = [limit, offset];
+      conditions.push(`j.id IN (SELECT jobdesk_id FROM jobdesk_assignments WHERE user_id = $${countParams.length + 1})`);
+      countParams.push(user.userId);
     }
 
-    const countResult = await query(countQuery, user.role === 'karyawan' ? [user.userId] : []);
+    if (search) {
+      conditions.push(`(j.title ILIKE $${countParams.length + 1} OR j.description ILIKE $${countParams.length + 1})`);
+      countParams.push(`%${search}%`);
+    }
+
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim());
+      const placeholders = statuses.map((_, i) => `$${countParams.length + 1 + i}`).join(',');
+      conditions.push(`j.status IN (${placeholders})`);
+      countParams.push(...statuses);
+    }
+
+    if (clientId) {
+      conditions.push(`j.client_id = $${countParams.length + 1}`);
+      countParams.push(clientId);
+    }
+
+    if (user.role !== 'karyawan' && assignedTo) {
+      conditions.push(`j.id IN (SELECT jobdesk_id FROM jobdesk_assignments WHERE user_id = $${countParams.length + 1})`);
+      countParams.push(assignedTo);
+    }
+
+    if (periodMonth) {
+      conditions.push(`j.period_month = $${countParams.length + 1}`);
+      countParams.push(parseInt(periodMonth));
+    }
+
+    if (periodYear) {
+      conditions.push(`j.period_year = $${countParams.length + 1}`);
+      countParams.push(parseInt(periodYear));
+    }
+
+    if (taskType) {
+      conditions.push(`$${countParams.length + 1} = ANY(j.task_types)`);
+      countParams.push(taskType);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT j.id) as total
+      FROM jobdesks j
+      ${whereClause}
+    `;
+
+    const dataQuery = `
+      SELECT j.*,
+             c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
+             ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
+             (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count,
+             (SELECT COUNT(*) FROM jobdesk_comments WHERE jobdesk_id = j.id) as comment_count
+      FROM jobdesks j
+      LEFT JOIN clients c ON c.id = j.client_id
+      LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+      ${whereClause}
+      GROUP BY j.id, c.id
+      ORDER BY j.created_at DESC
+      LIMIT $${countParams.length + 1} OFFSET $${countParams.length + 2}
+    `;
+
+    const dataParams = [...countParams, limit, offset];
+
+    const countResult = await query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].total);
 
-    const result = await query(dataQuery, params);
+    const result = await query(dataQuery, dataParams);
 
     const jobdesks = result.rows.map(j => ({
       id: j.id,
@@ -3056,6 +3088,74 @@ async function handleUpdateUserPassword(request, userId) {
     console.error('Update user password error:', error);
     return NextResponse.json(
       { error: 'Failed to update password' },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleUpdateOwnEmail(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.userId !== userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { newEmail, currentPassword } = body;
+
+    if (!newEmail || !newEmail.includes('@')) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
+        { status: 400 }
+      );
+    }
+
+    if (!currentPassword) {
+      return NextResponse.json(
+        { error: 'Current password is required' },
+        { status: 400 }
+      );
+    }
+
+    const userResult = await query('SELECT password FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password);
+    if (!valid) {
+      return NextResponse.json(
+        { error: 'Current password is incorrect' },
+        { status: 400 }
+      );
+    }
+
+    // Check if email already exists
+    const existingResult = await query(
+      'SELECT id FROM users WHERE email = $1 AND id != $2',
+      [newEmail, userId]
+    );
+    if (existingResult.rows.length > 0) {
+      return NextResponse.json(
+        { error: 'Email already in use' },
+        { status: 400 }
+      );
+    }
+
+    await query(
+      'UPDATE users SET email = $1 WHERE id = $2',
+      [newEmail, userId]
+    );
+
+    return NextResponse.json({ message: 'Email updated successfully' });
+  } catch (error) {
+    console.error('Update user email error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update email' },
       { status: 500 }
     );
   }
@@ -6572,6 +6672,10 @@ export async function PUT(request, { params }) {
     if (path.match(/^users\/[^/]+\/division$/)) {
       const userId = path.split('/')[1];
       return handleUpdateUserDivision(request, userId);
+    }
+    if (path.match(/^users\/[^/]+\/email$/)) {
+      const userId = path.split('/')[1];
+      return handleUpdateOwnEmail(request, userId);
     }
     if (path.match(/^users\/[^/]+$/)) {
       const userId = path.split('/')[1];

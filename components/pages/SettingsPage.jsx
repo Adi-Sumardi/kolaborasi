@@ -23,6 +23,10 @@ export default function SettingsPage({ user }) {
   const [name, setName] = useState(user.name || '');
   const [savingName, setSavingName] = useState(false);
 
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -43,6 +47,31 @@ export default function SettingsPage({ user }) {
       toast.error(error.message || 'Gagal memperbarui nama');
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const handleUpdateEmail = async (e) => {
+    e.preventDefault();
+    if (!newEmail.includes('@')) {
+      toast.error('Format email tidak valid');
+      return;
+    }
+    if (!emailPassword) {
+      toast.error('Password saat ini diperlukan');
+      return;
+    }
+    try {
+      setSavingEmail(true);
+      await userAPI.updateOwnEmail(user.id, emailPassword, newEmail);
+      toast.success('Email berhasil diperbarui. Halaman akan dimuat ulang.');
+      setNewEmail('');
+      setEmailPassword('');
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (error) {
+      console.error('Failed to update email:', error);
+      toast.error(error.message || 'Gagal memperbarui email');
+    } finally {
+      setSavingEmail(false);
     }
   };
 
@@ -148,8 +177,8 @@ export default function SettingsPage({ user }) {
                   />
                 </div>
                 <div>
-                  <Label>Email</Label>
-                  <Input value={user.email} disabled />
+                  <Label>Email Saat Ini</Label>
+                  <Input value={user.email} disabled className="bg-gray-50" />
                 </div>
                 <div>
                   <Label>Role</Label>
@@ -172,6 +201,50 @@ export default function SettingsPage({ user }) {
                 <div className="flex justify-end">
                   <Button type="submit" disabled={savingName || name.trim() === (user.name || '').trim()}>
                     {savingName ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Change Email */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Ubah Email</CardTitle>
+                  <CardDescription>Perbarui alamat email akun Anda</CardDescription>
+                </div>
+                <User className="w-8 h-8 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUpdateEmail} className="space-y-4">
+                <div>
+                  <Label htmlFor="new-email">Email Baru</Label>
+                  <Input
+                    id="new-email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    required
+                    placeholder="contoh@email.com"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="email-password">Password Saat Ini</Label>
+                  <Input
+                    id="email-password"
+                    type="password"
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                    required
+                    placeholder="Diperlukan untuk verifikasi"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={savingEmail || !newEmail || !emailPassword}>
+                    {savingEmail ? 'Menyimpan...' : 'Ubah Email'}
                   </Button>
                 </div>
               </form>
