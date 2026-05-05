@@ -767,8 +767,8 @@ export default function KPIPageV2({ user }) {
                         <TableHead className="text-center">Task Type Telat</TableHead>
                         <TableHead className="text-center">Surat Teguran</TableHead>
                         <TableHead className="text-center">SP2DK</TableHead>
+                        <TableHead className="text-center">Revisi Poin</TableHead>
                         <TableHead className="text-center">Total Potongan</TableHead>
-                        <TableHead className="text-center">Skor Akhir</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -783,6 +783,7 @@ export default function KPIPageV2({ user }) {
                         <TableRow key={jp.jobdeskId || idx} className={jp.isLate || jp.lateTaskTypeCount > 0 ? 'bg-orange-50' : ''}>
                           <TableCell>{idx + 1}</TableCell>
                           <TableCell className="font-medium">{jp.clientName || '-'}</TableCell>
+                          <TableCell className="text-gray-500">{jp.clientGroupName || '-'}</TableCell>
                           <TableCell>
                             {jp.jobdeskTitle}
                             {jp.isLate && (
@@ -826,19 +827,25 @@ export default function KPIPageV2({ user }) {
                               <span className="text-gray-400">0</span>
                             )}
                           </TableCell>
+                          <TableCell className="text-center">
+                            {jp.adminAdjustment !== 0 ? (
+                              <div title={jp.adminAdjustmentReason}>
+                                <span className={jp.adminAdjustment > 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                                  {jp.adminAdjustment > 0 ? '+' : ''}{jp.adminAdjustment}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">0</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-center text-red-600">
                             {jp.totalDeduction > 0 ? `-${jp.totalDeduction}` : '0'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className={`font-bold ${jp.finalPoint >= 90 ? 'text-green-600' : jp.finalPoint >= 60 ? 'text-blue-600' : 'text-red-600'}`}>
-                              {jp.finalPoint}
-                            </span>
                           </TableCell>
                         </TableRow>
                       ))}
                       {/* Total Row */}
                       <TableRow className="bg-gray-100 font-bold">
-                        <TableCell colSpan={3}>Total</TableCell>
+                        <TableCell colSpan={4}>Total</TableCell>
                         <TableCell className="text-center">{myKpi.jobdeskPoints.length * 100}</TableCell>
                         <TableCell className="text-center text-orange-600">
                           {myKpi.totalLateJobs > 0 ? `-${myKpi.totalLateDeduction}` : '0'}
@@ -852,11 +859,15 @@ export default function KPIPageV2({ user }) {
                         <TableCell className="text-center text-red-600">
                           {myKpi.totalSp2dk > 0 ? `-${myKpi.totalSp2dk * 5}` : '0'}
                         </TableCell>
+                        <TableCell className="text-center font-bold">
+                          {myKpi.jobdeskPoints.reduce((sum, jp) => sum + (jp.adminAdjustment || 0), 0) !== 0 ? (
+                            <span className={myKpi.jobdeskPoints.reduce((sum, jp) => sum + (jp.adminAdjustment || 0), 0) > 0 ? "text-green-600" : "text-red-600"}>
+                              {myKpi.jobdeskPoints.reduce((sum, jp) => sum + (jp.adminAdjustment || 0), 0) > 0 ? '+' : ''}{myKpi.jobdeskPoints.reduce((sum, jp) => sum + (jp.adminAdjustment || 0), 0)}
+                            </span>
+                          ) : '0'}
+                        </TableCell>
                         <TableCell className="text-center text-red-600">
                           -{(myKpi.totalLateDeduction || 0) + (myKpi.totalTaskTypeDeduction || 0) + (myKpi.totalWarnings * 5) + (myKpi.totalSp2dk * 5)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-lg font-bold">{myKpi.totalPoints}</span>
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -997,6 +1008,7 @@ export default function KPIPageV2({ user }) {
                 <li>• Pajak Bulanan (50%) - Bayar & Lapor PPh/PPN</li>
                 <li>• Pembukuan (50%) - Kelengkapan pembukuan klien</li>
                 <li>• Potongan: Surat Teguran (-5%), SP2DK (-5%)</li>
+                <li>• Telat lapor SPT Tahunan mengurangi poin 20%</li>
               </ul>
             </div>
             <div>
