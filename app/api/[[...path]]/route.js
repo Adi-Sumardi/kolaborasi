@@ -3708,9 +3708,9 @@ async function handleGetUserAttachments(request, userId) {
 
     let countQuery = `
       SELECT COUNT(*) 
-      FROM attachments a
+      FROM jobdesk_submissions a
       LEFT JOIN jobdesks j ON j.id = a.jobdesk_id
-      WHERE a.uploaded_by = $1
+      WHERE a.submitted_by = $1 AND a.submission_type IN ('file', 'link')
     `;
     let queryParams = [userId];
 
@@ -3724,10 +3724,10 @@ async function handleGetUserAttachments(request, userId) {
 
     let dataQuery = `
       SELECT a.*, j.title as jobdesk_title, c.name as client_name, c.id as client_id
-      FROM attachments a
+      FROM jobdesk_submissions a
       LEFT JOIN jobdesks j ON j.id = a.jobdesk_id
       LEFT JOIN clients c ON c.id = j.client_id
-      WHERE a.uploaded_by = $1
+      WHERE a.submitted_by = $1 AND a.submission_type IN ('file', 'link')
     `;
 
     if (clientId) {
@@ -3745,10 +3745,10 @@ async function handleGetUserAttachments(request, userId) {
         jobdeskTitle: att.jobdesk_title,
         clientId: att.client_id,
         clientName: att.client_name || 'Internal/Tanpa Klien',
-        type: att.type,
-        name: att.name,
-        url: att.url,
-        size: att.size,
+        type: att.submission_type,
+        name: att.file_name || att.title || 'Attachment',
+        url: att.content,
+        size: att.file_size || 0,
         createdAt: att.created_at
       })),
       pagination: {

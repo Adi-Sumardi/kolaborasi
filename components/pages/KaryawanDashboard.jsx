@@ -482,8 +482,8 @@ export default function KaryawanDashboard({ user }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {attData.attachments.map((attachment) => {
                   const isLink = attachment.type === 'link';
-                  const displayText = isLink ? attachment.url : attachment.name;
-                  const fileUrl = isLink ? attachment.url : `/uploads/${attachment.name}`;
+                  const displayText = attachment.name;
+                  const fileUrl = attachment.url;
                   
                   return (
                     <a
