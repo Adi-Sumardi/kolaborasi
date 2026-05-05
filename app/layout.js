@@ -1,5 +1,6 @@
 import './globals.css';
 import { Toaster } from 'sonner';
+import { UpdateNotifier } from '@/components/UpdateNotifier';
 
 export const metadata = {
   title: 'Dashboard Ruang Kerja Kolaborasi',
@@ -32,6 +33,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased">
         {children}
+        <UpdateNotifier />
         <Toaster position="top-right" richColors closeButton />
       </body>
     </html>

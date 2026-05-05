@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
+const SERVER_START_TIME = Date.now();
+
 export async function GET() {
   try {
     // Check database connection
@@ -9,6 +11,7 @@ export async function GET() {
     return NextResponse.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
+      serverStartTime: SERVER_START_TIME,
       services: {
         api: 'up',
         database: 'up'
