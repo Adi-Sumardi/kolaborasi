@@ -804,7 +804,7 @@ export default function KPIPageV2({ user }) {
                                 <span className="text-orange-600">-{jp.taskTypeDeduction}</span>
                                 <div className="text-xs text-gray-500 mt-1">
                                   {(jp.lateTaskTypes || []).map(t => {
-                                    const labels = { pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25', ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%' };
+                                    const labels = { pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25', ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', laporan_tahunan: 'Lap. Tahunan' };
                                     return labels[t] || t;
                                   }).join(', ')}
                                 </div>
@@ -1083,7 +1083,10 @@ export default function KPIPageV2({ user }) {
                       {jp.lateTaskTypeCount > 0 ? (
                         <div>
                           <span className="text-orange-600">-{jp.taskTypeDeduction}</span>
-                          <div className="text-xs text-gray-500 mt-1">{(jp.lateTaskTypes || []).join(', ')}</div>
+                          <div className="text-xs text-gray-500 mt-1">{(jp.lateTaskTypes || []).map(t => {
+                            const labels = { pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25', ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', laporan_tahunan: 'Lap. Tahunan' };
+                            return labels[t] || t;
+                          }).join(', ')}</div>
                         </div>
                       ) : <span className="text-gray-400">0</span>}
                     </TableCell>

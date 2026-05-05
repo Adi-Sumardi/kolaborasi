@@ -45,6 +45,7 @@ const TASK_TYPES = [
   { id: 'ppn', label: 'PPN', description: 'Pajak Pertambahan Nilai' },
   { id: 'pph_badan', label: 'PPh Badan', description: 'Pajak Penghasilan Badan' },
   { id: 'pph_05', label: 'PPh 0,5%', description: 'PPh Final 0,5% (UMKM)' },
+  { id: 'laporan_tahunan', label: 'Laporan Tahunan', description: 'Lapor SPT Tahunan Badan/Orang Pribadi' },
   { id: 'rekap_laporan', label: 'Rekap Laporan', description: 'Rekap laporan dengan deadline kustom' },
 ];
 
@@ -84,8 +85,8 @@ const formatDeadlineDate = (date) => {
   });
 };
 
-// Default task types (all selected)
-const DEFAULT_TASK_TYPES = TASK_TYPES.map(t => t.id);
+// Default task types (all selected except laporan_tahunan)
+const DEFAULT_TASK_TYPES = TASK_TYPES.filter(t => t.id !== 'laporan_tahunan').map(t => t.id);
 
 export default function JobdeskPage({ user }) {
   const [jobdesks, setJobdesks] = useState([]);

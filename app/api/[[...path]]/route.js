@@ -5387,7 +5387,15 @@ async function handleGetKpiV2(request) {
         `, [jd.id]);
         const lateTaskTypeCount = parseInt(taskTypeLatnessResult.rows[0].late_task_count) || 0;
         const lateTaskTypes = taskTypeLatnessResult.rows[0].late_task_types || [];
-        const taskTypeDeduction = lateTaskTypeCount * 5;
+        
+        let taskTypeDeduction = 0;
+        for (const t of lateTaskTypes) {
+          if (t === 'laporan_tahunan') {
+            taskTypeDeduction += 20;
+          } else {
+            taskTypeDeduction += 5;
+          }
+        }
 
         // Check for warning letters linked to this jobdesk
         // OR linked to the same client (where the user is assigned to jobdesks for that client)
