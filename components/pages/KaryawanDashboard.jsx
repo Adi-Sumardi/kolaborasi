@@ -19,9 +19,36 @@ export default function KaryawanDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
+  const [attData, setAttData] = useState({ attachments: [], pagination: null });
+  const [attPage, setAttPage] = useState(1);
+  const [attClientFilter, setAttClientFilter] = useState('');
+  const [uniqueClients, setUniqueClients] = useState([]);
+  const [loadingAtt, setLoadingAtt] = useState(true);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    loadAttachments();
+  }, [attPage, attClientFilter]);
+
+  const loadAttachments = async () => {
+    setLoadingAtt(true);
+    try {
+      const res = await profileAPI.getAttachments(user.id, {
+        page: attPage,
+        limit: 10,
+        clientId: attClientFilter || ''
+      });
+      setAttData(res);
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal memuat lampiran');
+    } finally {
+      setLoadingAtt(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -42,6 +69,15 @@ export default function KaryawanDashboard({ user }) {
         j.assignedTo?.includes(user.id)
       );
       setJobdesks(myJobdesks);
+
+      // Extract unique clients
+      const clientsMap = new Map();
+      myJobdesks.forEach(j => {
+        if (j.clientId) {
+          clientsMap.set(j.clientId, { id: j.clientId, name: j.clientName || 'Internal' });
+        }
+      });
+      setUniqueClients(Array.from(clientsMap.values()));
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error('Gagal memuat data');
@@ -407,49 +443,104 @@ export default function KaryawanDashboard({ user }) {
       {/* Portfolio / Recent Attachments */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Portfolio & Lampiran</CardTitle>
-            <Badge variant="secondary">{recentAttachments.length} file</Badge>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <CardTitle>Portfolio & Lampiran</CardTitle>
+              {attData.pagination && (
+                <Badge variant="secondary">{attData.pagination.total} file</Badge>
+              )}
+            </div>
+            <div className="w-full md:w-64">
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                value={attClientFilter}
+                onChange={(e) => {
+                  setAttClientFilter(e.target.value);
+                  setAttPage(1);
+                }}
+              >
+                <option value="">Semua Client (PT)</option>
+                {uniqueClients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {recentAttachments.length === 0 ? (
+          {loadingAtt ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : attData.attachments.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Upload className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Belum ada lampiran yang diupload</p>
+              <p>Belum ada lampiran yang diupload untuk filter ini</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {recentAttachments.map((attachment) => {
-                const isLink = attachment.type === 'link';
-                const displayText = isLink ? attachment.url : attachment.fileName;
-                const fileUrl = isLink ? attachment.url : `/uploads/${attachment.fileName}`;
-                
-                return (
-                  <a
-                    key={attachment.id}
-                    href={fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer group"
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {attData.attachments.map((attachment) => {
+                  const isLink = attachment.type === 'link';
+                  const displayText = isLink ? attachment.url : attachment.name;
+                  const fileUrl = isLink ? attachment.url : `/uploads/${attachment.name}`;
+                  
+                  return (
+                    <a
+                      key={attachment.id}
+                      href={fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer group"
+                    >
+                      <div className={`p-2 rounded ${isLink ? 'bg-purple-100' : 'bg-blue-100'} group-hover:scale-110 transition-transform`}>
+                        <FileText className={`w-5 h-5 ${isLink ? 'text-purple-600' : 'text-blue-600'}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate group-hover:text-blue-600" title={displayText}>
+                          {displayText}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded truncate max-w-[150px]" title={attachment.clientName}>
+                            {attachment.clientName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(attachment.createdAt).toLocaleDateString('id-ID')}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant={isLink ? 'secondary' : 'outline'} className="flex-shrink-0">
+                        {isLink ? 'Link' : 'File'}
+                      </Badge>
+                    </a>
+                  );
+                })}
+              </div>
+
+              {/* Pagination */}
+              {attData.pagination && attData.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAttPage(p => Math.max(1, p - 1))}
+                    disabled={attPage === 1}
                   >
-                    <div className={`p-2 rounded ${isLink ? 'bg-purple-100' : 'bg-blue-100'} group-hover:scale-110 transition-transform`}>
-                      <FileText className={`w-5 h-5 ${isLink ? 'text-purple-600' : 'text-blue-600'}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate group-hover:text-blue-600">
-                        {displayText}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(attachment.createdAt).toLocaleDateString('id-ID')}
-                      </p>
-                    </div>
-                    <Badge variant={isLink ? 'secondary' : 'outline'} className="flex-shrink-0">
-                      {isLink ? 'Link' : 'File'}
-                    </Badge>
-                  </a>
-                );
-              })}
+                    Sebelumnya
+                  </Button>
+                  <span className="text-sm text-gray-600 mx-2">
+                    Halaman {attPage} dari {attData.pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAttPage(p => Math.min(attData.pagination.totalPages, p + 1))}
+                    disabled={attPage === attData.pagination.totalPages}
+                  >
+                    Selanjutnya
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

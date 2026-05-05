@@ -283,6 +283,20 @@ export default function KPIPageV2({ user }) {
       }
     };
 
+    const clientListHtml = kpi.jobdeskPoints && kpi.jobdeskPoints.length > 0 
+      ? `
+        <div class="detail-section">
+          <h3>Daftar Klien (PT) yang Ditangani</h3>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+            ${Array.from(new Set(kpi.jobdeskPoints.map(jp => jp.clientName).filter(Boolean)))
+              .sort()
+              .map(clientName => `<span style="background: #e5e7eb; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #374151;">${clientName}</span>`)
+              .join('')}
+          </div>
+        </div>
+      `
+      : '';
+
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -350,6 +364,8 @@ export default function KPIPageV2({ user }) {
             <div class="label">KPI Efektivitas Waktu</div>
           </div>
         </div>
+
+        ${clientListHtml}
 
         <div class="detail-section">
           <h3>Detail KPI Hasil Kinerja</h3>

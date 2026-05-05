@@ -3471,6 +3471,86 @@ async function handleGetUserProfile(request, userId) {
   }
 }
 
+async function handleGetUserAttachments(request, userId) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.userId !== userId && !hasPermission(user.role, ['super_admin', 'owner', 'pengurus', 'sdm'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page')) || 1;
+    const limit = parseInt(searchParams.get('limit')) || 10;
+    const offset = (page - 1) * limit;
+    const clientId = searchParams.get('clientId');
+
+    let countQuery = `
+      SELECT COUNT(*) 
+      FROM attachments a
+      LEFT JOIN jobdesks j ON j.id = a.jobdesk_id
+      WHERE a.uploaded_by = $1
+    `;
+    let queryParams = [userId];
+
+    if (clientId) {
+      countQuery += ` AND j.client_id = $2`;
+      queryParams.push(clientId);
+    }
+
+    const countRes = await query(countQuery, queryParams);
+    const total = parseInt(countRes.rows[0].count);
+
+    let dataQuery = `
+      SELECT a.*, j.title as jobdesk_title, c.name as client_name, c.id as client_id
+      FROM attachments a
+      LEFT JOIN jobdesks j ON j.id = a.jobdesk_id
+      LEFT JOIN clients c ON c.id = j.client_id
+      WHERE a.uploaded_by = $1
+    `;
+
+    if (clientId) {
+      dataQuery += ` AND j.client_id = $2`;
+    }
+
+    dataQuery += ` ORDER BY a.created_at DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
+    
+    const dataRes = await query(dataQuery, [...queryParams, limit, offset]);
+
+    return NextResponse.json({
+      attachments: dataRes.rows.map(att => ({
+        id: att.id,
+        jobdeskId: att.jobdesk_id,
+        jobdeskTitle: att.jobdesk_title,
+        clientId: att.client_id,
+        clientName: att.client_name || 'Internal/Tanpa Klien',
+        type: att.type,
+        name: att.name,
+        url: att.url,
+        size: att.size,
+        createdAt: att.created_at
+      })),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get user attachments error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get attachments' },
+      { status: 500 }
+    );
+  }
+}
+
+
 // ============================================
 // CLIENT MANAGEMENT (Tax Consulting)
 // ============================================
@@ -6027,6 +6107,25 @@ async function handleGetRekapKaryawan(request) {
 
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim();
+    const periodMonth = searchParams.get('periodMonth');
+    const periodYear = searchParams.get('periodYear');
+
+    const params = [];
+    let searchCondition = '';
+    if (search) {
+      params.push(`%${search}%`);
+      searchCondition = ` AND (u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`;
+    }
+
+    let jobdeskCondition = '';
+    if (periodMonth) {
+      params.push(periodMonth);
+      jobdeskCondition += ` AND j.period_month = $${params.length}`;
+    }
+    if (periodYear) {
+      params.push(periodYear);
+      jobdeskCondition += ` AND j.period_year = $${params.length}`;
+    }
 
     let queryText = `
       SELECT u.id, u.name, u.email, u.role, d.name as division_name,
@@ -6040,16 +6139,11 @@ async function handleGetRekapKaryawan(request) {
       FROM users u
       LEFT JOIN divisions d ON d.id = u.division_id
       LEFT JOIN jobdesk_assignments ja ON ja.user_id = u.id
-      LEFT JOIN jobdesks j ON j.id = ja.jobdesk_id
+      LEFT JOIN jobdesks j ON j.id = ja.jobdesk_id ${jobdeskCondition}
       LEFT JOIN jobdesk_submissions s ON s.jobdesk_id = j.id AND s.submitted_by = u.id
-      WHERE u.role = 'karyawan' AND u.is_active = true
+      WHERE u.role = 'karyawan' AND u.is_active = true ${searchCondition}
+      GROUP BY u.id, d.name ORDER BY u.name ASC
     `;
-    const params = [];
-    if (search) {
-      queryText += ` AND (u.name ILIKE $1 OR u.email ILIKE $1)`;
-      params.push(`%${search}%`);
-    }
-    queryText += ` GROUP BY u.id, d.name ORDER BY u.name ASC`;
 
     const result = await query(queryText, params);
     return NextResponse.json({
@@ -6093,8 +6187,11 @@ async function handleGetRekapKaryawanDetail(request, userId) {
     }
     const u = userRes.rows[0];
 
-    // Jobdesks assigned to this user with client info
-    const jobdesksRes = await query(`
+    const { searchParams } = new URL(request.url);
+    const periodMonth = searchParams.get('periodMonth');
+    const periodYear = searchParams.get('periodYear');
+
+    let jobdeskQuery = `
       SELECT j.id, j.title, j.description, j.status, j.due_date, j.period_month, j.period_year,
              j.task_types, j.rekap_laporan_deadline, j.created_at, j.updated_at,
              c.id as client_id, c.name as client_name, c.group_name as client_group_name,
@@ -6103,13 +6200,25 @@ async function handleGetRekapKaryawanDetail(request, userId) {
       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
       LEFT JOIN clients c ON c.id = j.client_id
       WHERE ja.user_id = $1
-      ORDER BY j.created_at DESC
-    `, [userId]);
+    `;
+    const params = [userId];
+    if (periodMonth) {
+      params.push(periodMonth);
+      jobdeskQuery += ` AND j.period_month = $${params.length}`;
+    }
+    if (periodYear) {
+      params.push(periodYear);
+      jobdeskQuery += ` AND j.period_year = $${params.length}`;
+    }
+    jobdeskQuery += ` ORDER BY j.created_at DESC`;
+
+    const jobdesksRes = await query(jobdeskQuery, params);
 
     const jobdeskIds = jobdesksRes.rows.map(j => j.id);
 
-    // Submissions for those jobdesks (only by this user)
+    // Submissions and comments for those jobdesks
     let submissions = [];
+    let comments = [];
     if (jobdeskIds.length > 0) {
       const subRes = await query(`
         SELECT s.id, s.jobdesk_id, s.submission_type, s.title, s.content,
@@ -6120,6 +6229,17 @@ async function handleGetRekapKaryawanDetail(request, userId) {
         ORDER BY s.created_at DESC
       `, [jobdeskIds, userId]);
       submissions = subRes.rows;
+
+      const commRes = await query(`
+        SELECT c.id, c.jobdesk_id, c.task_type, c.comment, c.commented_by,
+               c.created_at, c.updated_at, u.name as commenter_name, u.email as commenter_email,
+               u.role as commenter_role
+        FROM jobdesk_comments c
+        LEFT JOIN users u ON u.id = c.commented_by
+        WHERE c.jobdesk_id = ANY($1::uuid[])
+        ORDER BY c.created_at ASC
+      `, [jobdeskIds]);
+      comments = commRes.rows;
     }
 
     // Group jobdesks by client
@@ -6152,6 +6272,20 @@ async function handleGetRekapKaryawanDetail(request, userId) {
           lateDays: s.late_days,
           createdAt: s.created_at
         }));
+      const jobComments = comments
+        .filter(c => c.jobdesk_id === j.id)
+        .map(c => ({
+          id: c.id,
+          jobdeskId: c.jobdesk_id,
+          taskType: c.task_type,
+          comment: c.comment,
+          commentedBy: c.commented_by,
+          commenterName: c.commenter_name,
+          commenterEmail: c.commenter_email,
+          commenterRole: c.commenter_role,
+          createdAt: c.created_at,
+          updatedAt: c.updated_at,
+        }));
       clientsMap.get(clientKey).jobdesks.push({
         id: j.id,
         title: j.title,
@@ -6164,7 +6298,8 @@ async function handleGetRekapKaryawanDetail(request, userId) {
         rekapLaporanDeadline: j.rekap_laporan_deadline,
         createdAt: j.created_at,
         updatedAt: j.updated_at,
-        submissions: jobSubmissions
+        submissions: jobSubmissions,
+        comments: jobComments
       });
     }
 
@@ -6256,6 +6391,10 @@ export async function GET(request, { params }) {
     }
 
     // Profile
+    if (path.match(/^profile\/[^/]+\/attachments$/)) {
+      const userId = path.split('/')[1];
+      return handleGetUserAttachments(request, userId);
+    }
     if (path.match(/^profile\/[^/]+$/)) {
       const userId = path.split('/')[1];
       return handleGetUserProfile(request, userId);

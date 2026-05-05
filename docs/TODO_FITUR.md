@@ -161,6 +161,132 @@ harus bisa difilter berdasarkan **group PT**.
 
 ---
 
+---
+
+## 📄 Pagination, Indexing & Filter di Menu Jobdesk
+
+### Konsep
+Halaman Jobdesk saat ini memuat semua jobdesk sekaligus. Untuk skala produksi
+butuh pagination, indexing DB, dan filter data.
+
+### Yang Dibutuhkan (Backend)
+- Endpoint `GET /api/jobdesks` sudah punya `LIMIT`/`OFFSET` — pastikan UI
+  pakai
+- Tambah filter query params:
+  - `status` (pending/in_progress/completed)
+  - `clientId`
+  - `assignedTo` (user id)
+  - `search` (title/description ILIKE)
+  - `periodMonth`, `periodYear`
+  - `taskType`
+- Indexing migrasi:
+  - `CREATE INDEX IF NOT EXISTS idx_jobdesks_status ON jobdesks(status);`
+  - `CREATE INDEX IF NOT EXISTS idx_jobdesks_client ON jobdesks(client_id);`
+  - `CREATE INDEX IF NOT EXISTS idx_jobdesks_period ON jobdesks(period_year, period_month);`
+  - `CREATE INDEX IF NOT EXISTS idx_jobdesks_created_at ON jobdesks(created_at DESC);`
+  - `CREATE INDEX IF NOT EXISTS idx_assignments_user ON jobdesk_assignments(user_id);`
+  - `CREATE INDEX IF NOT EXISTS idx_assignments_jobdesk ON jobdesk_assignments(jobdesk_id);`
+
+### Yang Dibutuhkan (Frontend)
+- `JobdeskPage.jsx`:
+  - Pagination control (Page 1/N, Prev/Next, page size selector)
+  - Filter bar: search input, dropdown status, dropdown klien, dropdown
+    karyawan, dropdown periode (bulan/tahun), dropdown task type
+  - Reset filter button
+- Update `jobdeskAPI.getAll` untuk terima query params
+
+### Catatan
+- Perhatikan permission: karyawan hanya lihat jobdesk yang assigned ke dia
+- Filter karyawan hanya tampil untuk admin
+
+---
+
+## 📧 Update/Ganti Email di Menu Pengaturan
+
+### Konsep
+Saat ini di Settings, field email karyawan disabled (read-only). Karyawan
+harus bisa update emailnya sendiri.
+
+### Yang Dibutuhkan (Backend)
+- `handleUpdateUser` sudah support email, tapi self-update dibatasi hanya
+  name
+- Allow self-update email dengan syarat:
+  - Verifikasi password current sebelum ubah
+  - Validasi format email
+  - Check uniqueness (sudah ada di handler)
+  - Optional: kirim email konfirmasi/verifikasi ke email baru sebelum apply
+- API helper baru: `userAPI.updateOwnEmail(currentPassword, newEmail)` atau
+  perluas `updateOwnProfile` untuk include email + password
+
+### Yang Dibutuhkan (Frontend)
+- `SettingsPage.jsx`:
+  - Field email jadi editable (atau ada tombol "Ubah Email")
+  - Form: current password + new email + confirm new email
+  - Toast confirmation
+- Logout user setelah email berubah (token mungkin contain email)?
+  Atau refresh user data di context
+
+### Catatan
+- Pertimbangkan UX: ubah email itu sensitif, mungkin perlu modal khusus
+- Pastikan token JWT tetap valid setelah email berubah (cek apa tokennya
+  pakai email atau userId saja)
+
+---
+
+## 🌅 Modal Pengingat Task & Deadline saat Login Pertama Karyawan
+
+### Konsep
+Ganti modal sekarang yang muncul setelah login karyawan ("Selamat Pagi,
+{nama} 👋 Bagaimana perasaanmu hari ini?") dengan modal pengingat task &
+deadline.
+
+### Modal Baru
+Saat karyawan pertama kali login per hari (atau saat session pertama),
+tampilkan ringkasan:
+- Greeting "Selamat Pagi/Siang/Sore, {nama} 👋"
+- **Daftar task hari ini & yang akan datang:**
+  - Jobdesk yang status `in_progress` atau `pending` yang assigned ke dia
+  - Per task type yang belum disubmit, urutkan by deadline
+  - Sorting: deadline paling dekat dulu
+  - Visual:
+    - 🔴 Merah: deadline hari ini / sudah lewat
+    - 🟡 Kuning: deadline H-3 ke H-1
+    - 🟢 Hijau: deadline > H-3
+- Tombol "Mulai Bekerja" / "Lihat Semua Jobdesk"
+
+### Yang Dibutuhkan
+- Cari komponen modal sekarang (kemungkinan `WelcomeWorkModal` yang udah
+  ada di socket events)
+- Backend: bisa pakai existing `GET /api/jobdesks` dengan filter
+  status != completed, atau buat endpoint khusus yang return upcoming
+  deadlines per user
+- Frontend:
+  - Komponen `MorningReminderModal.jsx`
+  - Logic deteksi "first login of the day" (cek `lastLoginAt` di
+    localStorage atau session)
+  - Hapus/ganti modal mood yang lama
+- Helper: hitung deadline per task type pakai logic yang sama di
+  `lib/scheduler.js` atau di JobdeskPage
+
+### Catatan
+- Pertahankan optional mood selector kalau user tetap mau ada (di
+  bawah daftar task)
+- Modal hanya muncul sekali per hari (cek tanggal terakhir muncul di
+  localStorage)
+
+---
+
+## 🚀 Permintaan Fitur Baru (Update)
+
+1. **Pindah Komentar Admin:** Komentar admin dipindah ke menu Rekap Hasil Jobdesk di detail karyawannya, bukan di menu Jobdesknya.
+2. **Hapus Input Tenggat Waktu:** Di form create jobdesk hapus input tenggat waktu karena sudah tidak relevan.
+3. **Automasi Tanggal Laporan Rekap:** Tanggal Laporan Rekap menjadi otomatis tanggalnya seperti task type, yaitu 1 bulan + 5 (tanggal 5 di bulan berikutnya), mengikuti pola seperti deadline task type.
+4. **History File Lampiran (Dashboard Karyawan):** History file lampiran pada section Portfolio & Lampiran berdasarkan PT di dashboard karyawan masih belum muncul. Tambahkan pagination dan filter.
+5. **Filter Data Hasil Jobdesk:** Tambahkan filter pada Data Hasil Jobdesk agar bisa per bulan, dan pastikan tampilan data sesuai dengan bulan lapor.
+6. **Download KPI Individual:** Pada saat download KPI Individual, tambahkan daftar client PT yang di-handle oleh karyawan.
+
+---
+
 ## Catatan Implementasi
 
 - Saat implement notifikasi reminder, jangan lupa konfigurasi VAPID keys di production

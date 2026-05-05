@@ -24,7 +24,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import JobdeskComments from '@/components/JobdeskComments';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,11 +50,7 @@ const TASK_TYPES = [
 
 // Helper function to calculate deadline - universal tanggal 5 bulan berikutnya
 // For rekap_laporan, use custom deadline if provided
-const calculateTaskDeadline = (taskType, periodMonth, periodYear, rekapLaporanDeadline = null) => {
-  if (taskType === 'rekap_laporan') {
-    return rekapLaporanDeadline ? new Date(rekapLaporanDeadline) : null;
-  }
-
+const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
   if (!periodMonth || !periodYear) return null;
 
   // Calculate next month
@@ -106,26 +101,7 @@ export default function JobdeskPage({ user }) {
   const [selectedJobdesk, setSelectedJobdesk] = useState(null);
   const [detailData, setDetailData] = useState(null);
   const [submissions, setSubmissions] = useState([]);
-  const [comments, setComments] = useState([]);
-  const [showCommentsModal, setShowCommentsModal] = useState(false);
-  const [commentsModalJob, setCommentsModalJob] = useState(null);
-  const [commentsModalData, setCommentsModalData] = useState([]);
-  const [commentsModalLoading, setCommentsModalLoading] = useState(false);
 
-  const openCommentsModal = async (job) => {
-    setCommentsModalJob(job);
-    setShowCommentsModal(true);
-    setCommentsModalLoading(true);
-    try {
-      const res = await jobdeskAPI.getComments(job.id);
-      setCommentsModalData(res.comments || []);
-    } catch (error) {
-      console.error('Failed to load comments:', error);
-      toast.error('Gagal memuat komentar');
-    } finally {
-      setCommentsModalLoading(false);
-    }
-  };
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -359,14 +335,12 @@ export default function JobdeskPage({ user }) {
   // Load jobdesk detail and submissions
   const loadJobdeskDetail = async (jobdeskId) => {
     try {
-      const [detailRes, submissionsRes, commentsRes] = await Promise.all([
+      const [detailRes, submissionsRes] = await Promise.all([
         jobdeskAPI.getById(jobdeskId),
-        jobdeskAPI.getSubmissions(jobdeskId),
-        jobdeskAPI.getComments(jobdeskId).catch(() => ({ comments: [] }))
+        jobdeskAPI.getSubmissions(jobdeskId)
       ]);
       setDetailData(detailRes.jobdesk);
       setSubmissions(submissionsRes.submissions || []);
-      setComments(commentsRes.comments || []);
     } catch (error) {
       console.error('Failed to load detail:', error);
       toast.error('Gagal memuat detail jobdesk');
@@ -860,21 +834,7 @@ export default function JobdeskPage({ user }) {
                   </div>
                 </div>
 
-                {/* Rekap Laporan Deadline - shown when rekap_laporan task is selected */}
-                {formData.taskTypes.includes('rekap_laporan') && (
-                  <div>
-                    <Label htmlFor="rekapLaporanDeadline">Deadline Rekap Laporan *</Label>
-                    <Input
-                      id="rekapLaporanDeadline"
-                      type="date"
-                      value={formData.rekapLaporanDeadline}
-                      onChange={(e) => setFormData({ ...formData, rekapLaporanDeadline: e.target.value })}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Tanggal batas pengumpulan rekap laporan oleh karyawan
-                    </p>
-                  </div>
-                )}
+
 
                 <div>
                   <Label htmlFor="title">Judul Jobdesk *</Label>
@@ -892,15 +852,6 @@ export default function JobdeskPage({ user }) {
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="dueDate">Tenggat Waktu</Label>
-                  <Input
-                    id="dueDate"
-                    type="date"
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                   />
                 </div>
 
@@ -1287,24 +1238,7 @@ export default function JobdeskPage({ user }) {
                       <span className="sm:hidden">Detail</span>
                     </Button>
 
-                    {/* Comments Button - shown to admin/pengurus always, to karyawan only if there are comments */}
-                    {(['super_admin', 'owner', 'pengurus'].includes(user.role) || (job.commentCount > 0)) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openCommentsModal(job)}
-                        className="flex-1 sm:flex-none relative"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-1" />
-                        <span className="hidden sm:inline">Komentar</span>
-                        <span className="sm:hidden">💬</span>
-                        {job.commentCount > 0 && (
-                          <Badge className="ml-1 bg-blue-100 text-blue-800 text-xs px-1.5 py-0">
-                            {job.commentCount}
-                          </Badge>
-                        )}
-                      </Button>
-                    )}
+
 
                     {/* Settings dropdown - only for super_admin and pengurus (admin/owner) */}
                     {(user.role === 'super_admin' || user.role === 'pengurus') && (
@@ -1492,15 +1426,6 @@ export default function JobdeskPage({ user }) {
                 value={editFormData.description}
                 onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                 rows={3}
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-dueDate">Tenggat Waktu</Label>
-              <Input
-                id="edit-dueDate"
-                type="date"
-                value={editFormData.dueDate}
-                onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
               />
             </div>
             <div>
@@ -1773,16 +1698,7 @@ export default function JobdeskPage({ user }) {
                   </div>
                 )}
 
-                {/* Jobdesk-level comments */}
-                <div className="p-3 border rounded-lg">
-                  <JobdeskComments
-                    user={user}
-                    jobdeskId={selectedJobdesk.id}
-                    comments={comments}
-                    onCommentsChange={setComments}
-                    title="Komentar Admin (Jobdesk)"
-                  />
-                </div>
+
               </TabsContent>
 
               <TabsContent value="submissions" className="space-y-4 mt-4">
@@ -1984,17 +1900,7 @@ export default function JobdeskPage({ user }) {
                               </div>
                             )}
 
-                            {/* Per-task-type comments */}
-                            <div className="px-3 py-2 bg-gray-50 border-t">
-                              <JobdeskComments
-                                user={user}
-                                jobdeskId={selectedJobdesk.id}
-                                taskType={taskTypeId}
-                                comments={comments}
-                                onCommentsChange={setComments}
-                                title={`Komentar Admin (${taskType?.label || taskTypeId})`}
-                              />
-                            </div>
+
                           </div>
                         );
                       })}
@@ -2171,59 +2077,7 @@ export default function JobdeskPage({ user }) {
         </DialogContent>
       </Dialog>
 
-      {/* Comments-only Modal */}
-      <Dialog open={showCommentsModal} onOpenChange={(open) => {
-        setShowCommentsModal(open);
-        if (!open) loadData();
-      }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              Komentar Jobdesk
-            </DialogTitle>
-            {commentsModalJob && (
-              <DialogDescription>{commentsModalJob.title}</DialogDescription>
-            )}
-          </DialogHeader>
-          {commentsModalLoading ? (
-            <div className="text-center py-8 text-gray-500">Memuat komentar...</div>
-          ) : commentsModalJob ? (
-            <div className="space-y-4">
-              {/* Jobdesk-level comments */}
-              <div className="p-3 border rounded-lg">
-                <JobdeskComments
-                  user={user}
-                  jobdeskId={commentsModalJob.id}
-                  comments={commentsModalData}
-                  onCommentsChange={setCommentsModalData}
-                  title="Komentar Jobdesk"
-                />
-              </div>
 
-              {/* Per task type comments */}
-              {(commentsModalJob.taskTypes || []).map(taskTypeId => {
-                const taskType = TASK_TYPES.find(t => t.id === taskTypeId);
-                const hasComments = commentsModalData.some(c => c.taskType === taskTypeId);
-                const canAdd = ['super_admin', 'owner', 'pengurus'].includes(user.role);
-                if (!hasComments && !canAdd) return null;
-                return (
-                  <div key={taskTypeId} className="p-3 border rounded-lg">
-                    <JobdeskComments
-                      user={user}
-                      jobdeskId={commentsModalJob.id}
-                      taskType={taskTypeId}
-                      comments={commentsModalData}
-                      onCommentsChange={setCommentsModalData}
-                      title={`Komentar — ${taskType?.label || taskTypeId}`}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

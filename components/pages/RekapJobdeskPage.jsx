@@ -11,6 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import JobdeskComments from '@/components/JobdeskComments';
 import {
   Search, FileText, Building2, Download, Eye, Paperclip, ArrowLeft,
   CheckCircle2, Clock, AlertTriangle, User
@@ -44,17 +45,27 @@ export default function RekapJobdeskPage({ user }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
 
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  const [filterMonth, setFilterMonth] = useState(currentMonth.toString());
+  const [filterYear, setFilterYear] = useState(currentYear.toString());
+
   useEffect(() => { loadList(); }, []);
 
   useEffect(() => {
     const t = setTimeout(() => loadList(), 350);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, filterMonth, filterYear]);
 
   const loadList = async () => {
     try {
       setLoading(true);
-      const res = await rekapAPI.getKaryawan(search);
+      const params = {};
+      if (search) params.search = search;
+      if (filterMonth) params.periodMonth = filterMonth;
+      if (filterYear) params.periodYear = filterYear;
+      
+      const res = await rekapAPI.getKaryawan(params);
       setList(res.karyawan || []);
     } catch (err) {
       console.error('Failed to load rekap list:', err);
@@ -68,7 +79,11 @@ export default function RekapJobdeskPage({ user }) {
     setSelectedUser(k);
     setDetailLoading(true);
     try {
-      const res = await rekapAPI.getKaryawanDetail(k.id);
+      const params = {};
+      if (filterMonth) params.periodMonth = filterMonth;
+      if (filterYear) params.periodYear = filterYear;
+      
+      const res = await rekapAPI.getKaryawanDetail(k.id, params);
       setDetail(res);
     } catch (err) {
       console.error('Failed to load detail:', err);
@@ -259,6 +274,40 @@ export default function RekapJobdeskPage({ user }) {
                           </div>
                         </div>
                       )}
+
+                      {/* Comments Section */}
+                      <div className="border-t pt-3 space-y-3">
+                        <JobdeskComments
+                          user={user}
+                          jobdeskId={jd.id}
+                          comments={jd.comments || []}
+                          title="Komentar Jobdesk"
+                          onCommentsChange={async () => {
+                            const params = {};
+                            if (filterMonth) params.periodMonth = filterMonth;
+                            if (filterYear) params.periodYear = filterYear;
+                            const res = await rekapAPI.getKaryawanDetail(selectedUser.id, params);
+                            setDetail(res);
+                          }}
+                        />
+                        {(jd.taskTypes || []).map(tt => (
+                          <JobdeskComments
+                            key={tt}
+                            user={user}
+                            jobdeskId={jd.id}
+                            taskType={tt}
+                            comments={jd.comments || []}
+                            title={`Komentar — ${TASK_LABELS[tt] || tt}`}
+                            onCommentsChange={async () => {
+                              const params = {};
+                              if (filterMonth) params.periodMonth = filterMonth;
+                              if (filterYear) params.periodYear = filterYear;
+                              const res = await rekapAPI.getKaryawanDetail(selectedUser.id, params);
+                              setDetail(res);
+                            }}
+                          />
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </CardContent>
@@ -311,19 +360,46 @@ export default function RekapJobdeskPage({ user }) {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-            <CardTitle className="flex items-center gap-2">
+          <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+            <CardTitle className="flex items-center gap-2 whitespace-nowrap">
               <FileText className="w-5 h-5" />
               Daftar Karyawan
             </CardTitle>
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="Cari nama atau email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+              <div className="flex gap-2">
+                <select
+                  className="border rounded-md px-3 py-2 text-sm bg-white min-w-[120px] flex-1"
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                >
+                  <option value="">Semua Bulan</option>
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <option key={i+1} value={i+1}>
+                      {new Date(2000, i, 1).toLocaleString('id-ID', { month: 'long' })}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-md px-3 py-2 text-sm bg-white flex-1"
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                >
+                  <option value="">Semua Tahun</option>
+                  {Array.from({ length: 5 }).map((_, i) => {
+                    const y = new Date().getFullYear() - 2 + i;
+                    return <option key={y} value={y}>{y}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="relative w-full sm:w-64 flex-shrink-0">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Cari nama atau email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
