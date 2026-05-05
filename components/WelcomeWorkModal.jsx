@@ -45,18 +45,30 @@ export default function WelcomeWorkModal({ user, onStartWork }) {
     onStartWork(selectedMood || 'biasa');
   };
 
-  const isDeadlineNear = (dateString) => {
-    if (!dateString) return false;
-    const deadline = new Date(dateString);
+  const calculateDeadline = (job) => {
+    if (job.dueDate) return new Date(job.dueDate);
+    if (!job.periodMonth || !job.periodYear) return null;
+    let nextMonth = job.periodMonth + 1;
+    let nextYear = job.periodYear;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear++;
+    }
+    return new Date(nextYear, nextMonth - 1, 5);
+  };
+
+  const isDeadlineNear = (date) => {
+    if (!date) return false;
+    const deadline = new Date(date);
     const today = new Date();
     const diffTime = deadline - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays >= 0 && diffDays <= 3;
   };
 
-  const isLate = (dateString) => {
-    if (!dateString) return false;
-    const deadline = new Date(dateString);
+  const isLate = (date) => {
+    if (!date) return false;
+    const deadline = new Date(date);
     deadline.setHours(23, 59, 59, 999);
     return new Date() > deadline;
   };
@@ -105,20 +117,30 @@ export default function WelcomeWorkModal({ user, onStartWork }) {
               <p className="text-sm text-green-600">Tidak ada jobdesk tertunda! 🎉</p>
             ) : (
               <div className="space-y-2">
-                {upcomingJobdesks.map(job => (
-                  <div key={job.id} className="flex justify-between items-center text-sm p-2 bg-white rounded border">
-                    <span className="truncate pr-2 font-medium">{job.title}</span>
-                    {job.dueDate && (
-                      <span className={`flex-shrink-0 text-xs px-2 py-1 rounded-full ${
-                        isLate(job.dueDate) ? 'bg-red-100 text-red-700' : 
-                        isDeadlineNear(job.dueDate) ? 'bg-orange-100 text-orange-700' : 
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {new Date(job.dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                {upcomingJobdesks.map(job => {
+                  const deadline = calculateDeadline(job);
+                  return (
+                    <div key={job.id} className="flex justify-between items-center text-sm p-2 bg-white rounded border">
+                      <span className="truncate pr-2 font-medium">
+                        {job.title}
+                        {job.clientName && <span className="ml-2 text-xs text-gray-500">({job.clientName})</span>}
                       </span>
-                    )}
-                  </div>
-                ))}
+                      {deadline ? (
+                        <span className={`flex-shrink-0 text-xs px-2 py-1 rounded-full ${
+                          isLate(deadline) ? 'bg-red-100 text-red-700' : 
+                          isDeadlineNear(deadline) ? 'bg-orange-100 text-orange-700' : 
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {deadline.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      ) : (
+                        <span className="flex-shrink-0 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                          -
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
