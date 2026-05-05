@@ -120,13 +120,15 @@ export default function WelcomeWorkModal({ user, onStartWork }) {
                 {upcomingJobdesks.map(job => {
                   const deadline = calculateDeadline(job);
                   return (
-                    <div key={job.id} className="flex justify-between items-center text-sm p-2 bg-white rounded border">
-                      <span className="truncate pr-2 font-medium">
-                        {job.title}
-                        {job.clientName && <span className="ml-2 text-xs text-gray-500">({job.clientName})</span>}
-                      </span>
+                    <div key={job.id} className="flex justify-between items-center text-sm p-2 bg-white rounded border gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate font-medium text-gray-900">{job.title}</p>
+                        {job.clientName && (
+                          <p className="truncate text-xs text-gray-500">{job.clientName}</p>
+                        )}
+                      </div>
                       {deadline ? (
-                        <span className={`flex-shrink-0 text-xs px-2 py-1 rounded-full ${
+                        <span className={`flex-shrink-0 whitespace-nowrap text-xs px-2 py-1 rounded-full ${
                           isLate(deadline) ? 'bg-red-100 text-red-700' : 
                           isDeadlineNear(deadline) ? 'bg-orange-100 text-orange-700' : 
                           'bg-gray-100 text-gray-600'
