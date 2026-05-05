@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { jobdeskAPI, userAPI, dailyLogAPI, divisionAPI, clientAPI } from '@/lib/api';
-import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2, Settings, Upload, ChevronRight, Users, Building2, FileText, Eye } from 'lucide-react';
+import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2, Settings, Upload, ChevronRight, Users, Building2, FileText, Eye, MessageSquare } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -107,6 +107,25 @@ export default function JobdeskPage({ user }) {
   const [detailData, setDetailData] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [comments, setComments] = useState([]);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [commentsModalJob, setCommentsModalJob] = useState(null);
+  const [commentsModalData, setCommentsModalData] = useState([]);
+  const [commentsModalLoading, setCommentsModalLoading] = useState(false);
+
+  const openCommentsModal = async (job) => {
+    setCommentsModalJob(job);
+    setShowCommentsModal(true);
+    setCommentsModalLoading(true);
+    try {
+      const res = await jobdeskAPI.getComments(job.id);
+      setCommentsModalData(res.comments || []);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
+      toast.error('Gagal memuat komentar');
+    } finally {
+      setCommentsModalLoading(false);
+    }
+  };
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -1268,6 +1287,25 @@ export default function JobdeskPage({ user }) {
                       <span className="sm:hidden">Detail</span>
                     </Button>
 
+                    {/* Comments Button - shown to admin/pengurus always, to karyawan only if there are comments */}
+                    {(['super_admin', 'owner', 'pengurus'].includes(user.role) || (job.commentCount > 0)) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openCommentsModal(job)}
+                        className="flex-1 sm:flex-none relative"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-1" />
+                        <span className="hidden sm:inline">Komentar</span>
+                        <span className="sm:hidden">💬</span>
+                        {job.commentCount > 0 && (
+                          <Badge className="ml-1 bg-blue-100 text-blue-800 text-xs px-1.5 py-0">
+                            {job.commentCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    )}
+
                     {/* Settings dropdown - only for super_admin and pengurus (admin/owner) */}
                     {(user.role === 'super_admin' || user.role === 'pengurus') && (
                       <DropdownMenu>
@@ -2130,6 +2168,60 @@ export default function JobdeskPage({ user }) {
           ) : (
             <div className="text-center py-8">Memuat data...</div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Comments-only Modal */}
+      <Dialog open={showCommentsModal} onOpenChange={(open) => {
+        setShowCommentsModal(open);
+        if (!open) loadData();
+      }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Komentar Jobdesk
+            </DialogTitle>
+            {commentsModalJob && (
+              <DialogDescription>{commentsModalJob.title}</DialogDescription>
+            )}
+          </DialogHeader>
+          {commentsModalLoading ? (
+            <div className="text-center py-8 text-gray-500">Memuat komentar...</div>
+          ) : commentsModalJob ? (
+            <div className="space-y-4">
+              {/* Jobdesk-level comments */}
+              <div className="p-3 border rounded-lg">
+                <JobdeskComments
+                  user={user}
+                  jobdeskId={commentsModalJob.id}
+                  comments={commentsModalData}
+                  onCommentsChange={setCommentsModalData}
+                  title="Komentar Jobdesk"
+                />
+              </div>
+
+              {/* Per task type comments */}
+              {(commentsModalJob.taskTypes || []).map(taskTypeId => {
+                const taskType = TASK_TYPES.find(t => t.id === taskTypeId);
+                const hasComments = commentsModalData.some(c => c.taskType === taskTypeId);
+                const canAdd = ['super_admin', 'owner', 'pengurus'].includes(user.role);
+                if (!hasComments && !canAdd) return null;
+                return (
+                  <div key={taskTypeId} className="p-3 border rounded-lg">
+                    <JobdeskComments
+                      user={user}
+                      jobdeskId={commentsModalJob.id}
+                      taskType={taskTypeId}
+                      comments={commentsModalData}
+                      onCommentsChange={setCommentsModalData}
+                      title={`Komentar — ${taskType?.label || taskTypeId}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

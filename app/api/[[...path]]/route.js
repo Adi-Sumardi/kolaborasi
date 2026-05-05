@@ -627,7 +627,8 @@ async function handleGetJobdesks(request) {
         SELECT j.*,
                c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
                ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
-               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count
+               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count,
+               (SELECT COUNT(*) FROM jobdesk_comments WHERE jobdesk_id = j.id) as comment_count
         FROM jobdesks j
         LEFT JOIN clients c ON c.id = j.client_id
         JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
@@ -645,7 +646,8 @@ async function handleGetJobdesks(request) {
         SELECT j.*,
                c.name as client_name, c.npwp as client_npwp, c.is_pkp, c.is_umkm,
                ARRAY_AGG(DISTINCT ja.user_id) as assigned_to,
-               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count
+               (SELECT COUNT(*) FROM jobdesk_submissions WHERE jobdesk_id = j.id) as submission_count,
+               (SELECT COUNT(*) FROM jobdesk_comments WHERE jobdesk_id = j.id) as comment_count
         FROM jobdesks j
         LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
@@ -681,6 +683,7 @@ async function handleGetJobdesks(request) {
       taskTypes: j.task_types || [],
       rekapLaporanDeadline: j.rekap_laporan_deadline,
       submissionCount: parseInt(j.submission_count) || 0,
+      commentCount: parseInt(j.comment_count) || 0,
       createdAt: j.created_at,
       updatedAt: j.updated_at
     }));
