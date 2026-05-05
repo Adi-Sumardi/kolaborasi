@@ -3705,19 +3705,33 @@ async function handleGetUserAttachments(request, userId) {
     const limit = parseInt(searchParams.get('limit')) || 10;
     const offset = (page - 1) * limit;
     const clientId = searchParams.get('clientId');
+    const search = searchParams.get('search');
+    const month = searchParams.get('month');
+
+    let baseConditions = `WHERE a.submitted_by = $1 AND a.submission_type IN ('file', 'link')`;
+    let queryParams = [userId];
+
+    if (clientId) {
+      queryParams.push(clientId);
+      baseConditions += ` AND j.client_id = $${queryParams.length}`;
+    }
+
+    if (search) {
+      queryParams.push(`%${search}%`);
+      baseConditions += ` AND (a.file_name ILIKE $${queryParams.length} OR a.title ILIKE $${queryParams.length} OR j.title ILIKE $${queryParams.length})`;
+    }
+
+    if (month) {
+      queryParams.push(month);
+      baseConditions += ` AND j.period_month = $${queryParams.length}`;
+    }
 
     let countQuery = `
       SELECT COUNT(*) 
       FROM jobdesk_submissions a
       LEFT JOIN jobdesks j ON j.id = a.jobdesk_id
-      WHERE a.submitted_by = $1 AND a.submission_type IN ('file', 'link')
+      ${baseConditions}
     `;
-    let queryParams = [userId];
-
-    if (clientId) {
-      countQuery += ` AND j.client_id = $2`;
-      queryParams.push(clientId);
-    }
 
     const countRes = await query(countQuery, queryParams);
     const total = parseInt(countRes.rows[0].count);
@@ -3727,14 +3741,9 @@ async function handleGetUserAttachments(request, userId) {
       FROM jobdesk_submissions a
       LEFT JOIN jobdesks j ON j.id = a.jobdesk_id
       LEFT JOIN clients c ON c.id = j.client_id
-      WHERE a.submitted_by = $1 AND a.submission_type IN ('file', 'link')
+      ${baseConditions}
+      ORDER BY a.created_at DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
     `;
-
-    if (clientId) {
-      dataQuery += ` AND j.client_id = $2`;
-    }
-
-    dataQuery += ` ORDER BY a.created_at DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
     
     const dataRes = await query(dataQuery, [...queryParams, limit, offset]);
 
