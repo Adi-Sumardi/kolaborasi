@@ -875,6 +875,98 @@ async function handleCreateJobdesk(request) {
   }
 }
 
+// Bulk create jobdesks
+async function handleBulkCreateJobdesks(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { jobdesks } = body;
+
+    if (!Array.isArray(jobdesks) || jobdesks.length === 0) {
+      return NextResponse.json(
+        { error: 'Array of jobdesks required' },
+        { status: 400 }
+      );
+    }
+
+    const createdJobdesks = await transaction(async (client) => {
+      const results = [];
+      for (const job of jobdesks) {
+        const {
+          title, description, assignedTo, dueDate, priority, submissionLink,
+          clientId, periodMonth, periodYear, taskTypes, rekapLaporanDeadline
+        } = job;
+
+        if (!title || !assignedTo || assignedTo.length === 0) continue;
+
+        const jobdeskResult = await client.query(
+          `INSERT INTO jobdesks (title, description, status, priority, due_date, submission_link, created_by, client_id, period_month, period_year, task_types, rekap_laporan_deadline)
+           VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           RETURNING *`,
+          [
+            title,
+            description || '',
+            priority || 'medium',
+            dueDate ? new Date(dueDate) : null,
+            submissionLink || null,
+            user.userId,
+            clientId || null,
+            periodMonth || null,
+            periodYear || null,
+            taskTypes && taskTypes.length > 0 ? taskTypes : null,
+            rekapLaporanDeadline ? new Date(rekapLaporanDeadline) : null
+          ]
+        );
+
+        const newJobdesk = jobdeskResult.rows[0];
+
+        for (const userId of assignedTo) {
+          await client.query(
+            `INSERT INTO jobdesk_assignments (jobdesk_id, user_id)
+             VALUES ($1, $2)
+             ON CONFLICT DO NOTHING`,
+            [newJobdesk.id, userId]
+          );
+
+          await client.query(
+            `INSERT INTO notifications (user_id, title, message, type)
+             VALUES ($1, $2, $3, $4)`,
+            [userId, 'Jobdesk Baru', `Anda mendapat jobdesk baru: ${title}`, 'jobdesk_assigned']
+          );
+
+          try {
+            sendNotification(userId, {
+              type: 'jobdesk_assigned',
+              title: 'Jobdesk Baru',
+              message: `Anda mendapat jobdesk baru: ${title}`
+            });
+          } catch (err) {
+            console.error('Socket notification error:', err);
+          }
+        }
+
+        results.push({ ...newJobdesk, assignedTo });
+      }
+      return results;
+    });
+
+    return NextResponse.json({
+      message: `${createdJobdesks.length} jobdesks created successfully`,
+      jobdesks: createdJobdesks
+    });
+  } catch (error) {
+    console.error('Bulk create jobdesks error:', error);
+    return NextResponse.json(
+      { error: 'Failed to bulk create jobdesks' },
+      { status: 500 }
+    );
+  }
+}
+
 // Update jobdesk status
 async function handleUpdateJobdeskStatus(request, jobdeskId) {
   try {
@@ -6570,6 +6662,7 @@ export async function POST(request, { params }) {
     if (path === 'divisions') return handleCreateDivision(request);
 
     // Jobdesks
+    if (path === 'jobdesks/bulk-create') return handleBulkCreateJobdesks(request);
     if (path === 'jobdesks') return handleCreateJobdesk(request);
     if (path.match(/^jobdesks\/[^/]+\/submissions\/upload$/)) {
       const jobdeskId = path.split('/')[1];

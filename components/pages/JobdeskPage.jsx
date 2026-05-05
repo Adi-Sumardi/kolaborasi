@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { jobdeskAPI, userAPI, dailyLogAPI, divisionAPI, clientAPI } from '@/lib/api';
-import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2, Settings, Upload, ChevronRight, Users, Building2, FileText, Eye, MessageSquare } from 'lucide-react';
+import { Plus, Calendar, User, CheckCircle2, Clock, PlayCircle, Paperclip, Pencil, Trash2, Settings, Upload, ChevronRight, Users, Building2, FileText, Eye, MessageSquare, Copy } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -158,6 +158,9 @@ export default function JobdeskPage({ user }) {
     notes: '',
     file: null
   });
+  const [copyingLastMonth, setCopyingLastMonth] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [selectedClientsToGenerate, setSelectedClientsToGenerate] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
 
   // Client creation mode
@@ -370,10 +373,80 @@ export default function JobdeskPage({ user }) {
       });
       setClientMode('existing');
       setNewClientData({ name: '', groupName: '', npwp: '', address: '', contactPerson: '', phone: '', email: '', isPkp: false, isUmkm: true });
-      loadData();
+      loadJobdesks();
     } catch (error) {
       console.error('Failed to create jobdesk:', error);
       toast.error(error.message || 'Gagal membuat jobdesk');
+    }
+  };
+
+  const handleCopyLastMonth = async () => {
+    if (!confirm('Apakah Anda yakin ingin menyalin semua jobdesk yang Anda kerjakan di bulan lalu ke bulan ini?')) return;
+    
+    setCopyingLastMonth(true);
+    try {
+      const now = new Date();
+      let lastMonth = now.getMonth(); // 1-12
+      let lastYear = now.getFullYear();
+      if (lastMonth === 0) {
+        lastMonth = 12;
+        lastYear--;
+      }
+      
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      // Fetch last month's jobdesks
+      const res = await jobdeskAPI.getAll({ 
+        periodMonth: lastMonth, 
+        periodYear: lastYear, 
+        assignedTo: user.id 
+      });
+
+      const lastMonthJobdesks = res.jobdesks || [];
+
+      if (lastMonthJobdesks.length === 0) {
+        toast.info('Tidak ada jobdesk di bulan lalu untuk disalin.');
+        setCopyingLastMonth(false);
+        return;
+      }
+
+      // Check if user already has jobdesks for current month to avoid duplicates
+      const currentRes = await jobdeskAPI.getAll({
+        periodMonth: currentMonth,
+        periodYear: currentYear,
+        assignedTo: user.id
+      });
+      const currentJobdesks = currentRes.jobdesks || [];
+      const currentClientIds = currentJobdesks.map(j => j.clientId).filter(Boolean);
+
+      const jobdesksToCreate = lastMonthJobdesks
+        .filter(job => job.clientId && !currentClientIds.includes(job.clientId)) // Only copy if not already exists for this client this month
+        .map(job => ({
+          title: job.title,
+          description: job.description,
+          assignedTo: [user.id],
+          priority: job.priority,
+          clientId: job.clientId,
+          periodMonth: currentMonth,
+          periodYear: currentYear,
+          taskTypes: job.taskTypes || [],
+        }));
+
+      if (jobdesksToCreate.length === 0) {
+        toast.info('Semua klien dari bulan lalu sudah ada di bulan ini.');
+        setCopyingLastMonth(false);
+        return;
+      }
+
+      await jobdeskAPI.bulkCreate(jobdesksToCreate);
+      toast.success(`${jobdesksToCreate.length} Jobdesk berhasil disalin dari bulan lalu!`);
+      loadJobdesks();
+    } catch (error) {
+      console.error('Failed to copy last month jobdesks:', error);
+      toast.error('Gagal menyalin jobdesk bulan lalu');
+    } finally {
+      setCopyingLastMonth(false);
     }
   };
 
@@ -507,7 +580,7 @@ export default function JobdeskPage({ user }) {
     try {
       await jobdeskAPI.updateStatus(jobdeskId, newStatus);
       toast.success('Status jobdesk diperbarui');
-      loadData();
+      loadJobdesks();
     } catch (error) {
       console.error('Failed to update status:', error);
       toast.error('Gagal memperbarui status');
@@ -534,7 +607,7 @@ export default function JobdeskPage({ user }) {
       setShowEditModal(false);
       setEditFormData({ title: '', description: '', assignedTo: [], dueDate: '', submissionLink: '' });
       setSelectedJobdesk(null);
-      loadData();
+      loadJobdesks();
     } catch (error) {
       console.error('Failed to update jobdesk:', error);
       toast.error(error.message || 'Gagal memperbarui jobdesk');
@@ -547,7 +620,7 @@ export default function JobdeskPage({ user }) {
       toast.success('Jobdesk berhasil dihapus!');
       setShowDeleteDialog(false);
       setSelectedJobdesk(null);
-      loadData();
+      loadJobdesks();
     } catch (error) {
       console.error('Failed to delete jobdesk:', error);
       toast.error(error.message || 'Gagal menghapus jobdesk');
@@ -659,32 +732,142 @@ export default function JobdeskPage({ user }) {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Jobdesk</h1>
           <p className="text-sm sm:text-base text-gray-600 mt-1">Kelola tugas dan pekerjaan</p>
         </div>
-        <Dialog open={showCreateModal} onOpenChange={(open) => {
-          setShowCreateModal(open);
-          if (!open) {
-            // Reset form data saat modal ditutup
-            setFormData({
-              title: '', description: '', assignedTo: [], dueDate: '', submissionLink: '',
-              clientId: '', newClient: null, periodMonth: new Date().getMonth() + 1,
-              periodYear: new Date().getFullYear(), taskTypes: DEFAULT_TASK_TYPES
-            });
-            setClientMode('existing');
-            setNewClientData({ name: '', groupName: '', npwp: '', address: '', contactPerson: '', phone: '', email: '', isPkp: false, isUmkm: true });
-            setSearchQuery('');
-            setDivisionFilter('all');
-            setStatusFilter('active');
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto">
-              <Plus className="w-4 h-4 mr-2" />
-              {user.role === 'karyawan' ? 'Tambah Jobdesk Saya' : 'Tambah Jobdesk'}
-            </Button>
-          </DialogTrigger>
+        
+        <div className="flex gap-2 w-full sm:w-auto flex-col sm:flex-row">
+          {user.role === 'karyawan' && (
+            <>
+              <Button variant="outline" onClick={handleCopyLastMonth} disabled={copyingLastMonth}>
+                <Copy className="w-4 h-4 mr-2" />
+                {copyingLastMonth ? 'Menyalin...' : 'Salin Klien Bulan Lalu'}
+              </Button>
+              <Dialog open={showGenerateModal} onOpenChange={setShowGenerateModal}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Users className="w-4 h-4 mr-2" />
+                    Pilih Klien Langganan
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Generate Jobdesk dari Klien Langganan</DialogTitle>
+                    <DialogDescription>
+                      Pilih klien langganan Anda untuk dibuatkan jobdesk bulan ini secara instan.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+                      <span className="font-medium text-sm text-gray-700">Pilih Semua Klien</span>
+                      <Checkbox 
+                        checked={selectedClientsToGenerate.length === clients.length && clients.length > 0}
+                        onCheckedChange={(c) => setSelectedClientsToGenerate(c ? clients.map(cl => cl.id) : [])}
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto space-y-2 border rounded-lg p-2">
+                      {clients.map(c => (
+                        <div key={c.id} className="flex justify-between items-center p-2 rounded hover:bg-gray-50 transition-colors">
+                          <Label className="flex-1 cursor-pointer text-sm font-medium" htmlFor={`gen-client-${c.id}`}>{c.name}</Label>
+                          <Checkbox 
+                            id={`gen-client-${c.id}`}
+                            checked={selectedClientsToGenerate.includes(c.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) setSelectedClientsToGenerate(prev => [...prev, c.id]);
+                              else setSelectedClientsToGenerate(prev => prev.filter(id => id !== c.id));
+                            }}
+                          />
+                        </div>
+                      ))}
+                      {clients.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">Anda belum memiliki klien langganan yang di-assign.</div>
+                      )}
+                    </div>
+                    <div className="flex justify-end pt-4">
+                      <Button 
+                        onClick={async () => {
+                          if (selectedClientsToGenerate.length === 0) {
+                             toast.error('Pilih minimal satu klien');
+                             return;
+                          }
+                          setCopyingLastMonth(true);
+                          try {
+                            const currentMonth = new Date().getMonth() + 1;
+                            const currentYear = new Date().getFullYear();
+                            
+                            // Check duplicates
+                            const currentRes = await jobdeskAPI.getAll({
+                               periodMonth: currentMonth,
+                               periodYear: currentYear,
+                               assignedTo: user.id
+                            });
+                            const currentJobdesks = currentRes.jobdesks || [];
+                            const currentClientIds = currentJobdesks.map(j => j.clientId).filter(Boolean);
+
+                            const jobdesksToCreate = clients
+                              .filter(c => selectedClientsToGenerate.includes(c.id))
+                              .filter(c => !currentClientIds.includes(c.id)) // Skip existing
+                              .map(c => ({
+                                title: `Pelaporan ${c.name}`,
+                                description: `Tugas otomatis dari daftar klien langganan.`,
+                                assignedTo: [user.id],
+                                priority: 'medium',
+                                clientId: c.id,
+                                periodMonth: currentMonth,
+                                periodYear: currentYear,
+                                taskTypes: [], // Can be filled later by employee
+                              }));
+
+                            if (jobdesksToCreate.length === 0) {
+                              toast.info('Semua klien yang Anda pilih sudah memiliki jobdesk di bulan ini.');
+                            } else {
+                              await jobdeskAPI.bulkCreate(jobdesksToCreate);
+                              toast.success(`${jobdesksToCreate.length} Jobdesk berhasil dibuat!`);
+                              loadJobdesks();
+                            }
+                            setShowGenerateModal(false);
+                            setSelectedClientsToGenerate([]);
+                          } catch(e) {
+                            console.error('Generate err:', e);
+                            toast.error('Gagal men-generate jobdesk');
+                          } finally {
+                            setCopyingLastMonth(false);
+                          }
+                        }}
+                        disabled={copyingLastMonth || selectedClientsToGenerate.length === 0}
+                      >
+                        {copyingLastMonth ? 'Memproses...' : `Generate ${selectedClientsToGenerate.length} Jobdesk`}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </>
+          )}
+
+          <Dialog open={showCreateModal} onOpenChange={(open) => {
+            setShowCreateModal(open);
+            if (!open) {
+              // Reset form data saat modal ditutup
+              setFormData({
+                title: '', description: '', assignedTo: [], dueDate: '', submissionLink: '',
+                clientId: '', newClient: null, periodMonth: new Date().getMonth() + 1,
+                periodYear: new Date().getFullYear(), taskTypes: DEFAULT_TASK_TYPES
+              });
+              setClientMode('existing');
+              setNewClientData({ name: '', groupName: '', npwp: '', address: '', contactPerson: '', phone: '', email: '', isPkp: false, isUmkm: true });
+              setSearchQuery('');
+              setDivisionFilter('all');
+              setStatusFilter('active');
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto">
+                <Plus className="w-4 h-4 mr-2" />
+                {user.role === 'karyawan' ? 'Tambah Jobdesk Saya' : 'Tambah Jobdesk'}
+              </Button>
+            </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
               <DialogHeader>
                 <DialogTitle>Tambah Jobdesk Baru</DialogTitle>
-                <DialogDescription>
+                <DialogDescription className="sr-only">
                   Buat jobdesk baru dan assign ke karyawan
                 </DialogDescription>
               </DialogHeader>

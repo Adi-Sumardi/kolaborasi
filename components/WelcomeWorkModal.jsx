@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Play, Calendar, AlertCircle } from 'lucide-react';
 import { jobdeskAPI } from '@/lib/api';
@@ -76,6 +76,8 @@ export default function WelcomeWorkModal({ user, onStartWork }) {
   return (
     <Dialog open={true}>
       <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+        <DialogTitle className="sr-only">Selamat Datang</DialogTitle>
+        <DialogDescription className="sr-only">Silakan pilih mood Anda hari ini untuk mulai bekerja.</DialogDescription>
         <div className="text-center py-4">
           {/* Greeting */}
           <div className="mb-6">

@@ -284,7 +284,9 @@ tampilkan ringkasan:
 4. ~~**History File Lampiran (Dashboard Karyawan):** History file lampiran pada section Portfolio & Lampiran berdasarkan PT di dashboard karyawan masih belum muncul. Tambahkan pagination dan filter.~~ ✅ DONE
 5. ~~**Filter Data Hasil Jobdesk:** Tambahkan filter pada Data Hasil Jobdesk agar bisa per bulan, dan pastikan tampilan data sesuai dengan bulan lapor.~~ ✅ DONE
 6. ~~**Download KPI Individual:** Pada saat download KPI Individual, tambahkan daftar client PT yang di-handle oleh karyawan.~~ ✅ DONE
-
+7. **Input Jobdesk Otomatis:** Input Jobdesk dan client masih perbulan harus bisa custom biar otomatis tidak create perbulan atau desainkan dulu seperti apa biar karyawan create data jobdesk itu tidak setiap bulan padahal kan clientnya sama.
+8. **Revisi Poin KPI:** Bisa croschek pengurangan poin dan revisi point task type oleh admin. Contohnya bila ada yg sakit dan kemungkinan lainnya dan ada notes atau catatan tambahan oleh karyawan ketika mereka melampirkan file di hasil kerjanya.
+9. **Detail Client di Dashboard KPI:** Menu KPI di dashboard superadmin bisa klik detail karyawan dan didalamnya ada tabel data client client yang di handle dan ini nyambung dengan croschek pengurangan poin dan revisi point task type oleh admin.
 ---
 
 ## Catatan Implementasi
