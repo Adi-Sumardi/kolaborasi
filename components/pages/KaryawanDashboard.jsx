@@ -455,6 +455,7 @@ export default function KaryawanDashboard({ user }) {
               {attData.pagination && (
                 <Badge variant="secondary">{attData.pagination.total} file</Badge>
               )}
+            </div>
             <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
               <div className="relative w-full sm:w-48">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
