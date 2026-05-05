@@ -5362,8 +5362,8 @@ async function handleGetKpiV2(request) {
         LEFT JOIN jobdesk_assignments ja ON j.id = ja.jobdesk_id
         WHERE (j.created_by = $1 OR ja.user_id = $1)
           AND j.status = 'completed'
-          AND EXTRACT(MONTH FROM j.updated_at) = $2
-          AND EXTRACT(YEAR FROM j.updated_at) = $3
+          AND j.period_month = $2
+          AND j.period_year = $3
         GROUP BY j.id, c.name, c.group_name
       `, [u.id, month, year]);
 
