@@ -768,7 +768,7 @@ export default function KPIPageV2({ user }) {
                         <TableHead className="text-center">Surat Teguran</TableHead>
                         <TableHead className="text-center">SP2DK</TableHead>
                         <TableHead className="text-center">Revisi Poin</TableHead>
-                        <TableHead className="text-center">Total Potongan</TableHead>
+                        <TableHead className="text-center">Total Poin</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -838,8 +838,10 @@ export default function KPIPageV2({ user }) {
                               <span className="text-gray-400">0</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-center text-red-600">
-                            {jp.totalDeduction > 0 ? `-${jp.totalDeduction}` : '0'}
+                          <TableCell className="text-center">
+                            <span className={`font-bold ${jp.finalPoint >= 90 ? 'text-green-600' : jp.finalPoint >= 60 ? 'text-blue-600' : 'text-red-600'}`}>
+                              {jp.finalPoint}
+                            </span>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -866,8 +868,8 @@ export default function KPIPageV2({ user }) {
                             </span>
                           ) : '0'}
                         </TableCell>
-                        <TableCell className="text-center text-red-600">
-                          -{(myKpi.totalLateDeduction || 0) + (myKpi.totalTaskTypeDeduction || 0) + (myKpi.totalWarnings * 5) + (myKpi.totalSp2dk * 5)}
+                        <TableCell className="text-center">
+                          <span className="text-lg font-bold">{myKpi.totalPoints}</span>
                         </TableCell>
                       </TableRow>
                     </TableBody>
