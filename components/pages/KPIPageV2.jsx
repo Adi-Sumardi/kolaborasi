@@ -40,6 +40,7 @@ export default function KPIPageV2({ user }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [clientGroupFilter, setClientGroupFilter] = useState('all');
+  const [adminClientGroupFilter, setAdminClientGroupFilter] = useState('all');
 
   // Employee Detail View State
   const [selectedEmployeeKpi, setSelectedEmployeeKpi] = useState(null);
@@ -1043,11 +1044,41 @@ export default function KPIPageV2({ user }) {
             </DialogDescription>
           </DialogHeader>
           
+          {(() => {
+            const uniqueGroupsAdmin = Array.from(
+              new Set(selectedEmployeeKpi?.jobdeskPoints?.map(jp => jp.clientGroupName).filter(Boolean) || [])
+            ).sort();
+            const filteredJobdeskPointsAdmin = adminClientGroupFilter === 'all'
+              ? (selectedEmployeeKpi?.jobdeskPoints || [])
+              : adminClientGroupFilter === '__none__'
+                ? (selectedEmployeeKpi?.jobdeskPoints || []).filter(jp => !jp.clientGroupName)
+                : (selectedEmployeeKpi?.jobdeskPoints || []).filter(jp => jp.clientGroupName === adminClientGroupFilter);
+
+            return (
+              <>
+                {uniqueGroupsAdmin.length > 0 && (
+                  <div className="flex items-center gap-2 mt-4 justify-end">
+                    <Label className="text-sm whitespace-nowrap">Filter Group PT:</Label>
+                    <Select value={adminClientGroupFilter} onValueChange={setAdminClientGroupFilter}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Group</SelectItem>
+                        {uniqueGroupsAdmin.map(group => (
+                          <SelectItem key={group} value={group}>{group}</SelectItem>
+                        ))}
+                        <SelectItem value="__none__">Tanpa Group</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
           <div className="overflow-x-auto mt-4">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Klien</TableHead>
+                  <TableHead>Group PT</TableHead>
                   <TableHead>Jobdesk</TableHead>
                   <TableHead className="text-center">Poin Dasar</TableHead>
                   <TableHead className="text-center">Terlambat</TableHead>
@@ -1055,22 +1086,22 @@ export default function KPIPageV2({ user }) {
                   <TableHead className="text-center">Teguran</TableHead>
                   <TableHead className="text-center">SP2DK</TableHead>
                   <TableHead className="text-center">Revisi Poin</TableHead>
-                  <TableHead className="text-center">Total Potongan</TableHead>
-                  <TableHead className="text-center">Skor Akhir</TableHead>
+                  <TableHead className="text-center">Total Poin</TableHead>
                   {user.role !== 'karyawan' && <TableHead className="text-center">Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedEmployeeKpi?.jobdeskPoints?.length === 0 && (
+                {filteredJobdeskPointsAdmin.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={11} className="text-center text-gray-500 py-6">
                       Belum ada data jobdesk selesai di bulan ini
                     </TableCell>
                   </TableRow>
                 )}
-                {selectedEmployeeKpi?.jobdeskPoints?.map((jp, idx) => (
+                {filteredJobdeskPointsAdmin.map((jp, idx) => (
                   <TableRow key={jp.jobdeskId || idx} className={jp.isLate || jp.lateTaskTypeCount > 0 ? 'bg-orange-50' : ''}>
                     <TableCell className="font-medium">{jp.clientName || '-'}</TableCell>
+                    <TableCell className="text-gray-500">{jp.clientGroupName || '-'}</TableCell>
                     <TableCell>
                       {jp.jobdeskTitle}
                       {jp.isLate && <Badge className="ml-2 bg-orange-100 text-orange-800 text-xs">Terlambat</Badge>}
@@ -1105,9 +1136,7 @@ export default function KPIPageV2({ user }) {
                         </div>
                       ) : <span className="text-gray-400">0</span>}
                     </TableCell>
-                    <TableCell className="text-center text-red-600">
-                      {jp.totalDeduction > 0 ? `-${jp.totalDeduction}` : '0'}
-                    </TableCell>
+
                     <TableCell className="text-center">
                       <span className={`font-bold ${jp.finalPoint >= 90 ? 'text-green-600' : jp.finalPoint >= 60 ? 'text-blue-600' : 'text-red-600'}`}>
                         {jp.finalPoint}
@@ -1142,6 +1171,9 @@ export default function KPIPageV2({ user }) {
           <div className="flex justify-end mt-4">
             <Button onClick={() => setShowEmployeeDetail(false)}>Tutup</Button>
           </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

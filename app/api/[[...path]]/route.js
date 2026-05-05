@@ -1220,6 +1220,32 @@ async function handleUpdateJobdeskAdjustment(request, jobdeskId) {
       [adminPointAdjustment || 0, adminAdjustmentReason || null, jobdeskId]
     );
 
+    // Notify assigned users about the KPI point adjustment
+    const assigneesResult = await query(
+      'SELECT user_id FROM jobdesk_assignments WHERE jobdesk_id = $1',
+      [jobdeskId]
+    );
+    const assignees = assigneesResult.rows.map(r => r.user_id);
+    
+    if (assignees.length > 0) {
+      const jdTitleRes = await query('SELECT title FROM jobdesks WHERE id = $1', [jobdeskId]);
+      const jdTitle = jdTitleRes.rows[0]?.title || 'Tugas';
+      
+      for (const userId of assignees) {
+        const message = `Poin KPI/Penilaian Anda untuk tugas "${jdTitle}" telah disesuaikan oleh Admin.`;
+        
+        await query(
+          'INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4)',
+          [userId, 'Pembaruan Nilai KPI', message, 'kpi_changed']
+        );
+        
+        sendNotification(userId, { type: 'kpi_changed', title: 'Pembaruan Nilai KPI', message });
+        
+        // Also send push notification
+        sendPushNotification(userId, 'Pembaruan Nilai KPI', message, `/dashboard/jobdesk`).catch(err => console.error(err));
+      }
+    }
+
     return NextResponse.json({ message: 'Penyesuaian poin berhasil disimpan' });
   } catch (error) {
     console.error('Update jobdesk adjustment error:', error);
