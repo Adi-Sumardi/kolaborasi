@@ -3811,11 +3811,17 @@ async function handleGetClients(request) {
     `;
     const params = [];
     let paramIndex = 1;
-    const assignedOnly = url.searchParams.get('assigned_only') === 'true';
-
-    // If explicitly requested, only show assigned clients
-    if (user.role === 'karyawan' && assignedOnly) {
-      queryText += ` AND c.id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})`;
+    // For karyawan, restrict clients to only those assigned OR those they have handled before
+    if (user.role === 'karyawan') {
+      queryText += ` AND (
+        c.id IN (SELECT client_id FROM client_assignments WHERE user_id = $${paramIndex})
+        OR
+        c.id IN (
+          SELECT j.client_id FROM jobdesks j 
+          LEFT JOIN jobdesk_assignments ja ON j.id = ja.jobdesk_id
+          WHERE j.client_id IS NOT NULL AND (j.created_by = $${paramIndex} OR ja.user_id = $${paramIndex})
+        )
+      )`;
       params.push(user.userId);
       paramIndex++;
     }
