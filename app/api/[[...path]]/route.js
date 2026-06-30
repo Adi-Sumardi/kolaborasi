@@ -6767,6 +6767,62 @@ async function handleDeleteBillingRecord(request, id) {
   }
 }
 
+async function handleUploadBillingFile(request, id) {
+  try {
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const formData = await request.formData();
+    const file = formData.get('file');
+    const fileType = formData.get('fileType'); // 'invoice_pdf' | 'email_screenshot'
+
+    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (!['invoice_pdf', 'email_screenshot'].includes(fileType)) {
+      return NextResponse.json({ error: 'fileType must be invoice_pdf or email_screenshot' }, { status: 400 });
+    }
+
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'billing');
+    await fs.mkdir(uploadsDir, { recursive: true });
+
+    const fileExt = path.extname(file.name);
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}${fileExt}`;
+    const filePath = path.join(uploadsDir, fileName);
+    const publicPath = `/uploads/billing/${fileName}`;
+
+    const bytes = await file.arrayBuffer();
+    await fs.writeFile(filePath, Buffer.from(bytes));
+
+    const column = fileType === 'invoice_pdf' ? 'invoice_pdf_url' : 'email_screenshot_url';
+
+    // Jika upload SS email, otomatis set billing_sent_date = hari ini dan status = sent
+    let extraUpdate = '';
+    if (fileType === 'email_screenshot') {
+      extraUpdate = `, billing_sent_date = COALESCE(billing_sent_date, CURRENT_DATE), status = CASE WHEN status = 'pending' THEN 'sent' ELSE status END`;
+    }
+
+    const result = await query(`
+      UPDATE billing_records
+      SET ${column} = $1${extraUpdate}, updated_by = $2, updated_at = NOW()
+      WHERE id = $3
+      RETURNING
+        id, status,
+        billing_sent_date::text AS billing_sent_date,
+        invoice_pdf_url, email_screenshot_url
+    `, [publicPath, authUser.userId, id]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Billing record not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, fileUrl: publicPath, billingRecord: result.rows[0] });
+  } catch (error) {
+    console.error('Upload billing file error:', error);
+    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+  }
+}
+
 // ============================================
 // STAFF OUTPUT MONITORING
 // ============================================
@@ -7235,6 +7291,10 @@ export async function PUT(request, { params }) {
     if (path === 'work-sessions/clock-out') return handleClockOut(request);
 
     // Billing Records
+    if (path.match(/^billing\/[^/]+\/upload$/)) {
+      const billingId = path.split('/')[1];
+      return handleUploadBillingFile(request, billingId);
+    }
     if (path.match(/^billing\/[^/]+$/)) {
       const billingId = path.split('/')[1];
       return handleUpdateBillingRecord(request, billingId);

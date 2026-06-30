@@ -574,6 +574,10 @@ const migrations = [
   CREATE TRIGGER update_billing_records_updated_at BEFORE UPDATE ON billing_records
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`,
 
+  // Billing: tambah kolom file upload (PDF invoice + SS email bukti pengiriman)
+  `ALTER TABLE billing_records ADD COLUMN IF NOT EXISTS invoice_pdf_url VARCHAR(500);`,
+  `ALTER TABLE billing_records ADD COLUMN IF NOT EXISTS email_screenshot_url VARCHAR(500);`,
+
   // Generate monitor codes for existing users that don't have one
   `DO $$
   DECLARE

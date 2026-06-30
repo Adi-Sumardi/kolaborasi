@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import {
   Receipt, Plus, Pencil, Trash2, CheckCircle2, Clock,
-  AlertTriangle, Send, DollarSign, Calendar, Building2
+  AlertTriangle, Send, FileText, ImageIcon, Upload, ExternalLink, X
 } from 'lucide-react';
 
 const MONTHS = [
@@ -47,7 +47,7 @@ function StatusBadge({ status }) {
 
 function fmtDate(d) {
   if (!d) return '-';
-  return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function isOverdue(dueDate, status) {
@@ -64,6 +64,96 @@ function getDaysLeft(dueDate) {
 const currentMonth = new Date().getMonth() + 1;
 const currentYear = new Date().getFullYear();
 
+// Upload panel untuk satu billing record
+function UploadPanel({ rec, onUploaded }) {
+  const pdfRef = useRef();
+  const ssRef = useRef();
+  const [uploading, setUploading] = useState(null); // 'invoice_pdf' | 'email_screenshot'
+
+  const handleUpload = async (fileType, file) => {
+    if (!file) return;
+    setUploading(fileType);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('fileType', fileType);
+      const res = await billingAPI.uploadFile(rec.id, fd);
+      toast.success(fileType === 'invoice_pdf' ? 'PDF invoice diupload' : 'Screenshot email diupload — billing ditandai terkirim');
+      onUploaded(res.billingRecord);
+    } catch {
+      toast.error('Gagal upload file');
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 min-w-[180px]">
+      {/* PDF Invoice */}
+      <div className="flex items-center gap-1">
+        {rec.invoice_pdf_url ? (
+          <a
+            href={rec.invoice_pdf_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+          >
+            <FileText className="w-3.5 h-3.5" /> PDF
+          </a>
+        ) : (
+          <span className="text-xs text-gray-400">Belum ada PDF</span>
+        )}
+        <button
+          className="ml-auto text-gray-400 hover:text-blue-600"
+          title="Upload PDF invoice"
+          onClick={() => pdfRef.current?.click()}
+          disabled={!!uploading}
+        >
+          {uploading === 'invoice_pdf' ? '...' : <Upload className="w-3.5 h-3.5" />}
+        </button>
+        <input
+          ref={pdfRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={e => handleUpload('invoice_pdf', e.target.files[0])}
+        />
+      </div>
+
+      {/* SS Email */}
+      <div className="flex items-center gap-1">
+        {rec.email_screenshot_url ? (
+          <a
+            href={rec.email_screenshot_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-green-600 hover:underline"
+          >
+            <ImageIcon className="w-3.5 h-3.5" /> SS Email
+          </a>
+        ) : (
+          <span className="text-xs text-gray-400">Belum ada SS email</span>
+        )}
+        <button
+          className="ml-auto text-gray-400 hover:text-green-600"
+          title="Upload screenshot email bukti pengiriman billing"
+          onClick={() => ssRef.current?.click()}
+          disabled={!!uploading}
+        >
+          {uploading === 'email_screenshot' ? '...' : <Upload className="w-3.5 h-3.5" />}
+        </button>
+        <input
+          ref={ssRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => handleUpload('email_screenshot', e.target.files[0])}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function BillingPage({ user }) {
   const [records, setRecords] = useState([]);
   const [clients, setClients] = useState([]);
@@ -76,7 +166,6 @@ export default function BillingPage({ user }) {
   const [editRecord, setEditRecord] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Form state
   const [form, setForm] = useState({
     clientId: '', periodMonth: String(currentMonth), periodYear: String(currentYear),
     amount: '', invoiceNumber: '', notes: '',
@@ -103,10 +192,14 @@ export default function BillingPage({ user }) {
   }, [filterMonth, filterYear, filterStatus]);
 
   useEffect(() => { load(); }, [load]);
-
   useEffect(() => {
     clientAPI.getAll({ limit: 200 }).then(r => setClients(r.clients || [])).catch(() => {});
   }, []);
+
+  // Update satu record di state tanpa reload semua
+  const updateRecordInState = (updated) => {
+    setRecords(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+  };
 
   const openCreate = () => {
     setEditRecord(null);
@@ -203,7 +296,6 @@ export default function BillingPage({ user }) {
     }
   };
 
-  // Stats
   const stats = {
     total: records.length,
     pending: records.filter(r => r.status === 'pending').length,
@@ -231,7 +323,7 @@ export default function BillingPage({ user }) {
         </Button>
       </div>
 
-      {/* Stats cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total', value: stats.total, color: 'text-gray-700' },
@@ -245,10 +337,11 @@ export default function BillingPage({ user }) {
           </Card>
         ))}
       </div>
+
       {stats.overdue > 0 && (
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span><strong>{stats.overdue} billing</strong> sudah melewati JT tgl 13 dan belum terkirim/lunas!</span>
+          <span><strong>{stats.overdue} billing</strong> sudah melewati JT tgl 13 dan belum terkirim!</span>
         </div>
       )}
 
@@ -256,27 +349,19 @@ export default function BillingPage({ user }) {
       <Card>
         <CardContent className="p-3 flex flex-wrap gap-2">
           <Select value={filterMonth} onValueChange={setFilterMonth}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Bulan" />
-            </SelectTrigger>
+            <SelectTrigger className="w-36"><SelectValue placeholder="Bulan" /></SelectTrigger>
             <SelectContent>
-              {MONTHS.map((m, i) => (
-                <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>
-              ))}
+              {MONTHS.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterYear} onValueChange={setFilterYear}>
-            <SelectTrigger className="w-28">
-              <SelectValue placeholder="Tahun" />
-            </SelectTrigger>
+            <SelectTrigger className="w-28"><SelectValue placeholder="Tahun" /></SelectTrigger>
             <SelectContent>
               {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Semua Status" />
-            </SelectTrigger>
+            <SelectTrigger className="w-36"><SelectValue placeholder="Semua Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Status</SelectItem>
               {Object.entries(STATUS_CONFIG).map(([k, v]) => (
@@ -284,9 +369,7 @@ export default function BillingPage({ user }) {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => setFilterStatus('all')}>
-            Reset Status
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => setFilterStatus('all')}>Reset</Button>
         </CardContent>
       </Card>
 
@@ -296,9 +379,7 @@ export default function BillingPage({ user }) {
           {loading ? (
             <div className="p-8 text-center text-gray-400 text-sm">Memuat data...</div>
           ) : records.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 text-sm">
-              Belum ada billing untuk periode ini
-            </div>
+            <div className="p-8 text-center text-gray-400 text-sm">Belum ada billing untuk periode ini</div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -312,6 +393,7 @@ export default function BillingPage({ user }) {
                     <TableHead>JT Bayar</TableHead>
                     <TableHead>Tgl Lunas</TableHead>
                     <TableHead>Nominal</TableHead>
+                    <TableHead>Dokumen</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
@@ -324,16 +406,12 @@ export default function BillingPage({ user }) {
                       <TableRow key={rec.id} className={overdue ? 'bg-red-50' : ''}>
                         <TableCell>
                           <div className="font-medium text-sm">{rec.client_name}</div>
-                          {rec.pic_name && (
-                            <div className="text-xs text-gray-400">PIC: {rec.pic_name}</div>
-                          )}
+                          {rec.pic_name && <div className="text-xs text-gray-400">PIC: {rec.pic_name}</div>}
                         </TableCell>
                         <TableCell className="text-sm">
                           {MONTHS[(rec.period_month || 1) - 1]} {rec.period_year}
                         </TableCell>
-                        <TableCell className="text-sm font-mono">
-                          {rec.invoice_number || '-'}
-                        </TableCell>
+                        <TableCell className="text-sm font-mono">{rec.invoice_number || '-'}</TableCell>
                         <TableCell>
                           <div className="text-sm">{fmtDate(rec.billing_due_date)}</div>
                           {rec.status !== 'paid' && rec.status !== 'sent' && daysLeft !== null && (
@@ -342,32 +420,42 @@ export default function BillingPage({ user }) {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm">{fmtDate(rec.billing_sent_date)}</TableCell>
+                        <TableCell>
+                          <div className="text-sm">{fmtDate(rec.billing_sent_date)}</div>
+                          {rec.email_screenshot_url && (
+                            <a href={rec.email_screenshot_url} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-0.5 text-xs text-green-600 hover:underline mt-0.5">
+                              <ImageIcon className="w-3 h-3" /> lihat SS
+                            </a>
+                          )}
+                        </TableCell>
                         <TableCell className="text-sm">{fmtDate(rec.payment_due_date)}</TableCell>
                         <TableCell className="text-sm">{fmtDate(rec.payment_received_date)}</TableCell>
                         <TableCell className="text-sm">
                           {rec.amount ? `Rp ${Number(rec.amount).toLocaleString('id-ID')}` : '-'}
                         </TableCell>
+
+                        {/* Kolom Dokumen: upload PDF + SS email */}
+                        <TableCell>
+                          <UploadPanel rec={rec} onUploaded={updateRecordInState} />
+                        </TableCell>
+
                         <TableCell><StatusBadge status={rec.status} /></TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1">
                             {rec.status === 'pending' && (
-                              <Button
-                                size="sm" variant="outline"
+                              <Button size="sm" variant="outline"
                                 className="text-blue-600 border-blue-200 h-7 px-2 text-xs"
                                 onClick={() => handleQuickSent(rec)}
-                                title="Tandai terkirim hari ini"
-                              >
+                                title="Tandai terkirim hari ini">
                                 <Send className="w-3 h-3 mr-1" /> Kirim
                               </Button>
                             )}
                             {rec.status === 'sent' && (
-                              <Button
-                                size="sm" variant="outline"
+                              <Button size="sm" variant="outline"
                                 className="text-green-600 border-green-200 h-7 px-2 text-xs"
                                 onClick={() => handleQuickPaid(rec)}
-                                title="Tandai lunas hari ini"
-                              >
+                                title="Tandai lunas hari ini">
                                 <CheckCircle2 className="w-3 h-3 mr-1" /> Lunas
                               </Button>
                             )}
@@ -403,13 +491,9 @@ export default function BillingPage({ user }) {
               <div className="space-y-1">
                 <Label>Klien *</Label>
                 <Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih klien..." />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Pilih klien..." /></SelectTrigger>
                   <SelectContent className="max-h-52">
-                    {clients.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
+                    {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -418,9 +502,7 @@ export default function BillingPage({ user }) {
             {editRecord && (
               <div className="bg-gray-50 rounded p-3 text-sm">
                 <p className="font-medium">{editRecord.client_name}</p>
-                <p className="text-gray-500">
-                  Periode: {MONTHS[(editRecord.period_month || 1) - 1]} {editRecord.period_year}
-                </p>
+                <p className="text-gray-500">Periode: {MONTHS[(editRecord.period_month || 1) - 1]} {editRecord.period_year}</p>
                 <p className="text-gray-500">JT Kirim: {fmtDate(editRecord.billing_due_date)}</p>
               </div>
             )}
@@ -451,50 +533,35 @@ export default function BillingPage({ user }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>No. Invoice</Label>
-                <Input
-                  placeholder="INV-001"
-                  value={form.invoiceNumber}
-                  onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))}
-                />
+                <Input placeholder="INV-001" value={form.invoiceNumber}
+                  onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label>Nominal (Rp)</Label>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                />
+                <Input type="number" placeholder="0" value={form.amount}
+                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Tgl Dikirim ke Klien</Label>
-                <Input
-                  type="date"
-                  value={form.billingSentDate}
-                  onChange={e => setForm(f => ({ ...f, billingSentDate: e.target.value }))}
-                />
+                <Input type="date" value={form.billingSentDate}
+                  onChange={e => setForm(f => ({ ...f, billingSentDate: e.target.value }))} />
+                <p className="text-xs text-gray-400">Atau upload SS email — tgl otomatis terisi</p>
               </div>
               <div className="space-y-1">
                 <Label>Tgl Pembayaran Diterima</Label>
-                <Input
-                  type="date"
-                  value={form.paymentReceivedDate}
-                  onChange={e => setForm(f => ({ ...f, paymentReceivedDate: e.target.value }))}
-                />
+                <Input type="date" value={form.paymentReceivedDate}
+                  onChange={e => setForm(f => ({ ...f, paymentReceivedDate: e.target.value }))} />
               </div>
             </div>
 
             <div className="space-y-1">
               <Label>Catatan</Label>
-              <Textarea
-                rows={2}
-                placeholder="Catatan tambahan..."
+              <Textarea rows={2} placeholder="Catatan tambahan..."
                 value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
             {!editRecord && form.periodMonth && form.periodYear && (
@@ -517,9 +584,7 @@ export default function BillingPage({ user }) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Batal</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Menyimpan...' : 'Simpan'}
-            </Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
