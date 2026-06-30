@@ -2091,7 +2091,12 @@ export default function JobdeskPage({ user }) {
                                 </Badge>
                                 {deadline && (
                                   <span className={`text-xs ${deadlinePassed ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                                    Deadline: {formatDeadlineDate(deadline)}
+                                    Deadline laporan: {formatDeadlineDate(deadline)}
+                                  </span>
+                                )}
+                                {JT_BAYAR_INFO[taskTypeId] && (
+                                  <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                    {JT_BAYAR_INFO[taskTypeId].label}: {JT_BAYAR_INFO[taskTypeId].tgl}
                                   </span>
                                 )}
                                 {hasSubmissions ? (
@@ -2125,13 +2130,6 @@ export default function JobdeskPage({ user }) {
                             {isActive && (
                               <div className="p-3 bg-gray-50 border-t">
                                 <div className="space-y-3">
-                                  {/* Info JT Bayar untuk jenis pajak yg relevan */}
-                                  {JT_BAYAR_INFO[taskTypeId] && (
-                                    <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded px-2 py-1.5 text-amber-800">
-                                      <span className="font-medium">{JT_BAYAR_INFO[taskTypeId].label}:</span>
-                                      <span>{JT_BAYAR_INFO[taskTypeId].tgl}</span>
-                                    </div>
-                                  )}
                                   <div className="flex gap-2">
                                     <Select value={inlineForm.submissionType} onValueChange={(val) => setInlineForm({ ...inlineForm, submissionType: val, content: '', file: null })}>
                                       <SelectTrigger className="w-32">
