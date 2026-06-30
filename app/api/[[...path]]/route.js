@@ -6877,7 +6877,19 @@ async function handleGetStaffOutputMonitor(request) {
         br.status AS billing_status,
         br.amount AS billing_amount,
         br.invoice_number,
-        br.id AS billing_id
+        br.id AS billing_id,
+        (
+          SELECT json_object_agg(s.task_type, json_build_object(
+            'tglLapor', s.created_at,
+            'isLate', s.is_late
+          ))
+          FROM (
+            SELECT DISTINCT ON (task_type) task_type, created_at, is_late
+            FROM jobdesk_submissions
+            WHERE jobdesk_id = j.id AND task_type IS NOT NULL
+            ORDER BY task_type, created_at DESC
+          ) s
+        ) AS submissions_by_type
       FROM jobdesks j
       JOIN clients c ON j.client_id = c.id
       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
@@ -6910,6 +6922,7 @@ async function handleGetStaffOutputMonitor(request) {
         periodMonth: row.period_month,
         periodYear: row.period_year,
         taskTypes: row.task_types || [],
+        submissionsByType: row.submissions_by_type || {},
         tglLapor: row.tgl_lapor,
         jtLapor: row.rekap_laporan_deadline,
         laporIsLate: row.lapor_is_late,

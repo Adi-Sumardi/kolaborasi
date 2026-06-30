@@ -35,6 +35,15 @@ const TASK_LABELS = {
 // Task types yang muncul sebagai "Jenis Pajak" (exclude rekap & billing yang sudah punya kolom sendiri)
 const TAX_TASK_TYPES = ['pph_21','pph_unifikasi','pph_25','ppn','pph_badan','pph_05','laporan_tahunan'];
 
+// Kolom pajak untuk tabel & Excel (urutan sesuai screenshot)
+const TAX_COLS = [
+  { key: 'pph_21',        label: 'PPh 21' },
+  { key: 'pph_unifikasi', label: 'PPh Unifikasi' },
+  { key: 'pph_05',        label: 'PPh Final UMKM' },
+  { key: 'pph_25',        label: 'PPh 25' },
+  { key: 'ppn',           label: 'PPN' },
+];
+
 function getTaxTypes(taskTypes) {
   if (!taskTypes || !taskTypes.length) return [];
   return taskTypes.filter(t => TAX_TASK_TYPES.includes(t));
@@ -149,161 +158,230 @@ export default function StaffOutputMonitorPage({ user }) {
 
       const monthLabel = `${MONTHS[parseInt(filterMonth) - 1]} ${filterYear}`;
 
-      // Columns: No | PIC | Klien | Grup | Bulan | Jenis Pajak | TglLapor | JT | TglKirim | JT | TglBayar | JT | TglReport | JT | Status | Invoice | Catatan
-      // Total 17 columns: A–Q
-      const LAST_COL = 'Q';
+      // TAX_COLS is defined at module level
+      // Sub-kolom per jenis pajak: 4 kolom
+      const SUB = ['Billing dikirim ke klien', 'Tanggal Bayar', 'Tanggal Lapor', 'Nilai KB/LB'];
+
+      // Layout: A-F (6 fixed) + 5 tax × 4 sub = 20 + 2 Report Internal = 28 cols total
+      // A B C D E F | G H I J | K L M N | O P Q R | S T U V | W X Y Z | AA AB
+      const numToCol = (n) => {
+        let s = '';
+        while (n > 0) {
+          s = String.fromCharCode(64 + (n % 26 || 26)) + s;
+          n = Math.floor((n - 1) / 26);
+        }
+        return s;
+      };
+
+      const FIXED = 6;
+      const TAX_SUBCOLS = 4;
+      const REPORT_COLS = 2;
+      const TOTAL_COLS = FIXED + TAX_COLS.length * TAX_SUBCOLS + REPORT_COLS; // 28
+
+      const colLetter = (idx) => numToCol(idx); // 1-based
 
       const buildSheet = (wb, picData, sheetName) => {
-        const sheet = wb.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 3 }] });
+        const sheet = wb.addWorksheet(sheetName, { views: [{ state: 'frozen', xSplit: 6, ySplit: 3 }] });
 
-        sheet.columns = [
-          { key: 'no',          width: 5 },
-          { key: 'pic',         width: 18 },
-          { key: 'klien',       width: 25 },
-          { key: 'grup',        width: 15 },
-          { key: 'bulan',       width: 12 },
-          { key: 'pajak',       width: 22 },  // Jenis Pajak (NEW)
-          { key: 'tgl_lapor',   width: 13 },
-          { key: 'jt_lapor',    width: 13 },
-          { key: 'tgl_kirim',   width: 13 },
-          { key: 'jt_kirim',    width: 13 },
-          { key: 'tgl_bayar',   width: 13 },
-          { key: 'jt_bayar',    width: 13 },
-          { key: 'tgl_report',  width: 13 },
-          { key: 'jt_report',   width: 13 },
-          { key: 'status',      width: 14 },
-          { key: 'invoice',     width: 16 },
-          { key: 'catatan',     width: 24 },
-        ];
+        // Set column widths
+        sheet.getColumn(1).width = 5;   // No
+        sheet.getColumn(2).width = 16;  // Nama PIC
+        sheet.getColumn(3).width = 22;  // Nama Klien
+        sheet.getColumn(4).width = 14;  // Group
+        sheet.getColumn(5).width = 11;  // Bulan/Masa
+        sheet.getColumn(6).width = 28;  // Jenis Kewajiban
+        for (let t = 0; t < TAX_COLS.length; t++) {
+          for (let s = 0; s < TAX_SUBCOLS; s++) {
+            const colIdx = FIXED + t * TAX_SUBCOLS + s + 1;
+            sheet.getColumn(colIdx).width = s === 3 ? 12 : 14; // Nilai KB/LB lebih sempit
+          }
+        }
+        sheet.getColumn(FIXED + TAX_COLS.length * TAX_SUBCOLS + 1).width = 14; // Tanggal Submit
+        sheet.getColumn(FIXED + TAX_COLS.length * TAX_SUBCOLS + 2).width = 14; // Tanggal JT
 
-        // Row 1 - Title
-        sheet.mergeCells(`A1:${LAST_COL}1`);
-        const titleCell = sheet.getCell('A1');
-        titleCell.value = `MONITORING OUTPUT STAFF — ${monthLabel.toUpperCase()}`;
-        titleCell.font = { bold: true, size: 13, color: { argb: 'FF1E3A5F' } };
-        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6E4F7' } };
+        // --- Row 1: Title ---
+        sheet.mergeCells(`A1:${colLetter(TOTAL_COLS)}1`);
+        Object.assign(sheet.getCell('A1'), {
+          value: `MONITORING OUTPUT STAFF — ${monthLabel.toUpperCase()}`,
+          font: { bold: true, size: 13, color: { argb: 'FF1E3A5F' } },
+          alignment: { horizontal: 'center', vertical: 'middle' },
+          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6E4F7' } },
+        });
         sheet.getRow(1).height = 28;
 
-        const groupHeaderStyle = {
+        const mkBorder = (color = 'FF1E40AF') => ({
+          top: { style: 'thin', color: { argb: color } },
+          bottom: { style: 'thin', color: { argb: color } },
+          left: { style: 'thin', color: { argb: color } },
+          right: { style: 'thin', color: { argb: color } },
+        });
+
+        const singleHdr = {
           font: { bold: true, size: 9, color: { argb: 'FFFFFFFF' } },
-          alignment: { horizontal: 'center', vertical: 'middle' },
-          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } },
-          border: {
-            top: { style: 'thin', color: { argb: 'FF1E40AF' } },
-            bottom: { style: 'thin', color: { argb: 'FF1E40AF' } },
-            left: { style: 'thin', color: { argb: 'FF1E40AF' } },
-            right: { style: 'thin', color: { argb: 'FF1E40AF' } },
-          }
-        };
-        const singleHeaderStyle = {
-          ...groupHeaderStyle,
+          alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
           fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } },
+          border: mkBorder(),
         };
-
-        // Row 2 - group headers, merge row2+row3 for single columns
-        ['A2','B2','C2','D2','E2','F2','O2','P2','Q2'].forEach(cell => {
-          sheet.mergeCells(`${cell}:${cell.replace('2', '3')}`);
-          Object.assign(sheet.getCell(cell), singleHeaderStyle);
-        });
-        sheet.getCell('A2').value = 'No';
-        sheet.getCell('B2').value = 'PIC';
-        sheet.getCell('C2').value = 'Klien';
-        sheet.getCell('D2').value = 'Grup PT';
-        sheet.getCell('E2').value = 'Bulan';
-        sheet.getCell('F2').value = 'Jenis Pajak';
-        sheet.getCell('O2').value = 'Status';
-        sheet.getCell('P2').value = 'No. Invoice';
-        sheet.getCell('Q2').value = 'Catatan';
-
-        // Group headers for date pairs (G-H, I-J, K-L, M-N)
-        sheet.mergeCells('G2:H2');
-        sheet.mergeCells('I2:J2');
-        sheet.mergeCells('K2:L2');
-        sheet.mergeCells('M2:N2');
-        [['G2','Laporan Rekap'],['I2','Kirim ke Klien'],['K2','Pembayaran'],['M2','Report Internal']].forEach(([cell, label]) => {
-          Object.assign(sheet.getCell(cell), groupHeaderStyle);
-          sheet.getCell(cell).value = label;
-        });
-
-        // Row 3 - sub-headers for date pairs
-        const subHeaderStyle = {
+        const groupHdr = {
+          ...singleHdr,
+          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } },
+        };
+        const subHdr = {
           font: { bold: true, size: 8, color: { argb: 'FFFFFFFF' } },
-          alignment: { horizontal: 'center', vertical: 'middle' },
+          alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
           fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B82F6' } },
-          border: {
-            top: { style: 'thin', color: { argb: 'FF1E40AF' } },
-            bottom: { style: 'medium', color: { argb: 'FF1E40AF' } },
-            left: { style: 'thin', color: { argb: 'FF1E40AF' } },
-            right: { style: 'thin', color: { argb: 'FF1E40AF' } },
-          }
+          border: mkBorder(),
         };
-        [['G3','Tgl Lapor'],['H3','JT (5)'],['I3','Tgl Kirim'],['J3','JT (13)'],
-         ['K3','Tgl Bayar'],['L3','JT (20)'],['M3','Tgl Report'],['N3','JT Report']].forEach(([cell, label]) => {
-          Object.assign(sheet.getCell(cell), subHeaderStyle);
-          sheet.getCell(cell).value = label;
+        const reportHdr = {
+          ...groupHdr,
+          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF7C3AED' } },
+        };
+
+        // --- Row 2-3: Fixed column headers (merge row 2+3) ---
+        const fixedLabels = ['No', 'Nama PIC', 'Nama Klien', 'Group', 'Bulan/\nMasa', 'Jenis\nKewajiban'];
+        fixedLabels.forEach((label, i) => {
+          const col = colLetter(i + 1);
+          sheet.mergeCells(`${col}2:${col}3`);
+          Object.assign(sheet.getCell(`${col}2`), { ...singleHdr, value: label });
         });
-        sheet.getRow(2).height = 20;
+
+        // --- Row 2: Tax group headers (merge 4 sub-cols each) ---
+        TAX_COLS.forEach((tax, t) => {
+          const startCol = FIXED + t * TAX_SUBCOLS + 1;
+          const endCol = startCol + TAX_SUBCOLS - 1;
+          sheet.mergeCells(`${colLetter(startCol)}2:${colLetter(endCol)}2`);
+          Object.assign(sheet.getCell(`${colLetter(startCol)}2`), { ...groupHdr, value: tax.label });
+        });
+
+        // --- Row 2: Report Internal header (merge 2 cols) ---
+        const riStart = FIXED + TAX_COLS.length * TAX_SUBCOLS + 1;
+        sheet.mergeCells(`${colLetter(riStart)}2:${colLetter(riStart + 1)}2`);
+        Object.assign(sheet.getCell(`${colLetter(riStart)}2`), { ...reportHdr, value: 'Report Internal' });
+
+        // --- Row 3: Sub-headers per tax type ---
+        TAX_COLS.forEach((tax, t) => {
+          SUB.forEach((subLabel, s) => {
+            const colIdx = FIXED + t * TAX_SUBCOLS + s + 1;
+            Object.assign(sheet.getCell(`${colLetter(colIdx)}3`), { ...subHdr, value: subLabel });
+          });
+        });
+        // Report Internal sub-headers
+        Object.assign(sheet.getCell(`${colLetter(riStart)}3`), { ...subHdr, value: 'Tanggal Submit' });
+        Object.assign(sheet.getCell(`${colLetter(riStart + 1)}3`), { ...subHdr, value: 'Tanggal JT' });
+
+        sheet.getRow(2).height = 22;
         sheet.getRow(3).height = 18;
 
-        const borderThin = (color = 'FFD1D5DB') => ({ style: 'thin', color: { argb: color } });
-        const cellBorder = { top: borderThin(), bottom: borderThin(), left: borderThin(), right: borderThin() };
-        const fmtExcel = (d) => {
-          if (!d) return '-';
-          const date = d.includes('T') ? new Date(d) : new Date(d + 'T00:00:00');
+        // --- Data rows ---
+        const borderCell = {
+          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        };
+        const fmtD = (d) => {
+          if (!d) return '';
+          const date = typeof d === 'string' ? new Date(d.includes('T') ? d : d + 'T00:00:00') : new Date(d);
           return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
         };
+        const toDate = (d) => d ? new Date(typeof d === 'string' && !d.includes('T') ? d + 'T00:00:00' : d) : null;
+        const lateFill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+        const overdueFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } };
+        const doneFill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+        const today = new Date(new Date().toDateString());
 
         let rowNum = 4;
         let no = 1;
 
         for (const pic of picData) {
           for (const client of pic.clients) {
-            const st = rowStatus(client);
-            const today = new Date(new Date().toDateString());
-            const toDate = (d) => d ? new Date(d.includes('T') ? d : d + 'T00:00:00') : null;
-            const isLate = (val, jt) => val && jt && toDate(val) > toDate(jt);
-            const isOverdueNow = (val, jt) => !val && jt && toDate(jt) < today;
+            const subs = client.submissionsByType || {};
+            const taskSet = new Set(client.taskTypes || []);
 
-            const taxLabels = getTaxTypes(client.taskTypes).map(t => TASK_LABELS[t] || t).join(', ') || '-';
+            // Jenis Kewajiban: daftar pajak yang diceklist
+            const kewajibanList = TAX_COLS
+              .filter(t => taskSet.has(t.key))
+              .map(t => t.label)
+              .join(', ') || 'Sesuai yang diceklist PIC';
 
             const row = sheet.getRow(rowNum);
             row.height = 18;
-            const vals = [
+
+            // Fixed cols (1-6)
+            const fixedVals = [
               no++, pic.picName, client.clientName, client.groupName || '-',
-              `${MONTHS[(client.periodMonth || 1) - 1]} ${client.periodYear}`,
-              taxLabels,
-              fmtExcel(client.tglLapor), fmtExcel(client.jtLapor),
-              fmtExcel(client.tglKirimKlien), fmtExcel(client.jtKirimKlien),
-              fmtExcel(client.tglBayar), fmtExcel(client.jtBayar),
-              fmtExcel(client.tglReport), fmtExcel(client.jtReport),
-              st.label, client.invoiceNumber || '-', '-',
+              `${MONTHS[(client.periodMonth || 1) - 1]}-${String(client.periodYear).slice(2)}`,
+              kewajibanList,
             ];
-            vals.forEach((val, i) => {
+            fixedVals.forEach((val, i) => {
               const cell = row.getCell(i + 1);
               cell.value = val;
-              cell.border = cellBorder;
+              cell.border = borderCell;
               cell.font = { size: 9 };
-              cell.alignment = { vertical: 'middle', wrapText: i === 5, horizontal: i < 5 ? 'left' : i === 5 ? 'left' : 'center' };
+              cell.alignment = { vertical: 'middle', horizontal: i < 2 ? 'center' : 'left', wrapText: i === 5 };
             });
 
-            // Status color
-            const statusCell = row.getCell(15);
-            if (st.label === 'Selesai') statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
-            else if (st.label === 'Terlambat') statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-            else statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } };
+            // Tax type cols
+            TAX_COLS.forEach((tax, t) => {
+              const startCol = FIXED + t * TAX_SUBCOLS + 1;
+              const hasTax = taskSet.has(tax.key);
+              const sub = subs[tax.key];
+              const tglLapor = sub?.tglLapor || null;
+              const isLate = sub?.isLate || false;
 
-            // Highlight late dates (cols 7,9,11,13 = G,I,K,M)
-            const lateFill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-            const overdueFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } };
-            if (isLate(client.tglLapor, client.jtLapor)) row.getCell(7).fill = lateFill;
-            if (isOverdueNow(client.tglLapor, client.jtLapor)) row.getCell(7).fill = overdueFill;
-            if (isLate(client.tglKirimKlien, client.jtKirimKlien)) row.getCell(9).fill = lateFill;
-            if (isOverdueNow(client.tglKirimKlien, client.jtKirimKlien)) row.getCell(9).fill = overdueFill;
-            if (isLate(client.tglBayar, client.jtBayar)) row.getCell(11).fill = lateFill;
-            if (isOverdueNow(client.tglBayar, client.jtBayar)) row.getCell(11).fill = overdueFill;
-            if (isLate(client.tglReport, client.jtReport)) row.getCell(13).fill = lateFill;
-            if (isOverdueNow(client.tglReport, client.jtReport)) row.getCell(13).fill = overdueFill;
+              // Sub-col 1: Billing dikirim ke klien (sama untuk semua jenis pajak di klien ini)
+              const tglKirim = hasTax ? fmtD(client.tglKirimKlien) : '';
+              // Sub-col 2: Tanggal Bayar
+              const tglBayar = hasTax ? fmtD(client.tglBayar) : '';
+              // Sub-col 3: Tanggal Lapor (per task type dari submissions)
+              const tglLaporFmt = hasTax ? fmtD(tglLapor) : '';
+              // Sub-col 4: Nilai KB/LB (kosong — isi manual)
+              const nilaiKBLB = '';
+
+              const vals = [tglKirim, tglBayar, tglLaporFmt, nilaiKBLB];
+              vals.forEach((val, s) => {
+                const colIdx = startCol + s;
+                const cell = row.getCell(colIdx);
+                cell.value = val;
+                cell.border = borderCell;
+                cell.font = { size: 9 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                if (!hasTax) {
+                  // Jenis pajak tidak diceklist — grey out
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+                } else if (s === 2 && tglLapor) {
+                  // Tanggal Lapor: highlight jika terlambat
+                  cell.fill = isLate ? lateFill : doneFill;
+                } else if (s === 0 && client.tglKirimKlien) {
+                  const jtDate = toDate(client.jtKirimKlien);
+                  const sentDate = toDate(client.tglKirimKlien);
+                  cell.fill = (jtDate && sentDate > jtDate) ? lateFill : doneFill;
+                } else if (s === 0 && !client.tglKirimKlien && hasTax) {
+                  const jtDate = toDate(client.jtKirimKlien);
+                  if (jtDate && jtDate < today) cell.fill = overdueFill;
+                }
+              });
+            });
+
+            // Report Internal cols
+            const tglSubmit = fmtD(client.tglLapor);
+            const tglJT = client.jtReport ? fmtD(client.jtReport) : '';
+            [tglSubmit, tglJT].forEach((val, s) => {
+              const cell = row.getCell(riStart + s);
+              cell.value = val;
+              cell.border = borderCell;
+              cell.font = { size: 9 };
+              cell.alignment = { horizontal: 'center', vertical: 'middle' };
+              if (s === 0 && tglSubmit) {
+                const jtDate = toDate(client.jtReport);
+                const lapDate = toDate(client.tglLapor);
+                cell.fill = (jtDate && lapDate && lapDate > jtDate) ? lateFill : doneFill;
+              } else if (s === 0 && !tglSubmit) {
+                const jtDate = toDate(client.jtReport);
+                if (jtDate && jtDate < today) cell.fill = overdueFill;
+              }
+            });
 
             rowNum++;
           }
@@ -311,13 +389,14 @@ export default function StaffOutputMonitorPage({ user }) {
 
         // Legend
         rowNum += 2;
-        sheet.getCell(`A${rowNum}`).value = 'Keterangan Warna:';
+        sheet.getCell(`A${rowNum}`).value = 'Keterangan:';
         sheet.getCell(`A${rowNum}`).font = { bold: true, size: 8 };
         rowNum++;
         [
-          ['FFD1FAE5', 'Selesai / On Time'],
-          ['FFFEE2E2', 'Terlambat (sudah lewat JT)'],
-          ['FFFDE68A', 'Belum selesai & mendekati/lewat JT'],
+          ['FFF0FDF4', 'Sudah dikerjakan / On Time'],
+          ['FFFEE2E2', 'Terlambat dari JT'],
+          ['FFFDE68A', 'Belum dikerjakan & sudah lewat/mendekati JT'],
+          ['FFF3F4F6', 'Jenis pajak tidak berlaku untuk klien ini'],
         ].forEach(([color, desc]) => {
           const cell = sheet.getCell(`A${rowNum}`);
           cell.value = `  ${desc}`;
@@ -343,7 +422,7 @@ export default function StaffOutputMonitorPage({ user }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `monitoring-output-${selectedPic !== 'all' ? data[0]?.picName?.replace(/\s+/g, '_') : 'semua'}-${MONTHS[parseInt(filterMonth)-1]}-${filterYear}.xlsx`;
+      a.download = `monitoring-output-${selectedPic !== 'all' ? (data[0]?.picName?.replace(/\s+/g, '_') || 'staff') : 'semua'}-${MONTHS[parseInt(filterMonth)-1]}-${filterYear}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('File Excel berhasil diunduh');
@@ -444,57 +523,94 @@ export default function StaffOutputMonitorPage({ user }) {
               </div>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="text-xs w-6">No</TableHead>
-                        <TableHead className="text-xs">Klien</TableHead>
-                        <TableHead className="text-xs">Jenis Pajak</TableHead>
-                        <TableHead className="text-xs text-center">Tgl Lapor<br/><span className="text-gray-400 font-normal">JT: tgl 5</span></TableHead>
-                        <TableHead className="text-xs text-center">Tgl Kirim Klien<br/><span className="text-gray-400 font-normal">JT: tgl 13</span></TableHead>
-                        <TableHead className="text-xs text-center">Tgl Bayar<br/><span className="text-gray-400 font-normal">JT: tgl 20</span></TableHead>
-                        <TableHead className="text-xs text-center">Tgl Report<br/><span className="text-gray-400 font-normal">JT: rekap</span></TableHead>
-                        <TableHead className="text-xs text-center">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      {/* Row 1: group headers */}
+                      <tr>
+                        <th rowSpan={2} className="border bg-slate-800 text-white px-2 py-1 text-center w-6">No</th>
+                        <th rowSpan={2} className="border bg-slate-800 text-white px-2 py-1 text-left min-w-[120px]">Nama Klien</th>
+                        <th rowSpan={2} className="border bg-slate-800 text-white px-2 py-1 text-left min-w-[100px]">Grup</th>
+                        <th rowSpan={2} className="border bg-slate-800 text-white px-2 py-1 text-left min-w-[140px]">Jenis Kewajiban</th>
+                        {TAX_COLS.map(tax => (
+                          <th key={tax.key} colSpan={3} className="border bg-blue-600 text-white px-2 py-1 text-center">
+                            {tax.label}
+                          </th>
+                        ))}
+                        <th colSpan={2} className="border bg-violet-700 text-white px-2 py-1 text-center">Report Internal</th>
+                        <th rowSpan={2} className="border bg-slate-800 text-white px-2 py-1 text-center">Status</th>
+                      </tr>
+                      {/* Row 2: sub-headers */}
+                      <tr>
+                        {TAX_COLS.map(tax => (
+                          <>
+                            <th key={tax.key+'-kirim'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Kirim<br/><span className="font-normal opacity-80">JT: tgl 13</span></th>
+                            <th key={tax.key+'-bayar'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Bayar<br/><span className="font-normal opacity-80">JT: tgl 20</span></th>
+                            <th key={tax.key+'-lapor'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Lapor<br/><span className="font-normal opacity-80">JT: tgl 5</span></th>
+                          </>
+                        ))}
+                        <th className="border bg-violet-600 text-white px-1 py-1 text-center min-w-[90px]">Tgl Submit</th>
+                        <th className="border bg-violet-600 text-white px-1 py-1 text-center min-w-[90px]">JT Report</th>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {pic.clients.map((client, idx) => {
                         const st = rowStatus(client);
-                        const taxTypes = getTaxTypes(client.taskTypes);
+                        const taskSet = new Set(client.taskTypes || []);
+                        const subs = client.submissionsByType || {};
+                        const kewajibanList = TAX_COLS
+                          .filter(t => taskSet.has(t.key))
+                          .map(t => t.label).join(', ') || '-';
+
                         return (
-                          <TableRow key={client.clientId} className={st.label === 'Terlambat' ? 'bg-red-50/50' : ''}>
-                            <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
-                            <TableCell>
-                              <div className="text-xs font-medium">{client.clientName}</div>
-                              {client.groupName && <div className="text-xs text-gray-400">{client.groupName}</div>}
-                            </TableCell>
-                            <TableCell>
-                              {taxTypes.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {taxTypes.map(t => (
-                                    <span key={t} className="inline-block bg-blue-50 text-blue-700 border border-blue-100 rounded px-1.5 py-0.5 text-xs">
-                                      {TASK_LABELS[t] || t}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell><DateCell value={client.tglLapor} jt={client.jtLapor} /></TableCell>
-                            <TableCell><DateCell value={client.tglKirimKlien} jt={client.jtKirimKlien} /></TableCell>
-                            <TableCell><DateCell value={client.tglBayar} jt={client.jtBayar} /></TableCell>
-                            <TableCell><DateCell value={client.tglReport} jt={client.jtReport} /></TableCell>
-                            <TableCell>
+                          <tr key={client.clientId} className={st.label === 'Terlambat' ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="border px-1 py-1 text-center text-gray-400">{idx + 1}</td>
+                            <td className="border px-2 py-1">
+                              <div className="font-medium">{client.clientName}</div>
+                            </td>
+                            <td className="border px-2 py-1 text-gray-500">{client.groupName || '-'}</td>
+                            <td className="border px-2 py-1 text-gray-600">{kewajibanList}</td>
+
+                            {TAX_COLS.map(tax => {
+                              const hasTax = taskSet.has(tax.key);
+                              const sub = subs[tax.key];
+                              const tglLapor = sub?.tglLapor || null;
+                              const isLate = sub?.isLate || false;
+                              const grey = 'bg-gray-100 text-gray-300';
+
+                              return (
+                                <>
+                                  <td key={tax.key+'-k'} className={`border px-1 py-1 text-center ${!hasTax ? grey : ''}`}>
+                                    {hasTax ? <DateCell value={client.tglKirimKlien} jt={client.jtKirimKlien} /> : <span className="text-gray-300">—</span>}
+                                  </td>
+                                  <td key={tax.key+'-b'} className={`border px-1 py-1 text-center ${!hasTax ? grey : ''}`}>
+                                    {hasTax ? <DateCell value={client.tglBayar} jt={client.jtBayar} /> : <span className="text-gray-300">—</span>}
+                                  </td>
+                                  <td key={tax.key+'-l'} className={`border px-1 py-1 text-center ${!hasTax ? grey : ''}`}>
+                                    {hasTax
+                                      ? <DateCell value={tglLapor} jt={client.jtLapor} />
+                                      : <span className="text-gray-300">—</span>
+                                    }
+                                  </td>
+                                </>
+                              );
+                            })}
+
+                            <td className="border px-1 py-1 text-center">
+                              <DateCell value={client.tglLapor} jt={client.jtReport} />
+                            </td>
+                            <td className="border px-1 py-1 text-center text-gray-500">
+                              {client.jtReport ? fmtDateShort(client.jtReport) : '-'}
+                            </td>
+                            <td className="border px-2 py-1 text-center">
                               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>
                                 {st.label}
                               </span>
-                            </TableCell>
-                          </TableRow>
+                            </td>
+                          </tr>
                         );
                       })}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               </CardContent>
             </Card>
