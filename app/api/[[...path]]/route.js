@@ -6792,13 +6792,12 @@ async function handleGetStaffOutputMonitor(request) {
     let idx = 3;
 
     if (picUserId) {
-      picFilter = `AND ca.user_id = $${idx++}`;
+      picFilter = `AND ja.user_id = $${idx++}`;
       values.push(picUserId);
     }
 
-    // Ambil semua jobdesk per klien per PIC untuk periode ini
-    // Join dengan submissions rekap_laporan untuk tgl lapor/report
-    // Join dengan billing_records untuk tgl kirim & tgl bayar
+    // Mulai dari jobdesks yang punya client_id dan period (bukan dummy jobdesk)
+    // PIC diambil dari jobdesk_assignments (sama dengan yang dipakai Rekap Jobdesk)
     const result = await query(`
       SELECT
         u.id AS pic_id,
@@ -6810,13 +6809,10 @@ async function handleGetStaffOutputMonitor(request) {
         j.period_month,
         j.period_year,
         j.rekap_laporan_deadline,
-        -- Tgl Lapor: submission rekap_laporan (gunakan created_at karena tidak ada submitted_at)
         rekap_sub.created_at AS tgl_lapor,
         rekap_sub.is_late AS lapor_is_late,
-        -- Tgl Report = sama dengan rekap_laporan submission (rekap internal)
         rekap_sub.created_at AS tgl_report,
         j.rekap_laporan_deadline::text AS jt_report,
-        -- Billing (cast DATE columns to text to avoid timezone shift)
         br.billing_sent_date::text AS tgl_kirim_klien,
         br.billing_due_date::text AS jt_kirim_klien,
         br.payment_received_date::text AS tgl_bayar,
@@ -6825,19 +6821,20 @@ async function handleGetStaffOutputMonitor(request) {
         br.amount AS billing_amount,
         br.invoice_number,
         br.id AS billing_id
-      FROM client_assignments ca
-      JOIN users u ON ca.user_id = u.id
-      JOIN clients c ON ca.client_id = c.id
-      LEFT JOIN jobdesks j ON j.client_id = c.id
-        AND j.period_month = $1
-        AND j.period_year = $2
+      FROM jobdesks j
+      JOIN clients c ON j.client_id = c.id
+      JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
+      JOIN users u ON ja.user_id = u.id
       LEFT JOIN jobdesk_submissions rekap_sub ON rekap_sub.jobdesk_id = j.id
         AND rekap_sub.task_type = 'rekap_laporan'
       LEFT JOIN billing_records br ON br.client_id = c.id
         AND br.period_month = $1
         AND br.period_year = $2
-      WHERE u.role NOT IN ('super_admin', 'owner')
+      WHERE j.period_month = $1
+        AND j.period_year = $2
+        AND j.client_id IS NOT NULL
         AND c.is_active = true
+        AND u.role NOT IN ('super_admin', 'owner')
         ${picFilter}
       ORDER BY u.name ASC, c.name ASC
     `, values);
