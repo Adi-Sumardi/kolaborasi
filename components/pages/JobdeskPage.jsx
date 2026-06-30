@@ -70,14 +70,25 @@ const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
   return new Date(nextYear, nextMonth - 1, 5);
 };
 
-// JT Bayar klien per jenis pajak (info referensi di form)
-const JT_BAYAR_INFO = {
-  pph_21:        { label: 'JT Bayar PPh 21', tgl: 'tgl 15 bln berikutnya' },
-  pph_unifikasi: { label: 'JT Bayar PPh Unifikasi', tgl: 'tgl 15 bln berikutnya' },
-  pph_05:        { label: 'JT Bayar PPh UMKM', tgl: 'tgl 15 bln berikutnya' },
-  pph_25:        { label: 'JT Bayar PPh 25', tgl: 'tgl 15 bln berikutnya' },
-  ppn:           { label: 'JT Bayar PPN', tgl: 'akhir bulan berikutnya' },
+// JT Bayar klien per jenis pajak
+const JT_BAYAR_TYPE = {
+  pph_21:        { label: 'JT Bayar PPh 21',        type: '15' },
+  pph_unifikasi: { label: 'JT Bayar PPh Unifikasi', type: '15' },
+  pph_05:        { label: 'JT Bayar PPh UMKM',      type: '15' },
+  pph_25:        { label: 'JT Bayar PPh 25',        type: '15' },
+  ppn:           { label: 'JT Bayar PPN',           type: 'akhir_bulan' },
 };
+
+function calcJtBayar(type, periodMonth, periodYear) {
+  if (!periodMonth || !periodYear) return null;
+  let m = parseInt(periodMonth) + 1;
+  let y = parseInt(periodYear);
+  if (m > 12) { m = 1; y++; }
+  const date = type === 'akhir_bulan'
+    ? new Date(y, m, 0)          // day 0 = akhir bulan m
+    : new Date(y, m - 1, 15);
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 // Check if deadline has passed
 const isDeadlinePassed = (deadline) => {
@@ -2094,11 +2105,15 @@ export default function JobdeskPage({ user }) {
                                     Deadline laporan: {formatDeadlineDate(deadline)}
                                   </span>
                                 )}
-                                {JT_BAYAR_INFO[taskTypeId] && (
-                                  <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-                                    {JT_BAYAR_INFO[taskTypeId].label}: {JT_BAYAR_INFO[taskTypeId].tgl}
-                                  </span>
-                                )}
+                                {JT_BAYAR_TYPE[taskTypeId] && (() => {
+                                  const info = JT_BAYAR_TYPE[taskTypeId];
+                                  const tgl = calcJtBayar(info.type, detailData?.periodMonth, detailData?.periodYear);
+                                  return tgl ? (
+                                    <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                      {info.label}: {tgl}
+                                    </span>
+                                  ) : null;
+                                })()}
                                 {hasSubmissions ? (
                                   <span className="text-xs text-green-700">✓ {taskSubmissions.length} lampiran</span>
                                 ) : deadlinePassed ? (
