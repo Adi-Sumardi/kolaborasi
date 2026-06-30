@@ -34,17 +34,17 @@
    - Sistem sudah deteksi `is_late` di submission, tinggal kirim notif
    - Penerima: karyawan yang assigned + pengurus
 
-4. **Notifikasi Rekap Laporan Deadline**
+4. ~~**Notifikasi Rekap Laporan Deadline**~~ ✅ DONE
    - Reminder khusus karena deadline custom
    - Sama dengan #2 tapi field `rekap_laporan_deadline`
 
-5. **Notifikasi Perubahan Penilaian/KPI**
-   - Saat poin/grade KPI karyawan berubah
+5. ~~**Notifikasi Perubahan Penilaian/KPI**~~ ✅ DONE
+   - Saat poin/grade KPI karyawan berubah (oleh Admin saat penyesuaian poin)
    - Penerima: karyawan yang bersangkutan
 
-6. **Notifikasi To-Do**
-   - Reminder due date to-do
-   - Notif saat to-do di-assign (kalau ada fitur shared todo)
+6. ~~**Notifikasi To-Do**~~ ✅ DONE
+   - Reminder due date to-do H-3, H-1, dan hari-H
+   - Otomatis dicek oleh scheduler harian
 
 ---
 
@@ -138,7 +138,7 @@ bisa memberi komentar/review:
 
 ---
 
-## 📈 Filter Group PT di Rincian Klien KPI
+## ✅ DONE — Filter Group PT di Rincian Klien KPI
 
 ### Konsep
 Di halaman KPI, bagian **Rincian Klien yang Ditangani** untuk setiap karyawan

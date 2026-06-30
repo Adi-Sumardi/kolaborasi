@@ -141,11 +141,11 @@ describe('DashboardApp', () => {
       expect(screen.getByText('Workspace')).toBeInTheDocument();
     });
 
-    // super_admin should see Monitor and User menu items
+    // super_admin should see Monitor Layar and User menu items
     // Nav items render label text in spans (some hidden with CSS but still in DOM)
     expect(screen.getAllByText('Dashboard').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Jobdesk').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Monitor').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Monitor Layar').length).toBeGreaterThan(0);
     expect(screen.getAllByText('User').length).toBeGreaterThan(0);
   });
 
@@ -156,8 +156,8 @@ describe('DashboardApp', () => {
       expect(screen.getByText('Workspace')).toBeInTheDocument();
     });
 
-    // Monitor should not be visible for karyawan
-    const monitorElements = screen.queryAllByText('Monitor');
+    // Monitor Layar should not be visible for karyawan
+    const monitorElements = screen.queryAllByText('Monitor Layar');
     const monitorButtons = monitorElements.filter(el => {
       const button = el.closest('button');
       return button !== null;

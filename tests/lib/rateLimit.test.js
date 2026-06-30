@@ -36,9 +36,9 @@ describe('checkRateLimit', () => {
     expect(r2.remaining).toBe(r1.remaining - 1);
   });
 
-  it('should block after exceeding login limit (5 attempts)', () => {
+  it('should block after exceeding login limit (20 attempts)', () => {
     const ip = 'login-test-ip';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 20; i++) {
       checkRateLimit(ip, 'login');
     }
     const result = checkRateLimit(ip, 'login');
@@ -88,7 +88,7 @@ describe('checkRateLimit', () => {
     const ip = 'reset-test-ip';
 
     // Use up all login attempts
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 21; i++) {
       checkRateLimit(ip, 'login');
     }
     expect(checkRateLimit(ip, 'login').allowed).toBe(false);
@@ -134,7 +134,7 @@ describe('cleanupRateLimits', () => {
     const result = checkRateLimit('cleanup-test', 'login');
     expect(result.allowed).toBe(true);
     // remaining should be max - 1 (fresh entry)
-    expect(result.remaining).toBe(4); // 5 max - 1
+    expect(result.remaining).toBe(19); // 20 max - 1
 
     jest.useRealTimers();
   });
@@ -207,8 +207,8 @@ describe('rateLimitMiddleware', () => {
   it('should use the specified rate limit type', () => {
     const req = mockRequest('middleware-login-ip');
 
-    // Exhaust login limit (5 attempts)
-    for (let i = 0; i < 5; i++) {
+    // Exhaust login limit (20 attempts)
+    for (let i = 0; i < 20; i++) {
       rateLimitMiddleware(req, 'login');
     }
 

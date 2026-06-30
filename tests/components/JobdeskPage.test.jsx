@@ -10,7 +10,14 @@ jest.mock('sonner', () => ({
   },
 }));
 
-// Mock API
+const futureDate1 = new Date();
+futureDate1.setMonth(futureDate1.getMonth() + 1);
+const futureDateString1 = futureDate1.toISOString().split('T')[0];
+
+const futureDate2 = new Date();
+futureDate2.setMonth(futureDate2.getMonth() + 2);
+const futureDateString2 = futureDate2.toISOString().split('T')[0];
+
 const mockJobdesks = [
   {
     id: '1',
@@ -18,7 +25,7 @@ const mockJobdesks = [
     description: 'Lapor pajak PPh 21',
     status: 'pending',
     assignedTo: ['user1'],
-    dueDate: '2026-04-05',
+    dueDate: futureDateString1,
     progress: null,
     taskTypes: ['pph_21'],
     clientName: 'PT ABC',
@@ -29,7 +36,7 @@ const mockJobdesks = [
     description: 'Lapor PPN bulanan',
     status: 'in_progress',
     assignedTo: ['user1', 'user2'],
-    dueDate: '2026-04-05',
+    dueDate: futureDateString2,
     progress: null,
     taskTypes: ['ppn'],
     clientName: 'CV XYZ',
