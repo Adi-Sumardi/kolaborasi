@@ -19,7 +19,7 @@ import {
 
 const TASK_LABELS = {
   pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25',
-  ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan'
+  ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan', billing_klien: 'Billing ke Klien'
 };
 
 function isPreviewable(mimeType, fileName) {

@@ -47,19 +47,23 @@ const TASK_TYPES = [
   { id: 'pph_05', label: 'PPh 0,5%', description: 'PPh Final 0,5% (UMKM)' },
   { id: 'laporan_tahunan', label: 'Laporan Tahunan', description: 'Lapor SPT Tahunan Badan/Orang Pribadi' },
   { id: 'rekap_laporan', label: 'Rekap Laporan', description: 'Rekap laporan dengan deadline kustom' },
+  { id: 'billing_klien', label: 'Billing ke Klien', description: 'Pengiriman billing/invoice ke klien (JT: tgl 13 bulan berikutnya)' },
 ];
 
-// Helper function to calculate deadline - universal tanggal 5 bulan berikutnya
-// For rekap_laporan, use custom deadline if provided
+// Helper function to calculate deadline per task type
 const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
   if (!periodMonth || !periodYear) return null;
 
-  // Calculate next month
   let nextMonth = periodMonth + 1;
   let nextYear = periodYear;
   if (nextMonth > 12) {
     nextMonth = 1;
     nextYear++;
+  }
+
+  // Billing ke Klien: JT tgl 13 bulan berikutnya
+  if (taskType === 'billing_klien') {
+    return new Date(nextYear, nextMonth - 1, 13);
   }
 
   // Universal deadline: tanggal 5 bulan berikutnya
@@ -87,6 +91,7 @@ const formatDeadlineDate = (date) => {
 
 // Default task types (all selected except laporan_tahunan)
 const DEFAULT_TASK_TYPES = TASK_TYPES.filter(t => t.id !== 'laporan_tahunan').map(t => t.id);
+// billing_klien sudah masuk DEFAULT_TASK_TYPES otomatis (tidak dikecualikan)
 
 export default function JobdeskPage({ user }) {
   const [jobdesks, setJobdesks] = useState([]);

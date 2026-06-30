@@ -23,7 +23,9 @@ import {
   Monitor,
   Clock,
   Eye,
-  Building2
+  Building2,
+  Receipt,
+  BarChart2
 } from 'lucide-react';
 import {
   getUser,
@@ -65,6 +67,8 @@ import SP2DKPage from './pages/SP2DKPage';
 import ScreenMonitorPage from './pages/ScreenMonitorPage';
 import WorkHoursPage from './pages/WorkHoursPage';
 import RekapJobdeskPage from './pages/RekapJobdeskPage';
+import BillingPage from './pages/BillingPage';
+import StaffOutputMonitorPage from './pages/StaffOutputMonitorPage';
 import ActivityTracker from './ActivityTracker';
 import WelcomeWorkModal from './WelcomeWorkModal';
 
@@ -208,6 +212,8 @@ export default function DashboardApp({ setIsLoggedIn }) {
         { id: 'monitor', label: 'Monitor Layar', icon: Monitor, roles: ['super_admin', 'owner'] },
         { id: 'work-hours', label: 'Jam Kerja', icon: Clock, roles: ['super_admin', 'owner', 'sdm'] },
         { id: 'rekap-jobdesk', label: 'Rekap Hasil Jobdesk', icon: FileText, roles: ['super_admin', 'owner', 'pengurus'] },
+        { id: 'billing', label: 'Billing Klien', icon: Receipt, roles: ['super_admin', 'owner', 'pengurus'] },
+        { id: 'staff-output', label: 'Output Staff', icon: BarChart2, roles: ['super_admin', 'owner', 'pengurus'] },
       ]
     },
     {
@@ -275,6 +281,10 @@ export default function DashboardApp({ setIsLoggedIn }) {
         return <ChatPage user={currentUser} socket={socket} />;
       case 'rekap-jobdesk':
         return <RekapJobdeskPage user={currentUser} />;
+      case 'billing':
+        return <BillingPage user={currentUser} />;
+      case 'staff-output':
+        return <StaffOutputMonitorPage user={currentUser} />;
       case 'todo':
         return <TodoPageKanban user={currentUser} />;
       case 'settings':

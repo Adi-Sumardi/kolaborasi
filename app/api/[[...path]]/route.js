@@ -1368,7 +1368,7 @@ async function notifyLateSubmission({ userId, userEmail, jobdeskId, jobdeskTitle
   try {
     const TASK_LABELS = {
       pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25',
-      ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan'
+      ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan', billing_klien: 'Billing ke Klien'
     };
     const taskLabel = taskType ? (TASK_LABELS[taskType] || taskType) : null;
     const taskSuffix = taskLabel ? ` (${taskLabel})` : '';
@@ -1678,7 +1678,8 @@ async function handleUploadSubmissionFile(request, jobdeskId) {
       'pph_25': 'PPh 25 Angsuran',
       'ppn': 'PPN',
       'pph_badan': 'PPh Badan',
-      'pph_05': 'PPh 0,5%'
+      'pph_05': 'PPh 0,5%',
+      'billing_klien': 'Billing ke Klien'
     };
     const title = taskType ? taskTypeLabels[taskType] || taskType : 'Upload File';
 
@@ -6267,7 +6268,7 @@ async function handleCreateJobdeskComment(request, jobdeskId) {
     // Notify all assigned karyawan
     const TASK_LABELS = {
       pph_21: 'PPh 21', pph_unifikasi: 'PPh Unifikasi', pph_25: 'PPh 25',
-      ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan'
+      ppn: 'PPN', pph_badan: 'PPh Badan', pph_05: 'PPh 0,5%', rekap_laporan: 'Rekap Laporan', billing_klien: 'Billing ke Klien'
     };
     const taskLabel = taskType ? (TASK_LABELS[taskType] || taskType) : null;
     const suffix = taskLabel ? ` (${taskLabel})` : '';
@@ -6600,6 +6601,288 @@ async function handleGetRekapKaryawanDetail(request, userId) {
 }
 
 // ============================================
+// BILLING RECORDS
+// ============================================
+
+async function handleGetBillingRecords(request) {
+  try {
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const clientId = searchParams.get('clientId');
+    const periodMonth = searchParams.get('periodMonth');
+    const periodYear = searchParams.get('periodYear');
+    const status = searchParams.get('status');
+
+    let whereClause = 'WHERE 1=1';
+    const values = [];
+    let idx = 1;
+
+    if (clientId) { whereClause += ` AND br.client_id = $${idx++}`; values.push(clientId); }
+    if (periodMonth) { whereClause += ` AND br.period_month = $${idx++}`; values.push(parseInt(periodMonth)); }
+    if (periodYear) { whereClause += ` AND br.period_year = $${idx++}`; values.push(parseInt(periodYear)); }
+    if (status) { whereClause += ` AND br.status = $${idx++}`; values.push(status); }
+
+    const result = await query(`
+      SELECT
+        br.id, br.client_id, br.jobdesk_id, br.period_month, br.period_year,
+        br.billing_due_date::text AS billing_due_date,
+        br.billing_sent_date::text AS billing_sent_date,
+        br.payment_due_date::text AS payment_due_date,
+        br.payment_received_date::text AS payment_received_date,
+        br.amount, br.invoice_number, br.status, br.notes,
+        br.created_by, br.updated_by, br.created_at, br.updated_at,
+        c.name AS client_name, c.npwp AS client_npwp, c.group_name,
+        u_created.name AS created_by_name,
+        u_updated.name AS updated_by_name,
+        ca.user_id AS pic_id, u_pic.name AS pic_name
+      FROM billing_records br
+      LEFT JOIN clients c ON br.client_id = c.id
+      LEFT JOIN users u_created ON br.created_by = u_created.id
+      LEFT JOIN users u_updated ON br.updated_by = u_updated.id
+      LEFT JOIN client_assignments ca ON c.id = ca.client_id AND ca.is_primary = true
+      LEFT JOIN users u_pic ON ca.user_id = u_pic.id
+      ${whereClause}
+      ORDER BY br.period_year DESC, br.period_month DESC, c.name ASC
+    `, values);
+
+    return NextResponse.json({ billingRecords: result.rows });
+  } catch (error) {
+    console.error('Get billing records error:', error);
+    return NextResponse.json({ error: 'Failed to load billing records' }, { status: 500 });
+  }
+}
+
+async function handleCreateBillingRecord(request) {
+  try {
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { clientId, periodMonth, periodYear, jobdeskId, amount, invoiceNumber, notes } = body;
+
+    if (!clientId || !periodMonth || !periodYear) {
+      return NextResponse.json({ error: 'clientId, periodMonth, periodYear required' }, { status: 400 });
+    }
+
+    // billing_due_date = tgl 13 bulan berikutnya
+    const nextMonth = periodMonth === 12 ? 1 : periodMonth + 1;
+    const nextYear = periodMonth === 12 ? periodYear + 1 : periodYear;
+    const billingDueDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-13`;
+    const paymentDueDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-20`;
+
+    const result = await query(`
+      INSERT INTO billing_records
+        (client_id, jobdesk_id, period_month, period_year, billing_due_date, payment_due_date, amount, invoice_number, notes, created_by, updated_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+      ON CONFLICT (client_id, period_month, period_year) DO UPDATE SET
+        jobdesk_id = EXCLUDED.jobdesk_id,
+        amount = EXCLUDED.amount,
+        invoice_number = EXCLUDED.invoice_number,
+        notes = EXCLUDED.notes,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = NOW()
+      RETURNING
+        id, client_id, jobdesk_id, period_month, period_year,
+        billing_due_date::text AS billing_due_date,
+        billing_sent_date::text AS billing_sent_date,
+        payment_due_date::text AS payment_due_date,
+        payment_received_date::text AS payment_received_date,
+        amount, invoice_number, status, notes, created_by, updated_by, created_at, updated_at
+    `, [clientId, jobdeskId || null, periodMonth, periodYear, billingDueDate, paymentDueDate, amount || null, invoiceNumber || null, notes || null, authUser.userId]);
+
+    return NextResponse.json({ billingRecord: result.rows[0] }, { status: 201 });
+  } catch (error) {
+    console.error('Create billing record error:', error);
+    return NextResponse.json({ error: 'Failed to create billing record' }, { status: 500 });
+  }
+}
+
+async function handleUpdateBillingRecord(request, id) {
+  try {
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { billingSentDate, paymentReceivedDate, amount, invoiceNumber, status, notes } = body;
+
+    // Determine status automatically if not provided
+    let computedStatus = status;
+    if (!computedStatus) {
+      if (paymentReceivedDate) computedStatus = 'paid';
+      else if (billingSentDate) computedStatus = 'sent';
+      else computedStatus = 'pending';
+    }
+
+    const result = await query(`
+      UPDATE billing_records SET
+        billing_sent_date = COALESCE($1, billing_sent_date),
+        payment_received_date = COALESCE($2, payment_received_date),
+        amount = COALESCE($3, amount),
+        invoice_number = COALESCE($4, invoice_number),
+        status = $5,
+        notes = COALESCE($6, notes),
+        updated_by = $7,
+        updated_at = NOW()
+      WHERE id = $8
+      RETURNING
+        id, client_id, jobdesk_id, period_month, period_year,
+        billing_due_date::text AS billing_due_date,
+        billing_sent_date::text AS billing_sent_date,
+        payment_due_date::text AS payment_due_date,
+        payment_received_date::text AS payment_received_date,
+        amount, invoice_number, status, notes, created_by, updated_by, created_at, updated_at
+    `, [billingSentDate || null, paymentReceivedDate || null, amount || null, invoiceNumber || null, computedStatus, notes || null, authUser.userId, id]);
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Billing record not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ billingRecord: result.rows[0] });
+  } catch (error) {
+    console.error('Update billing record error:', error);
+    return NextResponse.json({ error: 'Failed to update billing record' }, { status: 500 });
+  }
+}
+
+async function handleDeleteBillingRecord(request, id) {
+  try {
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    await query('DELETE FROM billing_records WHERE id = $1', [id]);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Delete billing record error:', error);
+    return NextResponse.json({ error: 'Failed to delete billing record' }, { status: 500 });
+  }
+}
+
+// ============================================
+// STAFF OUTPUT MONITORING
+// ============================================
+
+async function handleGetStaffOutputMonitor(request) {
+  try {
+    const authUser = verifyToken(request);
+    if (!authUser || !hasPermission(authUser.role, ['super_admin', 'owner', 'pengurus'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const picUserId = searchParams.get('picUserId'); // bisa kosong = semua staff
+    const periodMonth = searchParams.get('periodMonth');
+    const periodYear = searchParams.get('periodYear');
+
+    if (!periodMonth || !periodYear) {
+      return NextResponse.json({ error: 'periodMonth and periodYear required' }, { status: 400 });
+    }
+
+    let picFilter = '';
+    const values = [parseInt(periodMonth), parseInt(periodYear)];
+    let idx = 3;
+
+    if (picUserId) {
+      picFilter = `AND ca.user_id = $${idx++}`;
+      values.push(picUserId);
+    }
+
+    // Ambil semua jobdesk per klien per PIC untuk periode ini
+    // Join dengan submissions rekap_laporan untuk tgl lapor/report
+    // Join dengan billing_records untuk tgl kirim & tgl bayar
+    const result = await query(`
+      SELECT
+        u.id AS pic_id,
+        u.name AS pic_name,
+        c.id AS client_id,
+        c.name AS client_name,
+        c.group_name,
+        j.id AS jobdesk_id,
+        j.period_month,
+        j.period_year,
+        j.rekap_laporan_deadline,
+        -- Tgl Lapor: submission rekap_laporan (gunakan created_at karena tidak ada submitted_at)
+        rekap_sub.created_at AS tgl_lapor,
+        rekap_sub.is_late AS lapor_is_late,
+        -- Tgl Report = sama dengan rekap_laporan submission (rekap internal)
+        rekap_sub.created_at AS tgl_report,
+        j.rekap_laporan_deadline::text AS jt_report,
+        -- Billing (cast DATE columns to text to avoid timezone shift)
+        br.billing_sent_date::text AS tgl_kirim_klien,
+        br.billing_due_date::text AS jt_kirim_klien,
+        br.payment_received_date::text AS tgl_bayar,
+        br.payment_due_date::text AS jt_bayar,
+        br.status AS billing_status,
+        br.amount AS billing_amount,
+        br.invoice_number,
+        br.id AS billing_id
+      FROM client_assignments ca
+      JOIN users u ON ca.user_id = u.id
+      JOIN clients c ON ca.client_id = c.id
+      LEFT JOIN jobdesks j ON j.client_id = c.id
+        AND j.period_month = $1
+        AND j.period_year = $2
+      LEFT JOIN jobdesk_submissions rekap_sub ON rekap_sub.jobdesk_id = j.id
+        AND rekap_sub.task_type = 'rekap_laporan'
+      LEFT JOIN billing_records br ON br.client_id = c.id
+        AND br.period_month = $1
+        AND br.period_year = $2
+      WHERE u.role NOT IN ('super_admin', 'owner')
+        AND c.is_active = true
+        ${picFilter}
+      ORDER BY u.name ASC, c.name ASC
+    `, values);
+
+    // Group by PIC
+    const byPic = {};
+    for (const row of result.rows) {
+      if (!byPic[row.pic_id]) {
+        byPic[row.pic_id] = { picId: row.pic_id, picName: row.pic_name, clients: [] };
+      }
+      byPic[row.pic_id].clients.push({
+        clientId: row.client_id,
+        clientName: row.client_name,
+        groupName: row.group_name,
+        jobdeskId: row.jobdesk_id,
+        periodMonth: row.period_month,
+        periodYear: row.period_year,
+        tglLapor: row.tgl_lapor,
+        jtLapor: row.rekap_laporan_deadline,
+        laporIsLate: row.lapor_is_late,
+        tglReport: row.tgl_report,
+        jtReport: row.jt_report,
+        tglKirimKlien: row.tgl_kirim_klien,
+        jtKirimKlien: row.jt_kirim_klien,
+        tglBayar: row.tgl_bayar,
+        jtBayar: row.jt_bayar,
+        billingStatus: row.billing_status,
+        billingAmount: row.billing_amount,
+        invoiceNumber: row.invoice_number,
+        billingId: row.billing_id,
+      });
+    }
+
+    return NextResponse.json({
+      data: Object.values(byPic),
+      periodMonth: parseInt(periodMonth),
+      periodYear: parseInt(periodYear),
+    });
+  } catch (error) {
+    console.error('Get staff output monitor error:', error);
+    return NextResponse.json({ error: 'Failed to load monitoring data' }, { status: 500 });
+  }
+}
+
+// ============================================
 // ROUTER
 // ============================================
 
@@ -6721,6 +7004,12 @@ export async function GET(request, { params }) {
     // Desktop App Download
     if (path === 'download/desktop') return handleGetDesktopDownload(request);
 
+    // Billing Records
+    if (path === 'billing') return handleGetBillingRecords(request);
+
+    // Staff Output Monitoring
+    if (path === 'monitoring/staff-output') return handleGetStaffOutputMonitor(request);
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
@@ -6817,6 +7106,9 @@ export async function POST(request, { params }) {
 
     // Screen Monitoring
     if (path === 'monitor/connect') return handleMonitorConnect(request);
+
+    // Billing Records
+    if (path === 'billing') return handleCreateBillingRecord(request);
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
@@ -6945,6 +7237,12 @@ export async function PUT(request, { params }) {
     // Work Sessions
     if (path === 'work-sessions/clock-out') return handleClockOut(request);
 
+    // Billing Records
+    if (path.match(/^billing\/[^/]+$/)) {
+      const billingId = path.split('/')[1];
+      return handleUpdateBillingRecord(request, billingId);
+    }
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
     console.error('API Error:', error);
@@ -7033,6 +7331,12 @@ export async function DELETE(request, { params }) {
     if (path.match(/^employee-warnings\/[^/]+$/)) {
       const warningId = path.split('/')[1];
       return handleDeleteEmployeeWarning(request, warningId);
+    }
+
+    // Billing Records
+    if (path.match(/^billing\/[^/]+$/)) {
+      const billingId = path.split('/')[1];
+      return handleDeleteBillingRecord(request, billingId);
     }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });

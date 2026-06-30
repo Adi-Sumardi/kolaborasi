@@ -114,7 +114,10 @@ app.prepare().then(() => {
 
   // Initialize Socket.IO
   const allowedOrigins = dev
-    ? ['http://localhost:3000', 'http://0.0.0.0:3000', 'http://127.0.0.1:3000']
+    ? [
+        `http://localhost:${port}`, `http://0.0.0.0:${port}`, `http://127.0.0.1:${port}`,
+        'http://localhost:3000', 'http://0.0.0.0:3000', 'http://127.0.0.1:3000',
+      ]
     : [process.env.NEXT_PUBLIC_BASE_URL].filter(Boolean);
 
   const io = new Server(server, {

@@ -542,6 +542,38 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_screen_sessions_employee ON screen_sessions(employee_id);`,
   `CREATE INDEX IF NOT EXISTS idx_screen_sessions_status ON screen_sessions(status);`,
 
+  // =====================================================
+  // BILLING RECORDS (Tagihan ke Klien)
+  // =====================================================
+
+  `CREATE TABLE IF NOT EXISTS billing_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    jobdesk_id UUID REFERENCES jobdesks(id) ON DELETE SET NULL,
+    period_month INTEGER NOT NULL CHECK (period_month BETWEEN 1 AND 12),
+    period_year INTEGER NOT NULL CHECK (period_year >= 2020),
+    billing_due_date DATE NOT NULL,
+    billing_sent_date DATE,
+    payment_due_date DATE,
+    payment_received_date DATE,
+    amount DECIMAL(15,2),
+    invoice_number VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending',
+    notes TEXT,
+    created_by UUID REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(client_id, period_month, period_year)
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_billing_client ON billing_records(client_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_billing_period ON billing_records(period_year, period_month);`,
+  `CREATE INDEX IF NOT EXISTS idx_billing_status ON billing_records(status);`,
+  `CREATE INDEX IF NOT EXISTS idx_billing_due ON billing_records(billing_due_date);`,
+  `DROP TRIGGER IF EXISTS update_billing_records_updated_at ON billing_records;
+  CREATE TRIGGER update_billing_records_updated_at BEFORE UPDATE ON billing_records
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();`,
+
   // Generate monitor codes for existing users that don't have one
   `DO $$
   DECLARE
