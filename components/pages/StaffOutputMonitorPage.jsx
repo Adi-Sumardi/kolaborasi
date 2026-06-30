@@ -36,13 +36,29 @@ const TASK_LABELS = {
 const TAX_TASK_TYPES = ['pph_21','pph_unifikasi','pph_25','ppn','pph_badan','pph_05','laporan_tahunan'];
 
 // Kolom pajak untuk tabel & Excel (urutan sesuai screenshot)
+// jtBayarType: '15' = tgl 15 bln berikut, 'akhir_bulan' = akhir bln berikut
 const TAX_COLS = [
-  { key: 'pph_21',        label: 'PPh 21' },
-  { key: 'pph_unifikasi', label: 'PPh Unifikasi' },
-  { key: 'pph_05',        label: 'PPh Final UMKM' },
-  { key: 'pph_25',        label: 'PPh 25' },
-  { key: 'ppn',           label: 'PPN' },
+  { key: 'pph_21',        label: 'PPh 21',         jtBayarType: '15' },
+  { key: 'pph_unifikasi', label: 'PPh Unifikasi',  jtBayarType: '15' },
+  { key: 'pph_05',        label: 'PPh Final UMKM', jtBayarType: '15' },
+  { key: 'pph_25',        label: 'PPh 25',         jtBayarType: '15' },
+  { key: 'ppn',           label: 'PPN',            jtBayarType: 'akhir_bulan' },
 ];
+
+function getJtBayar(jtBayarType, periodMonth, periodYear) {
+  if (!periodMonth || !periodYear) return null;
+  let nextMonth = parseInt(periodMonth) + 1;
+  let nextYear = parseInt(periodYear);
+  if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+  if (jtBayarType === 'akhir_bulan') {
+    return new Date(nextYear, nextMonth, 0); // day-0 trick = akhir bulan nextMonth
+  }
+  return new Date(nextYear, nextMonth - 1, parseInt(jtBayarType));
+}
+
+function jtBayarLabel(jtBayarType) {
+  return jtBayarType === 'akhir_bulan' ? 'JT: akhir bln' : `JT: tgl ${jtBayarType}`;
+}
 
 function getTaxTypes(taskTypes) {
   if (!taskTypes || !taskTypes.length) return [];
@@ -262,7 +278,11 @@ export default function StaffOutputMonitorPage({ user }) {
         TAX_COLS.forEach((tax, t) => {
           SUB.forEach((subLabel, s) => {
             const colIdx = FIXED + t * TAX_SUBCOLS + s + 1;
-            Object.assign(sheet.getCell(`${colLetter(colIdx)}3`), { ...subHdr, value: subLabel });
+            // Sub-col 2 (Tanggal Bayar): tampilkan JT sesuai jenis pajak
+            const label = s === 1
+              ? `Tanggal Bayar\n(${tax.jtBayarType === 'akhir_bulan' ? 'JT: akhir bln' : `JT: tgl ${tax.jtBayarType}`})`
+              : subLabel;
+            Object.assign(sheet.getCell(`${colLetter(colIdx)}3`), { ...subHdr, value: label });
           });
         });
         // Report Internal sub-headers
@@ -328,15 +348,12 @@ export default function StaffOutputMonitorPage({ user }) {
               const sub = subs[tax.key];
               const tglLapor = sub?.tglLapor || null;
               const isLate = sub?.isLate || false;
+              const jtBayarDate = getJtBayar(tax.jtBayarType, client.periodMonth, client.periodYear);
 
-              // Sub-col 1: Billing dikirim ke klien (sama untuk semua jenis pajak di klien ini)
-              const tglKirim = hasTax ? fmtD(client.tglKirimKlien) : '';
-              // Sub-col 2: Tanggal Bayar
-              const tglBayar = hasTax ? fmtD(client.tglBayar) : '';
-              // Sub-col 3: Tanggal Lapor (per task type dari submissions)
+              const tglKirim    = hasTax ? fmtD(client.tglKirimKlien) : '';
+              const tglBayar    = hasTax ? fmtD(client.tglBayar) : '';
               const tglLaporFmt = hasTax ? fmtD(tglLapor) : '';
-              // Sub-col 4: Nilai KB/LB (kosong — isi manual)
-              const nilaiKBLB = '';
+              const nilaiKBLB   = '';
 
               const vals = [tglKirim, tglBayar, tglLaporFmt, nilaiKBLB];
               vals.forEach((val, s) => {
@@ -348,10 +365,16 @@ export default function StaffOutputMonitorPage({ user }) {
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
 
                 if (!hasTax) {
-                  // Jenis pajak tidak diceklist — grey out
                   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+                } else if (s === 1) {
+                  // Tanggal Bayar: JT per jenis pajak
+                  if (client.tglBayar) {
+                    const bayarDate = toDate(client.tglBayar);
+                    cell.fill = (jtBayarDate && bayarDate > jtBayarDate) ? lateFill : doneFill;
+                  } else if (jtBayarDate && jtBayarDate < today) {
+                    cell.fill = overdueFill;
+                  }
                 } else if (s === 2 && tglLapor) {
-                  // Tanggal Lapor: highlight jika terlambat
                   cell.fill = isLate ? lateFill : doneFill;
                 } else if (s === 0 && client.tglKirimKlien) {
                   const jtDate = toDate(client.jtKirimKlien);
@@ -404,6 +427,20 @@ export default function StaffOutputMonitorPage({ user }) {
           cell.font = { size: 8 };
           rowNum++;
         });
+
+        // Footnote: tanggal & waktu ekspor
+        rowNum += 2;
+        const exportedAt = new Date().toLocaleString('id-ID', {
+          day: '2-digit', month: 'long', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+        });
+        const noteCell = sheet.getCell(`A${rowNum}`);
+        noteCell.value = `* Data diekspor pada: ${exportedAt} WIB`;
+        noteCell.font = { italic: true, size: 8, color: { argb: 'FF6B7280' } };
+        rowNum++;
+        const noteJT = sheet.getCell(`A${rowNum}`);
+        noteJT.value = '* JT Bayar: PPh 21/Unifikasi/UMKM/PPh 25 = tgl 15 bln berikutnya | PPN = akhir bln berikutnya';
+        noteJT.font = { italic: true, size: 8, color: { argb: 'FF6B7280' } };
       };
 
       if (selectedPic && selectedPic !== 'all') {
@@ -494,7 +531,8 @@ export default function StaffOutputMonitorPage({ user }) {
         {[
           { label: 'JT Laporan Rekap', value: 'Tgl 5 bln berikutnya', color: 'bg-purple-50 border-purple-200 text-purple-700' },
           { label: 'JT Kirim ke Klien', value: 'Tgl 13 bln berikutnya', color: 'bg-blue-50 border-blue-200 text-blue-700' },
-          { label: 'JT Bayar Klien', value: 'Tgl 20 bln berikutnya', color: 'bg-orange-50 border-orange-200 text-orange-700' },
+          { label: 'JT Bayar (PPh)', value: 'Tgl 15 bln berikutnya', color: 'bg-orange-50 border-orange-200 text-orange-700' },
+          { label: 'JT Bayar (PPN)', value: 'Akhir bln berikutnya', color: 'bg-amber-50 border-amber-200 text-amber-700' },
           { label: 'JT Report Internal', value: 'Sesuai deadline rekap', color: 'bg-gray-50 border-gray-200 text-gray-700' },
         ].map(item => (
           <div key={item.label} className={`border rounded p-2 ${item.color}`}>
@@ -544,7 +582,7 @@ export default function StaffOutputMonitorPage({ user }) {
                         {TAX_COLS.map(tax => (
                           <>
                             <th key={tax.key+'-kirim'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Kirim<br/><span className="font-normal opacity-80">JT: tgl 13</span></th>
-                            <th key={tax.key+'-bayar'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Bayar<br/><span className="font-normal opacity-80">JT: tgl 20</span></th>
+                            <th key={tax.key+'-bayar'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Bayar<br/><span className="font-normal opacity-80">{jtBayarLabel(tax.jtBayarType)}</span></th>
                             <th key={tax.key+'-lapor'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Lapor<br/><span className="font-normal opacity-80">JT: tgl 5</span></th>
                           </>
                         ))}
@@ -574,8 +612,9 @@ export default function StaffOutputMonitorPage({ user }) {
                               const hasTax = taskSet.has(tax.key);
                               const sub = subs[tax.key];
                               const tglLapor = sub?.tglLapor || null;
-                              const isLate = sub?.isLate || false;
                               const grey = 'bg-gray-100 text-gray-300';
+                              const jtBayarDate = getJtBayar(tax.jtBayarType, client.periodMonth, client.periodYear);
+                              const jtBayarStr = jtBayarDate ? jtBayarDate.toISOString().slice(0, 10) : null;
 
                               return (
                                 <>
@@ -583,7 +622,7 @@ export default function StaffOutputMonitorPage({ user }) {
                                     {hasTax ? <DateCell value={client.tglKirimKlien} jt={client.jtKirimKlien} /> : <span className="text-gray-300">—</span>}
                                   </td>
                                   <td key={tax.key+'-b'} className={`border px-1 py-1 text-center ${!hasTax ? grey : ''}`}>
-                                    {hasTax ? <DateCell value={client.tglBayar} jt={client.jtBayar} /> : <span className="text-gray-300">—</span>}
+                                    {hasTax ? <DateCell value={client.tglBayar} jt={jtBayarStr} /> : <span className="text-gray-300">—</span>}
                                   </td>
                                   <td key={tax.key+'-l'} className={`border px-1 py-1 text-center ${!hasTax ? grey : ''}`}>
                                     {hasTax
