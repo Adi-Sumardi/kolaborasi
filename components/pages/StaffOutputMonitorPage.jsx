@@ -56,6 +56,12 @@ function getJtBayar(jtBayarType, periodMonth, periodYear) {
   return new Date(nextYear, nextMonth - 1, parseInt(jtBayarType));
 }
 
+function fmtJtBayar(jtBayarType, periodMonth, periodYear) {
+  const d = getJtBayar(jtBayarType, periodMonth, periodYear);
+  if (!d) return jtBayarType === 'akhir_bulan' ? 'JT: akhir bln' : `JT: tgl ${jtBayarType}`;
+  return 'JT: ' + d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function jtBayarLabel(jtBayarType) {
   return jtBayarType === 'akhir_bulan' ? 'JT: akhir bln' : `JT: tgl ${jtBayarType}`;
 }
@@ -278,10 +284,9 @@ export default function StaffOutputMonitorPage({ user }) {
         TAX_COLS.forEach((tax, t) => {
           SUB.forEach((subLabel, s) => {
             const colIdx = FIXED + t * TAX_SUBCOLS + s + 1;
-            // Sub-col 2 (Tanggal Bayar): tampilkan JT sesuai jenis pajak
-            const label = s === 1
-              ? `Tanggal Bayar\n(${tax.jtBayarType === 'akhir_bulan' ? 'JT: akhir bln' : `JT: tgl ${tax.jtBayarType}`})`
-              : subLabel;
+            // Sub-col 2 (Tanggal Bayar): tampilkan JT aktual sesuai jenis pajak
+            const jtTglLabel = fmtJtBayar(tax.jtBayarType, filterMonth, filterYear);
+            const label = s === 1 ? `Tanggal Bayar\n(${jtTglLabel})` : subLabel;
             Object.assign(sheet.getCell(`${colLetter(colIdx)}3`), { ...subHdr, value: label });
           });
         });
@@ -439,7 +444,7 @@ export default function StaffOutputMonitorPage({ user }) {
         noteCell.font = { italic: true, size: 8, color: { argb: 'FF6B7280' } };
         rowNum++;
         const noteJT = sheet.getCell(`A${rowNum}`);
-        noteJT.value = '* JT Bayar: PPh 21/Unifikasi/UMKM/PPh 25 = tgl 15 bln berikutnya | PPN = akhir bln berikutnya';
+        noteJT.value = `* JT Bayar: PPh 21/Unifikasi/UMKM/PPh 25 = ${fmtJtBayar('15', filterMonth, filterYear).replace('JT: ','')} | PPN = ${fmtJtBayar('akhir_bulan', filterMonth, filterYear).replace('JT: ','')}`;
         noteJT.font = { italic: true, size: 8, color: { argb: 'FF6B7280' } };
       };
 
@@ -531,8 +536,8 @@ export default function StaffOutputMonitorPage({ user }) {
         {[
           { label: 'JT Laporan Rekap', value: 'Tgl 5 bln berikutnya', color: 'bg-purple-50 border-purple-200 text-purple-700' },
           { label: 'JT Kirim ke Klien', value: 'Tgl 13 bln berikutnya', color: 'bg-blue-50 border-blue-200 text-blue-700' },
-          { label: 'JT Bayar (PPh)', value: 'Tgl 15 bln berikutnya', color: 'bg-orange-50 border-orange-200 text-orange-700' },
-          { label: 'JT Bayar (PPN)', value: 'Akhir bln berikutnya', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+          { label: 'JT Bayar (PPh)', value: fmtJtBayar('15', filterMonth, filterYear).replace('JT: ',''), color: 'bg-orange-50 border-orange-200 text-orange-700' },
+          { label: 'JT Bayar (PPN)', value: fmtJtBayar('akhir_bulan', filterMonth, filterYear).replace('JT: ',''), color: 'bg-amber-50 border-amber-200 text-amber-700' },
           { label: 'JT Report Internal', value: 'Sesuai deadline rekap', color: 'bg-gray-50 border-gray-200 text-gray-700' },
         ].map(item => (
           <div key={item.label} className={`border rounded p-2 ${item.color}`}>
@@ -582,7 +587,7 @@ export default function StaffOutputMonitorPage({ user }) {
                         {TAX_COLS.map(tax => (
                           <>
                             <th key={tax.key+'-kirim'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Kirim<br/><span className="font-normal opacity-80">JT: tgl 13</span></th>
-                            <th key={tax.key+'-bayar'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Bayar<br/><span className="font-normal opacity-80">{jtBayarLabel(tax.jtBayarType)}</span></th>
+                            <th key={tax.key+'-bayar'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Bayar<br/><span className="font-normal opacity-80">{fmtJtBayar(tax.jtBayarType, filterMonth, filterYear)}</span></th>
                             <th key={tax.key+'-lapor'} className="border bg-blue-500 text-white px-1 py-1 text-center min-w-[90px]">Tgl Lapor<br/><span className="font-normal opacity-80">JT: tgl 5</span></th>
                           </>
                         ))}
@@ -660,7 +665,7 @@ export default function StaffOutputMonitorPage({ user }) {
       {/* Footnote */}
       {!loading && data.length > 0 && (
         <div className="text-xs text-gray-400 space-y-0.5 pt-2 border-t">
-          <p>* JT Bayar: PPh 21 / PPh Unifikasi / PPh UMKM / PPh 25 = tgl 15 bln berikutnya &nbsp;|&nbsp; PPN = akhir bln berikutnya</p>
+          <p>* JT Bayar: PPh 21 / PPh Unifikasi / PPh UMKM / PPh 25 = {fmtJtBayar('15', filterMonth, filterYear).replace('JT: ','')} &nbsp;|&nbsp; PPN = {fmtJtBayar('akhir_bulan', filterMonth, filterYear).replace('JT: ','')}</p>
           <p>* Data diperbarui real-time. Untuk arsip, gunakan Export Excel (mencatat tanggal &amp; jam ekspor otomatis).</p>
         </div>
       )}
