@@ -70,6 +70,15 @@ const calculateTaskDeadline = (taskType, periodMonth, periodYear) => {
   return new Date(nextYear, nextMonth - 1, 5);
 };
 
+// JT Bayar klien per jenis pajak (info referensi di form)
+const JT_BAYAR_INFO = {
+  pph_21:        { label: 'JT Bayar PPh 21', tgl: 'tgl 15 bln berikutnya' },
+  pph_unifikasi: { label: 'JT Bayar PPh Unifikasi', tgl: 'tgl 15 bln berikutnya' },
+  pph_05:        { label: 'JT Bayar PPh UMKM', tgl: 'tgl 15 bln berikutnya' },
+  pph_25:        { label: 'JT Bayar PPh 25', tgl: 'tgl 15 bln berikutnya' },
+  ppn:           { label: 'JT Bayar PPN', tgl: 'akhir bulan berikutnya' },
+};
+
 // Check if deadline has passed
 const isDeadlinePassed = (deadline) => {
   if (!deadline) return false;
@@ -2116,6 +2125,13 @@ export default function JobdeskPage({ user }) {
                             {isActive && (
                               <div className="p-3 bg-gray-50 border-t">
                                 <div className="space-y-3">
+                                  {/* Info JT Bayar untuk jenis pajak yg relevan */}
+                                  {JT_BAYAR_INFO[taskTypeId] && (
+                                    <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded px-2 py-1.5 text-amber-800">
+                                      <span className="font-medium">{JT_BAYAR_INFO[taskTypeId].label}:</span>
+                                      <span>{JT_BAYAR_INFO[taskTypeId].tgl}</span>
+                                    </div>
+                                  )}
                                   <div className="flex gap-2">
                                     <Select value={inlineForm.submissionType} onValueChange={(val) => setInlineForm({ ...inlineForm, submissionType: val, content: '', file: null })}>
                                       <SelectTrigger className="w-32">

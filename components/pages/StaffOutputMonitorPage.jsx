@@ -656,6 +656,14 @@ export default function StaffOutputMonitorPage({ user }) {
           ))}
         </div>
       )}
+
+      {/* Footnote */}
+      {!loading && data.length > 0 && (
+        <div className="text-xs text-gray-400 space-y-0.5 pt-2 border-t">
+          <p>* JT Bayar: PPh 21 / PPh Unifikasi / PPh UMKM / PPh 25 = tgl 15 bln berikutnya &nbsp;|&nbsp; PPN = akhir bln berikutnya</p>
+          <p>* Data diperbarui real-time. Untuk arsip, gunakan Export Excel (mencatat tanggal &amp; jam ekspor otomatis).</p>
+        </div>
+      )}
     </div>
   );
 }
