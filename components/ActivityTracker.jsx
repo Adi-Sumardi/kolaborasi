@@ -9,6 +9,7 @@ const IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
 export default function ActivityTracker({ user, currentPage, pageLabel, isWorking, workStartTime }) {
   const [elapsed, setElapsed] = useState('');
   const [todayTotal, setTodayTotal] = useState(null);
+  const [isMonitored, setIsMonitored] = useState(false);
   const streamRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const idleTimerRef = useRef(null);
@@ -27,12 +28,26 @@ export default function ActivityTracker({ user, currentPage, pageLabel, isWorkin
 
     let destroyed = false;
     let pollTimer = null;
+    let watchStateSock = null;
+
+    // Indikator "Aktif dan dipantau" — karyawan berhak tahu layarnya sedang dilihat
+    const onWatchState = (data) => setIsMonitored(!!data?.watching);
+    const onMonitorStopped = () => setIsMonitored(false);
 
     const setup = () => {
       let sock = getSocket() || initSocket();
       if (!sock || destroyed) return false;
 
       socketRef.current = sock;
+
+      if (!watchStateSock) {
+        watchStateSock = sock;
+        sock.on('monitor:watch-state', onWatchState);
+        sock.on('monitor:stopped', onMonitorStopped);
+        // Tanyakan status saat ini (mis. setelah refresh halaman)
+        if (sock.connected) sock.emit('monitor:watch-state?');
+        sock.on('connect', () => sock.emit('monitor:watch-state?'));
+      }
 
       // Only register WebRTC listeners once
       if (!listenersSetRef.current) {
@@ -153,6 +168,11 @@ export default function ActivityTracker({ user, currentPage, pageLabel, isWorkin
     return () => {
       destroyed = true;
       if (pollTimer) clearTimeout(pollTimer);
+      if (watchStateSock) {
+        watchStateSock.off('monitor:watch-state', onWatchState);
+        watchStateSock.off('monitor:stopped', onMonitorStopped);
+        watchStateSock = null;
+      }
     };
   }, [user]);
 
@@ -232,24 +252,44 @@ export default function ActivityTracker({ user, currentPage, pageLabel, isWorkin
   }, [isWorking, user]);
 
   if (!['karyawan', 'sdm'].includes(user?.role)) return null;
-  if (!isWorking) return null;
+  // Indikator dipantau harus tetap muncul walau karyawan belum "Mulai Bekerja"
+  if (!isWorking && !isMonitored) return null;
 
   const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
 
   return (
-    <div className="fixed bottom-20 right-4 md:bottom-4 md:right-4 z-40">
-      <div className="bg-white border border-green-200 rounded-2xl px-4 py-2.5 flex items-center gap-2 shadow-lg">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-        </span>
-        <div className="flex flex-col">
-          <span className="text-xs font-semibold text-green-700">Sedang Bekerja</span>
-          {elapsed && <span className="text-[10px] text-gray-500">Sesi: {elapsed}</span>}
-          {todayTotal && <span className="text-[10px] text-blue-600 font-medium">Hari ini: {todayTotal}</span>}
-          {isElectron && <span className="text-[9px] text-orange-500">App harus tetap terbuka</span>}
+    <>
+      {/* Indikator dipantau sengaja di atas overlay modal (z-50) dan prompt PWA.
+          Ini informasi transparansi — karyawan harus selalu bisa melihatnya,
+          termasuk saat modal sambutan sedang terbuka. */}
+      {isMonitored && (
+        <div className="fixed top-[72px] right-4 z-[60] pointer-events-none">
+          <div className="bg-blue-600 rounded-full pl-2.5 pr-3 py-1.5 flex items-center gap-2 shadow-lg ring-2 ring-white/70">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+            </span>
+            <span className="text-xs font-semibold text-white whitespace-nowrap">Aktif dan dipantau</span>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {isWorking && (
+        <div className="fixed bottom-20 right-4 md:bottom-4 md:right-4 z-40">
+          <div className="bg-white border border-green-200 rounded-2xl px-4 py-2.5 flex items-center gap-2 shadow-lg">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+            </span>
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-green-700">Sedang Bekerja</span>
+              {elapsed && <span className="text-[10px] text-gray-500">Sesi: {elapsed}</span>}
+              {todayTotal && <span className="text-[10px] text-blue-600 font-medium">Hari ini: {todayTotal}</span>}
+              {isElectron && <span className="text-[9px] text-orange-500">App harus tetap terbuka</span>}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

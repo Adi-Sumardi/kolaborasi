@@ -51,7 +51,6 @@ export default function ScreenMonitorPage({ user }) {
           lastActivity: data.lastActivity,
           screenReady: data.screenReady || false,
           agentConnected: data.agentConnected || false,
-          mood: data.mood || null,
           workStartedAt: data.workStartedAt || null
         }
       }));
@@ -375,17 +374,6 @@ export default function ScreenMonitorPage({ user }) {
     }
   };
 
-  const getMoodEmoji = (mood) => {
-    switch (mood) {
-      case 'semangat': return '💪';
-      case 'senang': return '😊';
-      case 'biasa': return '😐';
-      case 'lelah': return '😴';
-      case 'sedih': return '😢';
-      default: return null;
-    }
-  };
-
   // Sort: online first, then idle, then offline
   const sortedEmployees = [...allEmployees].sort((a, b) => {
     const statusOrder = { online: 0, idle: 1, offline: 2 };
@@ -465,12 +453,7 @@ export default function ScreenMonitorPage({ user }) {
                           <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 ${status.color} border-2 border-white rounded-full`} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {emp.name}
-                            {activity?.mood && getMoodEmoji(activity.mood) && (
-                              <span className="ml-1">{getMoodEmoji(activity.mood)}</span>
-                            )}
-                          </p>
+                          <p className="font-medium text-sm truncate">{emp.name}</p>
                           <div className="flex items-center gap-2 text-xs text-gray-500">
                             <span>{getRoleLabel(emp.role)}</span>
                             {activity && activity.status !== 'offline' && (
@@ -545,19 +528,13 @@ export default function ScreenMonitorPage({ user }) {
                     const activity = getActivity(selectedEmployee.id);
                     const status = getStatusInfo(selectedEmployee.id);
                     return (
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-gray-50 rounded-lg p-3">
                           <p className="text-xs text-gray-500 mb-1">Status</p>
                           <div className="flex items-center gap-2">
                             <span className={`w-2.5 h-2.5 rounded-full ${status.color}`} />
                             <span className={`font-medium text-sm ${status.textColor}`}>{status.label}</span>
                           </div>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-500 mb-1">Mood</p>
-                          <p className="font-medium text-sm">
-                            {activity?.mood ? `${getMoodEmoji(activity.mood) || ''} ${activity.mood.charAt(0).toUpperCase() + activity.mood.slice(1)}` : '-'}
-                          </p>
                         </div>
                         <div className="bg-gray-50 rounded-lg p-3">
                           <p className="text-xs text-gray-500 mb-1">Halaman Aktif</p>

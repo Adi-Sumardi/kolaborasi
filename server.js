@@ -234,6 +234,27 @@ app.prepare().then(() => {
     if (r.rowCount > 0) console.log(`🧹 ${r.rowCount} sesi monitor menggantung ditutup saat startup`);
   }).catch((err) => console.error('[Monitor] Gagal menutup sesi menggantung:', err.message));
 
+  // Sesi pemantauan lewat desktop agent: `${socketId}:${employeeId}` -> sessionId.
+  // Jalur agent sebelumnya tidak pernah mencatat screen_sessions sama sekali.
+  const agentWatchSessions = new Map();
+
+  // Hitung berapa admin yang sedang memantau seorang karyawan, lalu beri tahu
+  // karyawan tersebut supaya bisa menampilkan indikator "Aktif dan dipantau".
+  const notifyWatchState = (employeeId) => {
+    if (!employeeId) return;
+    const agentRoom = io.sockets.adapter.rooms.get(`monitor:${employeeId}`);
+    const agentWatchers = agentRoom ? agentRoom.size : 0;
+    let webrtcWatchers = 0;
+    for (const session of monitorSessions.values()) {
+      if (session.employeeId === employeeId) webrtcWatchers++;
+    }
+    const total = agentWatchers + webrtcWatchers;
+    io.to(`user:${employeeId}`).emit('monitor:watch-state', {
+      watching: total > 0,
+      watchers: total,
+    });
+  };
+
   // Tutup sesi monitor aktif milik satu admin (dipakai saat stop / disconnect)
   const endMonitorSessions = async (adminId, sessionId = null) => {
     try {
@@ -280,7 +301,14 @@ app.prepare().then(() => {
         userId: socket.userId,
         ...employeeActivity.get(socket.userId)
       });
+
+      // Beri tahu status pemantauan saat ini — karyawan bisa saja reconnect
+      // ketika admin sudah memantau, sehingga indikator harus langsung benar.
+      notifyWatchState(socket.userId);
     }
+
+    // Karyawan boleh menanyakan status pemantauan dirinya sendiri
+    socket.on('monitor:watch-state?', () => notifyWatchState(socket.userId));
 
     // Join chat room
     socket.on('join_room', (roomId) => {
@@ -340,6 +368,7 @@ app.prepare().then(() => {
           fromUserId: socket.userId,
           sessionId: data.sessionId
         });
+        notifyWatchState(data.targetUserId);
       } catch (err) {
         console.error('[Monitor] Offer validation error:', err.message);
       }
@@ -383,6 +412,7 @@ app.prepare().then(() => {
       const closed = await endMonitorSessions(socket.userId, data?.sessionId || null);
       if (session) {
         io.to(`user:${session.employeeId}`).emit('monitor:stopped', { sessionId: data.sessionId });
+        notifyWatchState(session.employeeId);
       }
       if (closed > 0) console.log(`🛑 ${socket.userEmail} menghentikan ${closed} sesi monitor`);
     });
@@ -393,7 +423,7 @@ app.prepare().then(() => {
       employeeActivity.set(socket.userId, {
         ...existing,
         status: 'online',
-        mood: data.mood || 'biasa',
+        mood: data?.mood || null,
         workStartedAt: new Date().toISOString(),
         lastActivity: new Date().toISOString()
       });
@@ -401,7 +431,7 @@ app.prepare().then(() => {
         userId: socket.userId,
         ...employeeActivity.get(socket.userId)
       });
-      console.log(`🏢 ${socket.userEmail} started working (mood: ${data.mood})`);
+      console.log(`🏢 ${socket.userEmail} started working`);
     });
 
     // Work Session: Clock-in (from Electron or browser)
@@ -512,25 +542,54 @@ app.prepare().then(() => {
     });
 
     // Admin subscribes to employee's desktop stream
-    socket.on('agent:watch', (data) => {
-      if (!['super_admin', 'owner'].includes(socket.userRole)) return;
+    socket.on('agent:watch', async (data) => {
+      if (!isAdmin(socket.userRole)) return;
+      if (!data?.targetUserId) return;
+
       socket.join(`monitor:${data.targetUserId}`);
+
+      // Catat sesi supaya pemantauan lewat desktop agent ikut terekam
+      const key = `${socket.id}:${data.targetUserId}`;
+      if (!agentWatchSessions.has(key)) {
+        try {
+          const res = await dbPool.query(
+            `INSERT INTO screen_sessions (employee_id, admin_id, status)
+             VALUES ($1, $2, 'active') RETURNING id`,
+            [data.targetUserId, socket.userId]
+          );
+          agentWatchSessions.set(key, res.rows[0].id);
+        } catch (err) {
+          console.error('[Monitor] Gagal mencatat sesi agent:', err.message);
+        }
+      }
+
       // Tell agent to start capturing
       io.to(`user:${data.targetUserId}`).emit('agent:config', {
         fps: data.fps || 1,
         quality: data.quality || 60
       });
+      notifyWatchState(data.targetUserId);
       console.log(`👁️ ${socket.userEmail} started watching ${data.targetUserId}`);
     });
 
     // Admin stops watching
-    socket.on('agent:unwatch', (data) => {
+    socket.on('agent:unwatch', async (data) => {
+      if (!data?.targetUserId) return;
       socket.leave(`monitor:${data.targetUserId}`);
+
+      const key = `${socket.id}:${data.targetUserId}`;
+      const sessionId = agentWatchSessions.get(key);
+      if (sessionId) {
+        agentWatchSessions.delete(key);
+        await endMonitorSessions(socket.userId, sessionId);
+      }
+
       // If no more watchers, tell agent to stop capturing
       const room = io.sockets.adapter.rooms.get(`monitor:${data.targetUserId}`);
       if (!room || room.size === 0) {
         io.to(`user:${data.targetUserId}`).emit('agent:config', { fps: 0 });
       }
+      notifyWatchState(data.targetUserId);
       console.log(`👁️ ${socket.userEmail} stopped watching ${data.targetUserId}`);
     });
 
@@ -617,8 +676,16 @@ app.prepare().then(() => {
 
       // Admin terputus → tutup sesi di DB dan hentikan indikator di sisi karyawan
       if (isAdmin(socket.userRole)) {
+        // Sesi lewat desktop agent milik socket ini
+        for (const [key, sessionId] of agentWatchSessions.entries()) {
+          if (!key.startsWith(`${socket.id}:`)) continue;
+          affectedEmployees.add(key.slice(socket.id.length + 1));
+          agentWatchSessions.delete(key);
+        }
+
         const closed = await endMonitorSessions(socket.userId);
         if (closed > 0) console.log(`🛑 ${closed} sesi monitor ditutup (admin disconnect)`);
+
         for (const employeeId of affectedEmployees) {
           io.to(`user:${employeeId}`).emit('monitor:stopped', {});
           // Hentikan capture desktop agent bila tidak ada lagi yang menonton
@@ -626,6 +693,7 @@ app.prepare().then(() => {
           if (!room || room.size === 0) {
             io.to(`user:${employeeId}`).emit('agent:config', { fps: 0 });
           }
+          notifyWatchState(employeeId);
         }
       }
 
