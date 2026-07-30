@@ -105,5 +105,13 @@ backups/
 public/downloads/*.dmg
 public/downloads/*.exe
 public/downloads/*.AppImage
+public/downloads/*.zip
+public/downloads/*.blockmap
+public/downloads/*.yml
 !public/downloads/.gitkeep
+# Semua artefak rilis (installer + file blockmap + feed update .yml) sengaja
+# TIDAK lewat git — harus di-upload bersamaan langsung ke server via
+# electron-app/scripts/release.sh, supaya .yml dan installer selalu sinkron.
+# Kalau .yml ikut ter-commit tapi installer-nya tidak, electron-updater di
+# karyawan akan menunjuk ke file yang tidak ada di server.
 electron-app/dist/

@@ -1,6 +1,6 @@
 {
   "name": "kkp-anwar-kpi",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "KKP Anwar KPI - Desktop App",
   "main": "main.js",
   "scripts": {
@@ -9,9 +9,9 @@
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --mac --win --linux",
-    "postbuild:mac": "cp dist/*.dmg ../public/downloads/ 2>/dev/null || true",
-    "postbuild:win": "cp dist/*.exe ../public/downloads/ 2>/dev/null || true",
-    "postbuild:linux": "cp dist/*.AppImage ../public/downloads/ 2>/dev/null || true"
+    "postbuild:mac": "cp dist/*.dmg dist/*.zip dist/latest-mac.yml ../public/downloads/ 2>/dev/null || true",
+    "postbuild:win": "cp dist/*.exe dist/*.exe.blockmap dist/latest.yml ../public/downloads/ 2>/dev/null || true",
+    "postbuild:linux": "cp dist/*.AppImage dist/*.AppImage.blockmap dist/latest-linux.yml ../public/downloads/ 2>/dev/null || true"
   },
   "build": {
     "appId": "com.kkpanwar.kpi",
@@ -19,12 +19,18 @@
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://kolaborasi.adilabs.id/downloads/"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
     },
     "mac": {
-      "target": "dmg",
+      "target": ["dmg", "zip"],
       "icon": "build/icon.icns",
       "category": "public.app-category.business",
       "identity": null
@@ -63,6 +69,7 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.3.9",
     "sharp": "^0.33.2",
     "socket.io-client": "^4.8.1"
   },

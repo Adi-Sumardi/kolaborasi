@@ -4,6 +4,7 @@ const store = require('./src/store');
 const socketAgent = require('./src/socket-agent');
 const capture = require('./src/capture');
 const idleDetector = require('./src/idle-detector');
+const updater = require('./src/updater');
 
 let mainWindow = null;
 let tray = null;
@@ -204,10 +205,18 @@ function createDefaultIcon() {
   return nativeImage.createFromBuffer(canvas, { width: size, height: size });
 }
 
+let currentAgentStatus = 'Menunggu login...';
+
 function updateTrayMenu(status) {
+  currentAgentStatus = status;
+  rebuildTrayMenu();
+}
+
+function rebuildTrayMenu() {
   if (!tray) return;
 
-  const contextMenu = Menu.buildFromTemplate([
+  const upd = updater.getState();
+  const items = [
     {
       label: 'Buka KKP Anwar KPI',
       click: () => {
@@ -218,10 +227,25 @@ function updateTrayMenu(status) {
       }
     },
     { type: 'separator' },
-    {
-      label: `Status: ${status}`,
-      enabled: false
-    },
+    { label: `Status: ${currentAgentStatus}`, enabled: false },
+  ];
+
+  // Baris status update — hanya satu baris aktif sesuai state saat ini
+  if (upd.status === 'checking') {
+    items.push({ label: 'Mengecek update...', enabled: false });
+  } else if (upd.status === 'downloading') {
+    items.push({ label: `Mengunduh update v${upd.version || ''} (${upd.percent ?? 0}%)`, enabled: false });
+  } else if (upd.status === 'downloaded') {
+    items.push({ type: 'separator' });
+    items.push({ label: `Update v${upd.version} siap dipasang`, enabled: false });
+    items.push({ label: 'Pasang Update Sekarang', click: () => updater.installNow() });
+  } else if (upd.status === 'error') {
+    items.push({ label: 'Cek update gagal — coba lagi', click: () => updater.checkNow() });
+  } else {
+    items.push({ label: 'Cek Update', click: () => updater.checkNow() });
+  }
+
+  items.push(
     { type: 'separator' },
     {
       label: 'Keluar',
@@ -230,10 +254,10 @@ function updateTrayMenu(status) {
         app.quit();
       }
     }
-  ]);
+  );
 
-  tray.setContextMenu(contextMenu);
-  tray.setToolTip(`KKP Anwar KPI - ${status}`);
+  tray.setContextMenu(Menu.buildFromTemplate(items));
+  tray.setToolTip(`KKP Anwar KPI - ${currentAgentStatus}`);
 }
 
 // --- Screen Permission ---
@@ -397,6 +421,11 @@ app.whenReady().then(async () => {
 
   await createTray();
   createWindow();
+
+  // Auto-update: cek saat start, lalu berkala tiap 4 jam.
+  // Setiap perubahan status (checking/downloading/downloaded/error) merender
+  // ulang menu tray lewat rebuildTrayMenu().
+  updater.init(rebuildTrayMenu);
 });
 
 app.on('window-all-closed', () => {
