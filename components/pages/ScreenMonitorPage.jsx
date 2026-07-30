@@ -142,7 +142,17 @@ export default function ScreenMonitorPage({ user }) {
 
     return () => {
       socket.off('agent:frame', onFrame);
-      targets.forEach(id => socket.emit('agent:unwatch', { targetUserId: id }));
+      // Jangan unwatch karyawan yang barusan mulai ditonton penuh lewat
+      // "Lihat Layar" — race condition: watch(fps:1) dari startAgentView
+      // terkirim duluan, lalu cleanup ini jalan dan langsung mengirim
+      // unwatch untuk karyawan yang sama (Map di server per-socket, jadi
+      // unwatch menghapus entri yang baru saja dibuat) -> capture mati
+      // total setelah 1 frame. watchedUserIdRef melacak siapa yang sedang
+      // di-"Lihat Layar" penuh saat ini.
+      targets.forEach(id => {
+        if (id === watchedUserIdRef.current) return;
+        socket.emit('agent:unwatch', { targetUserId: id });
+      });
       setThumbs(prev => {
         Object.values(prev).forEach(u => URL.revokeObjectURL(u));
         return {};
