@@ -94,6 +94,8 @@ public/uploads/jobdesk-attachments/*
 !public/uploads/jobdesk-attachments/.gitkeep
 public/uploads/profiles/*
 !public/uploads/profiles/.gitkeep
+public/uploads/billing/*
+!public/uploads/billing/.gitkeep
 
 # Backup files
 backups/

@@ -11,6 +11,7 @@ import { sendSubmissionNotificationEmail } from '@/lib/emailService';
 import { getVapidPublicKey, sendPushNotification, sendBulkPushNotifications } from '@/lib/push-notifications';
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 
 // Helper function to verify JWT token
 const verifyToken = (request) => {
@@ -6783,11 +6784,44 @@ async function handleUploadBillingFile(request, id) {
       return NextResponse.json({ error: 'fileType must be invoice_pdf or email_screenshot' }, { status: 400 });
     }
 
+    // Batas ukuran 10MB (samakan dengan upload lampiran jobdesk)
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json({ error: 'Ukuran file melebihi 10MB' }, { status: 400 });
+    }
+    if (file.size === 0) {
+      return NextResponse.json({ error: 'File kosong' }, { status: 400 });
+    }
+
+    // Whitelist MIME per jenis dokumen. Ekstensi diambil dari MIME yang sudah
+    // divalidasi — bukan dari file.name — agar .html/.svg tidak bisa lolos dan
+    // tersaji sebagai HTML dari origin yang sama (stored XSS).
+    const ALLOWED = {
+      invoice_pdf: {
+        'application/pdf': '.pdf',
+      },
+      email_screenshot: {
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/webp': '.webp',
+        'application/pdf': '.pdf',
+      },
+    };
+
+    const extByMime = ALLOWED[fileType];
+    const fileExt = extByMime[file.type];
+    if (!fileExt) {
+      const allowedLabel = fileType === 'invoice_pdf' ? 'PDF' : 'PNG, JPG, WEBP, atau PDF';
+      return NextResponse.json(
+        { error: `Tipe file tidak diizinkan. Gunakan ${allowedLabel}.` },
+        { status: 400 }
+      );
+    }
+
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'billing');
     await fs.mkdir(uploadsDir, { recursive: true });
 
-    const fileExt = path.extname(file.name);
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}${fileExt}`;
+    const fileName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${fileExt}`;
     const filePath = path.join(uploadsDir, fileName);
     const publicPath = `/uploads/billing/${fileName}`;
 
@@ -7177,6 +7211,11 @@ export async function POST(request, { params }) {
 
     // Billing Records
     if (path === 'billing') return handleCreateBillingRecord(request);
+    // Upload invoice PDF / screenshot email — dikirim client sebagai POST multipart
+    if (path.match(/^billing\/[^/]+\/upload$/)) {
+      const billingId = path.split('/')[1];
+      return handleUploadBillingFile(request, billingId);
+    }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   } catch (error) {
@@ -7306,10 +7345,6 @@ export async function PUT(request, { params }) {
     if (path === 'work-sessions/clock-out') return handleClockOut(request);
 
     // Billing Records
-    if (path.match(/^billing\/[^/]+\/upload$/)) {
-      const billingId = path.split('/')[1];
-      return handleUploadBillingFile(request, billingId);
-    }
     if (path.match(/^billing\/[^/]+$/)) {
       const billingId = path.split('/')[1];
       return handleUpdateBillingRecord(request, billingId);

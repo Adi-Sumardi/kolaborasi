@@ -161,6 +161,14 @@ app.prepare().then(() => {
   // In-memory store for employee activity
   const employeeActivity = new Map();
 
+  // Active monitor sessions: sessionId -> { adminId, employeeId }
+  // Diisi saat admin mengirim offer yang lolos validasi DB, dipakai untuk
+  // memverifikasi answer & ICE candidate agar tidak bisa dipalsukan user lain.
+  const monitorSessions = new Map();
+
+  const ADMIN_ROLES = ['super_admin', 'owner'];
+  const isAdmin = (role) => ADMIN_ROLES.includes(role);
+
   // Socket.IO connection handler
   io.on('connection', (socket) => {
     console.log(`✅ User connected: ${socket.userEmail} (role: ${socket.userRole}, source: ${socket.source})`);
@@ -210,16 +218,53 @@ app.prepare().then(() => {
       });
     });
 
+    // ===========================================
     // WebRTC Signaling for screen monitoring
-    socket.on('monitor:offer', (data) => {
-      io.to(`user:${data.targetUserId}`).emit('monitor:offer', {
-        offer: data.offer,
-        fromUserId: socket.userId,
-        sessionId: data.sessionId
-      });
+    // Semua event divalidasi terhadap screen_sessions di DB — tanpa ini
+    // user mana pun bisa memicu screen share ke dirinya sendiri.
+    // ===========================================
+    socket.on('monitor:offer', async (data) => {
+      // Hanya admin yang boleh memulai pemantauan
+      if (!isAdmin(socket.userRole)) {
+        console.warn(`🚫 monitor:offer ditolak — ${socket.userEmail} bukan admin`);
+        return;
+      }
+      if (!data?.sessionId || !data?.targetUserId) return;
+
+      try {
+        // Sesi harus benar-benar ada, aktif, dan milik admin ini untuk karyawan ini
+        const check = await dbPool.query(
+          `SELECT id FROM screen_sessions
+           WHERE id = $1 AND admin_id = $2 AND employee_id = $3 AND status = 'active'`,
+          [data.sessionId, socket.userId, data.targetUserId]
+        );
+        if (check.rows.length === 0) {
+          console.warn(`🚫 monitor:offer ditolak — sesi ${data.sessionId} tidak valid untuk ${socket.userEmail}`);
+          return;
+        }
+
+        monitorSessions.set(data.sessionId, {
+          adminId: socket.userId,
+          employeeId: data.targetUserId
+        });
+
+        io.to(`user:${data.targetUserId}`).emit('monitor:offer', {
+          offer: data.offer,
+          fromUserId: socket.userId,
+          sessionId: data.sessionId
+        });
+      } catch (err) {
+        console.error('[Monitor] Offer validation error:', err.message);
+      }
     });
 
     socket.on('monitor:answer', (data) => {
+      const session = monitorSessions.get(data?.sessionId);
+      // Answer hanya sah dari karyawan target, dan hanya menuju admin pemilik sesi
+      if (!session || session.employeeId !== socket.userId || session.adminId !== data.targetUserId) {
+        console.warn(`🚫 monitor:answer ditolak dari ${socket.userEmail}`);
+        return;
+      }
       io.to(`user:${data.targetUserId}`).emit('monitor:answer', {
         answer: data.answer,
         fromUserId: socket.userId,
@@ -228,6 +273,15 @@ app.prepare().then(() => {
     });
 
     socket.on('monitor:ice-candidate', (data) => {
+      const session = monitorSessions.get(data?.sessionId);
+      if (!session) return;
+      // ICE mengalir dua arah, tapi hanya antara dua peserta sesi ini
+      const isAdminSide    = session.adminId === socket.userId && session.employeeId === data.targetUserId;
+      const isEmployeeSide = session.employeeId === socket.userId && session.adminId === data.targetUserId;
+      if (!isAdminSide && !isEmployeeSide) {
+        console.warn(`🚫 monitor:ice-candidate ditolak dari ${socket.userEmail}`);
+        return;
+      }
       io.to(`user:${data.targetUserId}`).emit('monitor:ice-candidate', {
         candidate: data.candidate,
         fromUserId: socket.userId,
@@ -431,19 +485,35 @@ app.prepare().then(() => {
       });
     });
 
+    // Data aktivitas seluruh karyawan — admin only
     socket.on('activity:request-all', () => {
+      if (!isAdmin(socket.userRole)) {
+        console.warn(`🚫 activity:request-all ditolak — ${socket.userEmail} bukan admin`);
+        return;
+      }
       const allActivity = {};
       employeeActivity.forEach((value, key) => { allActivity[key] = value; });
       socket.emit('activity:all-data', allActivity);
     });
 
     socket.on('activity:join-monitor', () => {
+      if (!isAdmin(socket.userRole)) {
+        console.warn(`🚫 activity:join-monitor ditolak — ${socket.userEmail} bukan admin`);
+        return;
+      }
       socket.join('room:admin-monitor');
     });
 
     // Disconnect
     socket.on('disconnect', async () => {
       console.log(`❌ User disconnected: ${socket.userEmail} (source: ${socket.source})`);
+
+      // Bersihkan sesi monitor yang melibatkan socket ini
+      for (const [sessionId, session] of monitorSessions.entries()) {
+        if (session.adminId === socket.userId || session.employeeId === socket.userId) {
+          monitorSessions.delete(sessionId);
+        }
+      }
 
       // Mark as offline in activity store
       if (employeeActivity.has(socket.userId)) {
