@@ -542,6 +542,22 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_screen_sessions_employee ON screen_sessions(employee_id);`,
   `CREATE INDEX IF NOT EXISTS idx_screen_sessions_status ON screen_sessions(status);`,
 
+  // Aktivitas karyawan — dipersist agar tidak hilang saat server restart
+  `CREATE TABLE IF NOT EXISTS employee_activity (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'offline',
+    page VARCHAR(100),
+    page_label VARCHAR(150),
+    online_since TIMESTAMP WITH TIME ZONE,
+    last_activity TIMESTAMP WITH TIME ZONE,
+    screen_ready BOOLEAN DEFAULT false,
+    agent_connected BOOLEAN DEFAULT false,
+    work_session_active BOOLEAN DEFAULT false,
+    work_started_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_employee_activity_last ON employee_activity(last_activity);`,
+
   // =====================================================
   // BILLING RECORDS (Tagihan ke Klien)
   // =====================================================

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Monitor, Wifi, WifiOff, X, Maximize2, Minimize2, Clock, User, Activity, CircleDot, Play, ScreenShare, ScreenShareOff } from 'lucide-react';
+import { Monitor, Wifi, WifiOff, X, Maximize2, Minimize2, Clock, User, Activity, CircleDot, Play, ScreenShare, ScreenShareOff, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
 import { getToken } from '@/lib/api';
 import { initSocket } from '@/lib/socket-client';
@@ -19,6 +19,8 @@ export default function ScreenMonitorPage({ user }) {
   const [monitorSource, setMonitorSource] = useState(null); // 'agent' | 'webrtc' | null
   const [tick, setTick] = useState(0);
   const [connectedAt, setConnectedAt] = useState(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [thumbs, setThumbs] = useState({});
   const videoRef = useRef(null);
   const imgRef = useRef(null);
   const peerConnectionRef = useRef(null);
@@ -108,6 +110,45 @@ export default function ScreenMonitorPage({ user }) {
       }
     };
   }, []);
+
+  // Daftar karyawan yang punya desktop agent aktif. Dijadikan string agar
+  // effect thumbnail tidak ikut re-run setiap ada update aktivitas kecil.
+  const agentEmployeeIds = useMemo(
+    () => allEmployees.filter(e => employeeActivities[e.id]?.agentConnected).map(e => e.id).sort().join(','),
+    [allEmployees, employeeActivities]
+  );
+
+  // --- Thumbnail grid: pantau semua karyawan sekaligus pada fps rendah ---
+  const GRID_FPS = 0.2;
+  useEffect(() => {
+    const socket = socketRef.current;
+    // Saat menonton satu karyawan secara penuh, grid dimatikan agar tidak
+    // memaksa agent capture pada dua laju berbeda.
+    if (!socket || !showGrid || isScreenSharing) return;
+
+    const targets = agentEmployeeIds ? agentEmployeeIds.split(',') : [];
+    if (targets.length === 0) return;
+
+    const onFrame = (data) => {
+      const url = URL.createObjectURL(new Blob([data.frame], { type: 'image/jpeg' }));
+      setThumbs(prev => {
+        if (prev[data.userId]) URL.revokeObjectURL(prev[data.userId]);
+        return { ...prev, [data.userId]: url };
+      });
+    };
+
+    socket.on('agent:frame', onFrame);
+    targets.forEach(id => socket.emit('agent:watch', { targetUserId: id, fps: GRID_FPS }));
+
+    return () => {
+      socket.off('agent:frame', onFrame);
+      targets.forEach(id => socket.emit('agent:unwatch', { targetUserId: id }));
+      setThumbs(prev => {
+        Object.values(prev).forEach(u => URL.revokeObjectURL(u));
+        return {};
+      });
+    };
+  }, [agentEmployeeIds, showGrid, isScreenSharing]);
 
   const loadEmployees = async () => {
     try {
@@ -407,8 +448,74 @@ export default function ScreenMonitorPage({ user }) {
           <Badge variant="outline" className="text-blue-600 border-blue-300 gap-1">
             <ScreenShare className="w-3 h-3" /> {screenReadyCount} Layar Aktif
           </Badge>
+          {agentCount > 0 && (
+            <Button
+              variant={showGrid ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowGrid(v => !v)}
+              className="gap-2"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              {showGrid ? 'Sembunyikan Grid' : `Grid Semua (${agentCount})`}
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Thumbnail grid — pratinjau semua desktop sekaligus pada fps rendah */}
+      {showGrid && agentCount > 0 && !isScreenSharing && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <LayoutGrid className="w-5 h-5" />
+              Pratinjau Semua Desktop
+              <Badge variant="outline" className="text-gray-500 border-gray-300 font-normal">
+                {GRID_FPS} fps · hemat bandwidth
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              {allEmployees.filter(e => getActivity(e.id)?.agentConnected).map(emp => {
+                const st = getStatusInfo(emp.id);
+                const act = getActivity(emp.id);
+                return (
+                  <button
+                    key={emp.id}
+                    onClick={() => { setSelectedEmployee(emp); handleStartScreenView(emp); }}
+                    className="text-left group"
+                    title={`Klik untuk perbesar — ${emp.name}`}
+                  >
+                    <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video ring-1 ring-gray-200 group-hover:ring-2 group-hover:ring-blue-500 transition-all">
+                      {thumbs[emp.id] ? (
+                        <img src={thumbs[emp.id]} alt={emp.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 gap-1">
+                          <Monitor className="w-6 h-6" />
+                          <span className="text-[10px]">Menunggu gambar...</span>
+                        </div>
+                      )}
+                      {act?.status === 'idle' && (
+                        <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-medium">
+                          Idle · {GRID_FPS} fps
+                        </span>
+                      )}
+                      <span className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        <Maximize2 className="w-3 h-3 inline" />
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1.5 px-0.5">
+                      <span className={`w-2 h-2 rounded-full ${st.color} flex-shrink-0`} />
+                      <span className="text-xs font-medium truncate">{emp.name}</span>
+                      <span className="text-[10px] text-gray-400 truncate ml-auto">{act?.pageLabel || ''}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Employee List */}

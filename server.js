@@ -58,19 +58,37 @@ console.log('===========================================\n');
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Graceful shutdown handler
-const gracefulShutdown = (signal) => {
+// Diisi setelah server dibuat. Sebelumnya gracefulShutdown mengacu langsung ke
+// `server` yang dideklarasikan di scope lain (dalam app.prepare().then()),
+// sehingga SIGTERM/SIGINT selalu melempar ReferenceError dan shutdown gagal.
+let serverRef = null;
+let onShutdown = null;
+
+const gracefulShutdown = async (signal) => {
   console.log(`\n${signal} signal received: closing HTTP server`);
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
-  
+
   // Force close after 10 seconds
-  setTimeout(() => {
+  const forceTimer = setTimeout(() => {
     console.error('Could not close connections in time, forcefully shutting down');
     process.exit(1);
   }, 10000);
+
+  try {
+    if (onShutdown) await onShutdown();
+  } catch (err) {
+    console.error('Shutdown hook error:', err.message);
+  }
+
+  if (!serverRef) {
+    clearTimeout(forceTimer);
+    process.exit(0);
+  }
+
+  serverRef.close(() => {
+    console.log('HTTP server closed');
+    clearTimeout(forceTimer);
+    process.exit(0);
+  });
 };
 
 app.prepare().then(() => {
@@ -115,6 +133,7 @@ app.prepare().then(() => {
   });
   
   // Register graceful shutdown handlers
+  serverRef = server;
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
@@ -206,10 +225,98 @@ app.prepare().then(() => {
   const ADMIN_ROLES = ['super_admin', 'owner'];
   const isAdmin = (role) => ADMIN_ROLES.includes(role);
 
+  // ===========================================
+  // Persistensi aktivitas karyawan
+  // Map di memori adalah sumber kebenaran saat berjalan; DB dipakai agar
+  // state tidak hilang total saat server restart.
+  // ===========================================
+  const dirtyActivity = new Set();
+
+  // Satu pintu untuk semua perubahan aktivitas: merge -> tandai perlu disimpan
+  // -> siarkan ke admin. Sebelumnya pola ini disalin di 8 tempat berbeda.
+  const updateActivity = (userId, patch, { broadcast = true } = {}) => {
+    const existing = employeeActivity.get(userId) || {};
+    const next = { ...existing, ...patch, lastActivity: new Date().toISOString() };
+    employeeActivity.set(userId, next);
+    dirtyActivity.add(userId);
+    if (broadcast) {
+      io.to('room:admin-monitor').emit('activity:update', { userId, ...next });
+    }
+    return next;
+  };
+
+  const flushActivity = async () => {
+    if (dirtyActivity.size === 0) return;
+    const ids = [...dirtyActivity];
+    dirtyActivity.clear();
+    for (const userId of ids) {
+      const a = employeeActivity.get(userId);
+      if (!a) continue;
+      try {
+        await dbPool.query(
+          `INSERT INTO employee_activity
+             (user_id, status, page, page_label, online_since, last_activity,
+              screen_ready, agent_connected, work_session_active, work_started_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+           ON CONFLICT (user_id) DO UPDATE SET
+             status = EXCLUDED.status, page = EXCLUDED.page, page_label = EXCLUDED.page_label,
+             online_since = EXCLUDED.online_since, last_activity = EXCLUDED.last_activity,
+             screen_ready = EXCLUDED.screen_ready, agent_connected = EXCLUDED.agent_connected,
+             work_session_active = EXCLUDED.work_session_active,
+             work_started_at = EXCLUDED.work_started_at, updated_at = NOW()`,
+          [userId, a.status || 'offline', a.page || null, a.pageLabel || null,
+           a.onlineSince || null, a.lastActivity || null,
+           !!a.screenReady, !!a.agentConnected, !!a.workSessionActive, a.workStartedAt || null]
+        );
+      } catch (err) {
+        console.error('[Activity] Gagal menyimpan:', err.message);
+      }
+    }
+  };
+  const activityFlushTimer = setInterval(flushActivity, 15 * 1000);
+  activityFlushTimer.unref?.();
+
+  // Simpan sisa perubahan & tutup sesi monitor sebelum proses berakhir
+  onShutdown = async () => {
+    await flushActivity();
+    try {
+      const r = await dbPool.query(
+        `UPDATE screen_sessions SET status = 'ended', ended_at = NOW() WHERE status = 'active'`
+      );
+      if (r.rowCount > 0) console.log(`🛑 ${r.rowCount} sesi monitor ditutup saat shutdown`);
+    } catch (err) {
+      console.error('[Shutdown] Gagal menutup sesi:', err.message);
+    }
+  };
+
+  // Pulihkan state terakhir saat startup. Status dipaksa offline karena semua
+  // socket sudah putus — klien akan otomatis reconnect dan menyalakannya lagi.
+  // Yang berharga di sini: halaman terakhir & kapan terakhir aktif tidak hilang.
+  dbPool.query(
+    `SELECT user_id, page, page_label, online_since, last_activity, work_started_at
+     FROM employee_activity
+     WHERE last_activity > NOW() - INTERVAL '24 hours'`
+  ).then((res) => {
+    for (const r of res.rows) {
+      employeeActivity.set(r.user_id, {
+        status: 'offline',
+        page: r.page,
+        pageLabel: r.page_label,
+        onlineSince: r.online_since ? new Date(r.online_since).toISOString() : null,
+        lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : null,
+        screenReady: false,
+        agentConnected: false,
+        workSessionActive: false,
+        workStartedAt: r.work_started_at ? new Date(r.work_started_at).toISOString() : null,
+      });
+    }
+    if (res.rows.length > 0) console.log(`♻️  ${res.rows.length} state aktivitas dipulihkan dari DB`);
+  }).catch((err) => console.error('[Activity] Gagal memulihkan state:', err.message));
+
   // Buang entri aktivitas karyawan yang sudah lama offline supaya Map tidak
   // tumbuh selamanya (user nonaktif/terhapus tidak pernah connect lagi).
   const ACTIVITY_TTL = 24 * 60 * 60 * 1000; // 24 jam
-  const evictStaleActivity = () => {
+  const evictStaleActivity = async () => {
     const now = Date.now();
     let removed = 0;
     for (const [userId, activity] of employeeActivity.entries()) {
@@ -217,10 +324,16 @@ app.prepare().then(() => {
       const last = new Date(activity.lastActivity || 0).getTime();
       if (now - last > ACTIVITY_TTL) {
         employeeActivity.delete(userId);
+        dirtyActivity.delete(userId);
         removed++;
       }
     }
     if (removed > 0) console.log(`🧹 ${removed} entri aktivitas basi dibersihkan`);
+    try {
+      await dbPool.query(`DELETE FROM employee_activity WHERE last_activity < NOW() - INTERVAL '30 days'`);
+    } catch (err) {
+      console.error('[Activity] Gagal membersihkan DB:', err.message);
+    }
   };
   const activityEvictTimer = setInterval(evictStaleActivity, 60 * 60 * 1000); // tiap jam
   activityEvictTimer.unref?.();
@@ -237,6 +350,27 @@ app.prepare().then(() => {
   // Sesi pemantauan lewat desktop agent: `${socketId}:${employeeId}` -> sessionId.
   // Jalur agent sebelumnya tidak pernah mencatat screen_sessions sama sekali.
   const agentWatchSessions = new Map();
+
+  // Siapa menonton siapa dan pada fps berapa: employeeId -> Map<socketId, fps>.
+  // Perlu per-penonton karena thumbnail grid menonton banyak orang di 0.2 fps
+  // sementara tampilan penuh minta 1 fps — tanpa ini yang terakhir menimpa.
+  const agentWatchers = new Map();
+  const IDLE_FPS = 0.2;
+
+  // Tentukan fps efektif: ambil permintaan tertinggi di antara penonton, lalu
+  // turunkan ke IDLE_FPS bila karyawannya sedang idle.
+  const applyAgentFps = (employeeId) => {
+    const watchers = agentWatchers.get(employeeId);
+    if (!watchers || watchers.size === 0) {
+      io.to(`user:${employeeId}`).emit('agent:config', { fps: 0 });
+      return 0;
+    }
+    const requested = Math.max(...watchers.values());
+    const idle = employeeActivity.get(employeeId)?.status === 'idle';
+    const fps = idle ? Math.min(requested, IDLE_FPS) : requested;
+    io.to(`user:${employeeId}`).emit('agent:config', { fps, quality: idle ? 40 : 60 });
+    return fps;
+  };
 
   // Hitung berapa admin yang sedang memantau seorang karyawan, lalu beri tahu
   // karyawan tersebut supaya bisa menampilkan indikator "Aktif dan dipantau".
@@ -288,18 +422,17 @@ app.prepare().then(() => {
     if (['karyawan', 'sdm'].includes(socket.userRole)) {
       console.log(`📊 ${socket.userEmail} auto-tracked as online (source: ${socket.source})`);
       const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, {
-        ...existing,
+      // Jangan reset "online sejak" kalau ini cuma reconnect singkat
+      // (blip jaringan / refresh halaman) — durasi kerja jadi salah kalau direset.
+      const lastSeen = new Date(existing.lastActivity || 0).getTime();
+      const reconnectSingkat = existing.onlineSince && (Date.now() - lastSeen) < 5 * 60 * 1000;
+
+      updateActivity(socket.userId, {
         status: 'online',
         page: existing.page || 'home',
         pageLabel: existing.pageLabel || 'Dashboard',
         agentConnected: socket.source === 'desktop-agent' ? true : (existing.agentConnected || false),
-        onlineSince: new Date().toISOString(),
-        lastActivity: new Date().toISOString()
-      });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
+        onlineSince: reconnectSingkat ? existing.onlineSince : new Date().toISOString(),
       });
 
       // Beri tahu status pemantauan saat ini — karyawan bisa saja reconnect
@@ -418,18 +551,10 @@ app.prepare().then(() => {
     });
 
     // Start working (from WelcomeWorkModal)
-    socket.on('activity:start-working', (data) => {
-      const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, {
-        ...existing,
+    socket.on('activity:start-working', () => {
+      updateActivity(socket.userId, {
         status: 'online',
-        mood: data?.mood || null,
         workStartedAt: new Date().toISOString(),
-        lastActivity: new Date().toISOString()
-      });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
       });
       console.log(`🏢 ${socket.userEmail} started working`);
     });
@@ -453,18 +578,9 @@ app.prepare().then(() => {
           console.log(`⏰ ${socket.userEmail} clocked in (${data?.source || socket.source})`);
         }
 
-        // Update activity map
-        const ea = employeeActivity.get(socket.userId) || {};
-        employeeActivity.set(socket.userId, {
-          ...ea,
+        updateActivity(socket.userId, {
           workSessionActive: true,
           workClockIn: new Date().toISOString(),
-          lastActivity: new Date().toISOString()
-        });
-
-        io.to('room:admin-monitor').emit('activity:update', {
-          userId: socket.userId,
-          ...employeeActivity.get(socket.userId)
         });
 
         socket.emit('worksession:session-started', { clockIn: new Date().toISOString() });
@@ -490,18 +606,7 @@ app.prepare().then(() => {
           console.log(`⏰ ${socket.userEmail} clocked out (${Math.floor(mins/60)}h ${mins%60}m)`);
         }
 
-        // Update activity map
-        const ea = employeeActivity.get(socket.userId) || {};
-        employeeActivity.set(socket.userId, {
-          ...ea,
-          workSessionActive: false,
-          lastActivity: new Date().toISOString()
-        });
-
-        io.to('room:admin-monitor').emit('activity:update', {
-          userId: socket.userId,
-          ...employeeActivity.get(socket.userId)
-        });
+        updateActivity(socket.userId, { workSessionActive: false });
       } catch (err) {
         console.error('[WorkSession] Clock-out error:', err.message);
       }
@@ -509,22 +614,12 @@ app.prepare().then(() => {
 
     // Screen share ready/stopped (from "Mulai Bekerja" / "Selesai Bekerja")
     socket.on('monitor:screen-ready', () => {
-      const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, { ...existing, screenReady: true, lastActivity: new Date().toISOString() });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
-      });
+      updateActivity(socket.userId, { screenReady: true });
       console.log(`🖥️ ${socket.userEmail} screen share ready`);
     });
 
     socket.on('monitor:screen-stopped', () => {
-      const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, { ...existing, screenReady: false, lastActivity: new Date().toISOString() });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
-      });
+      updateActivity(socket.userId, { screenReady: false });
       console.log(`🖥️ ${socket.userEmail} screen share stopped`);
     });
 
@@ -563,13 +658,13 @@ app.prepare().then(() => {
         }
       }
 
-      // Tell agent to start capturing
-      io.to(`user:${data.targetUserId}`).emit('agent:config', {
-        fps: data.fps || 1,
-        quality: data.quality || 60
-      });
+      // Catat fps yang diminta penonton ini, lalu terapkan fps efektif
+      if (!agentWatchers.has(data.targetUserId)) agentWatchers.set(data.targetUserId, new Map());
+      agentWatchers.get(data.targetUserId).set(socket.id, Number(data.fps) || 1);
+      const fps = applyAgentFps(data.targetUserId);
+
       notifyWatchState(data.targetUserId);
-      console.log(`👁️ ${socket.userEmail} started watching ${data.targetUserId}`);
+      console.log(`👁️ ${socket.userEmail} started watching ${data.targetUserId} (fps efektif: ${fps})`);
     });
 
     // Admin stops watching
@@ -584,11 +679,14 @@ app.prepare().then(() => {
         await endMonitorSessions(socket.userId, sessionId);
       }
 
-      // If no more watchers, tell agent to stop capturing
-      const room = io.sockets.adapter.rooms.get(`monitor:${data.targetUserId}`);
-      if (!room || room.size === 0) {
-        io.to(`user:${data.targetUserId}`).emit('agent:config', { fps: 0 });
+      // Lepas fps penonton ini; applyAgentFps otomatis mengirim fps 0
+      // kalau sudah tidak ada penonton tersisa.
+      const watchers = agentWatchers.get(data.targetUserId);
+      if (watchers) {
+        watchers.delete(socket.id);
+        if (watchers.size === 0) agentWatchers.delete(data.targetUserId);
       }
+      applyAgentFps(data.targetUserId);
       notifyWatchState(data.targetUserId);
       console.log(`👁️ ${socket.userEmail} stopped watching ${data.targetUserId}`);
     });
@@ -596,50 +694,27 @@ app.prepare().then(() => {
     // Activity Tracking Events (from client ActivityTracker)
     socket.on('activity:online', (data) => {
       const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, {
-        ...existing,
+      updateActivity(socket.userId, {
         status: 'online',
         page: data.page || existing.page || 'home',
         pageLabel: data.pageLabel || existing.pageLabel || 'Dashboard',
         onlineSince: existing.onlineSince || new Date().toISOString(),
-        lastActivity: new Date().toISOString()
-      });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
       });
     });
 
     socket.on('activity:page-change', (data) => {
-      const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, {
-        ...existing,
-        page: data.page,
-        pageLabel: data.pageLabel,
-        lastActivity: new Date().toISOString()
-      });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
-      });
+      updateActivity(socket.userId, { page: data.page, pageLabel: data.pageLabel });
     });
 
     socket.on('activity:idle', () => {
-      const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, { ...existing, status: 'idle', lastActivity: new Date().toISOString() });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
-      });
+      updateActivity(socket.userId, { status: 'idle' });
+      // Adaptive fps: karyawan idle -> turunkan laju capture, hemat bandwidth
+      applyAgentFps(socket.userId);
     });
 
     socket.on('activity:active', () => {
-      const existing = employeeActivity.get(socket.userId) || {};
-      employeeActivity.set(socket.userId, { ...existing, status: 'online', lastActivity: new Date().toISOString() });
-      io.to('room:admin-monitor').emit('activity:update', {
-        userId: socket.userId,
-        ...employeeActivity.get(socket.userId)
-      });
+      updateActivity(socket.userId, { status: 'online' });
+      applyAgentFps(socket.userId);
     });
 
     // Data aktivitas seluruh karyawan — admin only
@@ -686,38 +761,33 @@ app.prepare().then(() => {
         const closed = await endMonitorSessions(socket.userId);
         if (closed > 0) console.log(`🛑 ${closed} sesi monitor ditutup (admin disconnect)`);
 
+        // Lepas semua langganan fps milik socket ini
+        for (const [employeeId, watchers] of agentWatchers.entries()) {
+          if (!watchers.has(socket.id)) continue;
+          affectedEmployees.add(employeeId);
+          watchers.delete(socket.id);
+          if (watchers.size === 0) agentWatchers.delete(employeeId);
+        }
+
         for (const employeeId of affectedEmployees) {
           io.to(`user:${employeeId}`).emit('monitor:stopped', {});
-          // Hentikan capture desktop agent bila tidak ada lagi yang menonton
-          const room = io.sockets.adapter.rooms.get(`monitor:${employeeId}`);
-          if (!room || room.size === 0) {
-            io.to(`user:${employeeId}`).emit('agent:config', { fps: 0 });
-          }
+          applyAgentFps(employeeId); // kirim fps 0 bila tak ada penonton tersisa
           notifyWatchState(employeeId);
         }
       }
 
       // Mark as offline in activity store
       if (employeeActivity.has(socket.userId)) {
-        const updates = {
-          ...employeeActivity.get(socket.userId),
-          lastActivity: new Date().toISOString()
-        };
+        const updates = socket.source === 'desktop-agent'
+          // Desktop agent putus — tandai agent offline, status browser tetap
+          ? { agentConnected: false }
+          // Browser putus — tandai offline
+          : { status: 'offline', screenReady: false };
 
-        if (socket.source === 'desktop-agent') {
-          // Desktop agent disconnected — mark agent as offline but keep browser status
-          updates.agentConnected = false;
-        } else {
-          // Browser disconnected — mark as offline
-          updates.status = 'offline';
-          updates.screenReady = false;
-        }
-
-        employeeActivity.set(socket.userId, updates);
-        io.to('room:admin-monitor').emit('activity:update', {
-          userId: socket.userId,
-          ...employeeActivity.get(socket.userId)
-        });
+        updateActivity(socket.userId, updates);
+        // Simpan segera — kalau server mati sesudah ini, status offline
+        // terakhir tetap terekam dan tidak menunggu flush berkala.
+        flushActivity().catch(() => {});
       }
 
       // Auto clock-out if no more sockets for this user
