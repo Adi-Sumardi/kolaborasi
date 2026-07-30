@@ -12,6 +12,12 @@ const dbPool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
+// WAJIB: tanpa handler ini, error pada idle client (DB restart / blip jaringan)
+// menjadi unhandled 'error' event dan mematikan seluruh proses Node.
+dbPool.on('error', (err) => {
+  console.error('[DB Pool] Idle client error (proses tetap hidup):', err.message);
+});
+
 // ===========================================
 // ENVIRONMENT VALIDATION
 // ===========================================
@@ -113,19 +119,50 @@ app.prepare().then(() => {
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   // Initialize Socket.IO
-  const allowedOrigins = dev
-    ? [
+  // Origin yang diizinkan. Di produksi jangan hanya andalkan NEXT_PUBLIC_BASE_URL —
+  // akses lewat IP langsung atau varian www/non-www akan gagal connect.
+  // Tambahan bisa diisi lewat env CORS_ORIGINS (dipisah koma).
+  const buildAllowedOrigins = () => {
+    if (dev) {
+      return [
         `http://localhost:${port}`, `http://0.0.0.0:${port}`, `http://127.0.0.1:${port}`,
         'http://localhost:3000', 'http://0.0.0.0:3000', 'http://127.0.0.1:3000',
-      ]
-    : [process.env.NEXT_PUBLIC_BASE_URL].filter(Boolean);
+      ];
+    }
+
+    const origins = new Set();
+    const add = (value) => {
+      if (!value) return;
+      const url = value.trim().replace(/\/+$/, '');
+      if (!url) return;
+      origins.add(url);
+      // Terima juga varian www <-> non-www dari host yang sama
+      try {
+        const parsed = new URL(url);
+        const host = parsed.host.startsWith('www.')
+          ? parsed.host.slice(4)
+          : `www.${parsed.host}`;
+        origins.add(`${parsed.protocol}//${host}`);
+      } catch {
+        // bukan URL valid, abaikan
+      }
+    };
+
+    add(process.env.NEXT_PUBLIC_BASE_URL);
+    (process.env.CORS_ORIGINS || '').split(',').forEach(add);
+    return [...origins];
+  };
+
+  const allowedOrigins = buildAllowedOrigins();
+  console.log(`🔐 Socket.IO allowed origins: ${allowedOrigins.join(', ') || '(none)'}`);
 
   const io = new Server(server, {
     cors: {
       origin: (origin, callback) => {
         // Allow connections with no origin (desktop agent, mobile apps)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
+        if (allowedOrigins.includes(origin.replace(/\/+$/, ''))) return callback(null, true);
+        console.warn(`🚫 Socket CORS ditolak untuk origin: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       },
       methods: ['GET', 'POST'],
@@ -168,6 +205,56 @@ app.prepare().then(() => {
 
   const ADMIN_ROLES = ['super_admin', 'owner'];
   const isAdmin = (role) => ADMIN_ROLES.includes(role);
+
+  // Buang entri aktivitas karyawan yang sudah lama offline supaya Map tidak
+  // tumbuh selamanya (user nonaktif/terhapus tidak pernah connect lagi).
+  const ACTIVITY_TTL = 24 * 60 * 60 * 1000; // 24 jam
+  const evictStaleActivity = () => {
+    const now = Date.now();
+    let removed = 0;
+    for (const [userId, activity] of employeeActivity.entries()) {
+      if (activity.status !== 'offline') continue;
+      const last = new Date(activity.lastActivity || 0).getTime();
+      if (now - last > ACTIVITY_TTL) {
+        employeeActivity.delete(userId);
+        removed++;
+      }
+    }
+    if (removed > 0) console.log(`🧹 ${removed} entri aktivitas basi dibersihkan`);
+  };
+  const activityEvictTimer = setInterval(evictStaleActivity, 60 * 60 * 1000); // tiap jam
+  activityEvictTimer.unref?.();
+
+  // Tutup sesi monitor yang menggantung dari proses sebelumnya. Tanpa ini
+  // screen_sessions terus menumpuk dan halaman sesi aktif menampilkan sesi mati.
+  dbPool.query(
+    `UPDATE screen_sessions SET status = 'ended', ended_at = NOW()
+     WHERE status = 'active'`
+  ).then((r) => {
+    if (r.rowCount > 0) console.log(`🧹 ${r.rowCount} sesi monitor menggantung ditutup saat startup`);
+  }).catch((err) => console.error('[Monitor] Gagal menutup sesi menggantung:', err.message));
+
+  // Tutup sesi monitor aktif milik satu admin (dipakai saat stop / disconnect)
+  const endMonitorSessions = async (adminId, sessionId = null) => {
+    try {
+      const result = sessionId
+        ? await dbPool.query(
+            `UPDATE screen_sessions SET status = 'ended', ended_at = NOW()
+             WHERE id = $1 AND admin_id = $2 AND status = 'active' RETURNING id`,
+            [sessionId, adminId]
+          )
+        : await dbPool.query(
+            `UPDATE screen_sessions SET status = 'ended', ended_at = NOW()
+             WHERE admin_id = $1 AND status = 'active' RETURNING id`,
+            [adminId]
+          );
+      for (const row of result.rows) monitorSessions.delete(row.id);
+      return result.rowCount;
+    } catch (err) {
+      console.error('[Monitor] Gagal menutup sesi:', err.message);
+      return 0;
+    }
+  };
 
   // Socket.IO connection handler
   io.on('connection', (socket) => {
@@ -287,6 +374,17 @@ app.prepare().then(() => {
         fromUserId: socket.userId,
         sessionId: data.sessionId
       });
+    });
+
+    // Admin menghentikan pemantauan — tutup sesi di DB & beri tahu karyawan
+    socket.on('monitor:stop', async (data) => {
+      if (!isAdmin(socket.userRole)) return;
+      const session = monitorSessions.get(data?.sessionId);
+      const closed = await endMonitorSessions(socket.userId, data?.sessionId || null);
+      if (session) {
+        io.to(`user:${session.employeeId}`).emit('monitor:stopped', { sessionId: data.sessionId });
+      }
+      if (closed > 0) console.log(`🛑 ${socket.userEmail} menghentikan ${closed} sesi monitor`);
     });
 
     // Start working (from WelcomeWorkModal)
@@ -509,9 +607,25 @@ app.prepare().then(() => {
       console.log(`❌ User disconnected: ${socket.userEmail} (source: ${socket.source})`);
 
       // Bersihkan sesi monitor yang melibatkan socket ini
+      const affectedEmployees = new Set();
       for (const [sessionId, session] of monitorSessions.entries()) {
         if (session.adminId === socket.userId || session.employeeId === socket.userId) {
+          if (session.adminId === socket.userId) affectedEmployees.add(session.employeeId);
           monitorSessions.delete(sessionId);
+        }
+      }
+
+      // Admin terputus → tutup sesi di DB dan hentikan indikator di sisi karyawan
+      if (isAdmin(socket.userRole)) {
+        const closed = await endMonitorSessions(socket.userId);
+        if (closed > 0) console.log(`🛑 ${closed} sesi monitor ditutup (admin disconnect)`);
+        for (const employeeId of affectedEmployees) {
+          io.to(`user:${employeeId}`).emit('monitor:stopped', {});
+          // Hentikan capture desktop agent bila tidak ada lagi yang menonton
+          const room = io.sockets.adapter.rooms.get(`monitor:${employeeId}`);
+          if (!room || room.size === 0) {
+            io.to(`user:${employeeId}`).emit('agent:config', { fps: 0 });
+          }
         }
       }
 

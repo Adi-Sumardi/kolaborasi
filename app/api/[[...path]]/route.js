@@ -6004,6 +6004,42 @@ async function handleMonitorConnect(request) {
   }
 }
 
+// Tutup sesi monitor (admin only). Tanpa ini screen_sessions terus menumpuk
+// dengan status 'active' dan daftar sesi aktif menampilkan sesi yang sudah mati.
+async function handleMonitorDisconnect(request) {
+  try {
+    const user = verifyToken(request);
+    if (!user || !hasPermission(user.role, ['super_admin', 'owner'])) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    let sessionId = null;
+    try {
+      const body = await request.json();
+      sessionId = body?.sessionId || null;
+    } catch {
+      // body opsional — tanpa sessionId berarti tutup semua sesi admin ini
+    }
+
+    const result = sessionId
+      ? await query(
+          `UPDATE screen_sessions SET status = 'ended', ended_at = NOW()
+           WHERE id = $1 AND admin_id = $2 AND status = 'active' RETURNING id`,
+          [sessionId, user.userId]
+        )
+      : await query(
+          `UPDATE screen_sessions SET status = 'ended', ended_at = NOW()
+           WHERE admin_id = $1 AND status = 'active' RETURNING id`,
+          [user.userId]
+        );
+
+    return NextResponse.json({ success: true, endedSessions: result.rowCount });
+  } catch (error) {
+    console.error('Monitor disconnect error:', error);
+    return NextResponse.json({ error: 'Failed to end session' }, { status: 500 });
+  }
+}
+
 // Get monitor code for a user
 async function handleGetMonitorCode(request, userId) {
   try {
@@ -6899,7 +6935,7 @@ async function handleGetStaffOutputMonitor(request) {
         j.period_month,
         j.period_year,
         j.task_types,
-        j.rekap_laporan_deadline,
+        j.rekap_laporan_deadline::text AS rekap_laporan_deadline,
         rekap_sub.created_at AS tgl_lapor,
         rekap_sub.is_late AS lapor_is_late,
         rekap_sub.created_at AS tgl_report,
@@ -6928,8 +6964,15 @@ async function handleGetStaffOutputMonitor(request) {
       JOIN clients c ON j.client_id = c.id
       JOIN jobdesk_assignments ja ON ja.jobdesk_id = j.id
       JOIN users u ON ja.user_id = u.id
-      LEFT JOIN jobdesk_submissions rekap_sub ON rekap_sub.jobdesk_id = j.id
-        AND rekap_sub.task_type = 'rekap_laporan'
+      -- LATERAL + LIMIT 1: tanpa ini, jobdesk dengan >1 submission rekap_laporan
+      -- membuat klien yang sama muncul berkali-kali di tabel monitoring.
+      LEFT JOIN LATERAL (
+        SELECT created_at, is_late
+        FROM jobdesk_submissions
+        WHERE jobdesk_id = j.id AND task_type = 'rekap_laporan'
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) rekap_sub ON true
       LEFT JOIN billing_records br ON br.client_id = c.id
         AND br.period_month = $1
         AND br.period_year = $2
@@ -7208,6 +7251,7 @@ export async function POST(request, { params }) {
 
     // Screen Monitoring
     if (path === 'monitor/connect') return handleMonitorConnect(request);
+    if (path === 'monitor/disconnect') return handleMonitorDisconnect(request);
 
     // Billing Records
     if (path === 'billing') return handleCreateBillingRecord(request);

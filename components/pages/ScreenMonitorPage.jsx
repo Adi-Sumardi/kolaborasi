@@ -18,50 +18,52 @@ export default function ScreenMonitorPage({ user }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [monitorSource, setMonitorSource] = useState(null); // 'agent' | 'webrtc' | null
   const [tick, setTick] = useState(0);
+  const [connectedAt, setConnectedAt] = useState(null);
   const videoRef = useRef(null);
   const imgRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const socketRef = useRef(null);
   const videoContainerRef = useRef(null);
   const activeSessionIdRef = useRef(null);
+  // Dipakai saat unmount, di mana state React sudah tidak bisa dibaca lagi
+  const watchedUserIdRef = useRef(null);
+  const agentFrameHandlerRef = useRef(null);
 
   useEffect(() => {
     const socket = initSocket();
     socketRef.current = socket;
 
+    // Semua handler disimpan agar bisa di-off saat unmount — tanpa ini
+    // handler menumpuk tiap kali halaman dibuka ulang.
+    const joinMonitor = () => {
+      socket.emit('activity:join-monitor');
+      socket.emit('activity:request-all');
+    };
+
+    const onActivityUpdate = (data) => {
+      setEmployeeActivities(prev => ({
+        ...prev,
+        [data.userId]: {
+          status: data.status,
+          page: data.page,
+          pageLabel: data.pageLabel,
+          onlineSince: data.onlineSince,
+          lastActivity: data.lastActivity,
+          screenReady: data.screenReady || false,
+          agentConnected: data.agentConnected || false,
+          mood: data.mood || null,
+          workStartedAt: data.workStartedAt || null
+        }
+      }));
+    };
+
+    const onAllData = (allData) => setEmployeeActivities(allData || {});
+
     if (socket) {
-      const joinMonitor = () => {
-        socket.emit('activity:join-monitor');
-        socket.emit('activity:request-all');
-      };
-
-      if (socket.connected) {
-        joinMonitor();
-      }
+      if (socket.connected) joinMonitor();
       socket.on('connect', joinMonitor);
-
-      socket.on('activity:update', (data) => {
-        setEmployeeActivities(prev => ({
-          ...prev,
-          [data.userId]: {
-            status: data.status,
-            page: data.page,
-            pageLabel: data.pageLabel,
-            onlineSince: data.onlineSince,
-            lastActivity: data.lastActivity,
-            screenReady: data.screenReady || false,
-            agentConnected: data.agentConnected || false,
-            mood: data.mood || null,
-            workStartedAt: data.workStartedAt || null
-          }
-        }));
-      });
-
-      socket.on('activity:all-data', (allData) => {
-        setEmployeeActivities(allData || {});
-      });
-
-      // WebRTC handlers
+      socket.on('activity:update', onActivityUpdate);
+      socket.on('activity:all-data', onAllData);
       socket.on('monitor:answer', handleAnswer);
       socket.on('monitor:ice-candidate', handleIceCandidate);
     }
@@ -73,8 +75,37 @@ export default function ScreenMonitorPage({ user }) {
 
     return () => {
       clearInterval(interval);
+
+      if (socket) {
+        socket.off('connect', joinMonitor);
+        socket.off('activity:update', onActivityUpdate);
+        socket.off('activity:all-data', onAllData);
+        socket.off('monitor:answer', handleAnswer);
+        socket.off('monitor:ice-candidate', handleIceCandidate);
+
+        // Hentikan stream desktop agent. Tanpa ini socket admin tetap berada di
+        // room monitor:{userId}, sehingga agent karyawan terus screenshot 1 fps
+        // selamanya meski admin sudah pindah halaman.
+        if (agentFrameHandlerRef.current) {
+          socket.off('agent:frame', agentFrameHandlerRef.current);
+          agentFrameHandlerRef.current = null;
+        }
+        if (watchedUserIdRef.current) {
+          socket.emit('agent:unwatch', { targetUserId: watchedUserIdRef.current });
+          watchedUserIdRef.current = null;
+        }
+        if (activeSessionIdRef.current) {
+          socket.emit('monitor:stop', { sessionId: activeSessionIdRef.current });
+          activeSessionIdRef.current = null;
+        }
+      }
+
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      if (imgRef.current?.src?.startsWith('blob:')) {
+        URL.revokeObjectURL(imgRef.current.src);
       }
     };
   }, []);
@@ -133,6 +164,7 @@ export default function ScreenMonitorPage({ user }) {
       await startWebRTC(employee.id, data.session.id);
       setIsScreenSharing(true);
       setMonitorSource('webrtc');
+      setConnectedAt(new Date());
       toast.success(`Meminta screen share dari ${employee.name}...`);
     } catch (err) {
       toast.error('Gagal terhubung ke karyawan');
@@ -164,21 +196,26 @@ export default function ScreenMonitorPage({ user }) {
     };
 
     socket.on('agent:frame', frameHandler);
-    socket._agentFrameHandler = frameHandler;
+    agentFrameHandlerRef.current = frameHandler;
+    watchedUserIdRef.current = employee.id;
 
     setIsScreenSharing(true);
     setMonitorSource('agent');
     setConnectingScreen(false);
+    setConnectedAt(new Date());
     toast.success(`Terhubung ke desktop ${employee.name}`);
   };
 
   const stopAgentView = () => {
     const socket = socketRef.current;
-    if (socket && selectedEmployee) {
-      socket.emit('agent:unwatch', { targetUserId: selectedEmployee.id });
-      if (socket._agentFrameHandler) {
-        socket.off('agent:frame', socket._agentFrameHandler);
-        socket._agentFrameHandler = null;
+    if (socket) {
+      if (watchedUserIdRef.current) {
+        socket.emit('agent:unwatch', { targetUserId: watchedUserIdRef.current });
+        watchedUserIdRef.current = null;
+      }
+      if (agentFrameHandlerRef.current) {
+        socket.off('agent:frame', agentFrameHandlerRef.current);
+        agentFrameHandlerRef.current = null;
       }
     }
     // Clean up blob URLs
@@ -263,21 +300,35 @@ export default function ScreenMonitorPage({ user }) {
   };
 
   const handleStopScreenView = () => {
+    const socket = socketRef.current;
+
     // Stop agent view if active
-    if (monitorSource === 'agent') {
-      stopAgentView();
-    }
+    stopAgentView();
+
     // Stop WebRTC if active
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-    activeSessionIdRef.current = null;
+
+    // Tutup sesi di DB supaya screen_sessions tidak menumpuk berstatus 'active'
+    if (activeSessionIdRef.current) {
+      const sessionId = activeSessionIdRef.current;
+      if (socket?.connected) socket.emit('monitor:stop', { sessionId });
+      fetch('/api/monitor/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+        body: JSON.stringify({ sessionId }),
+      }).catch(() => {});
+      activeSessionIdRef.current = null;
+    }
+
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setIsScreenSharing(false);
     setMonitorSource(null);
+    setConnectedAt(null);
   };
 
   const toggleFullscreen = () => {
@@ -617,7 +668,8 @@ export default function ScreenMonitorPage({ user }) {
                     <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        Terhubung sejak: {new Date().toLocaleTimeString('id-ID')}
+                        Terhubung sejak: {connectedAt ? connectedAt.toLocaleTimeString('id-ID') : '-'}
+                        {connectedAt && <span className="text-gray-400">({formatDuration(connectedAt)})</span>}
                       </span>
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
