@@ -357,6 +357,9 @@ app.prepare().then(() => {
   const agentWatchers = new Map();
   const IDLE_FPS = 0.2;
 
+  // Hitung frame per socket agent — untuk log diagnostik (frame pertama + tiap 20)
+  const agentFrameCounts = new Map();
+
   // Tentukan fps efektif: ambil permintaan tertinggi di antara penonton, lalu
   // turunkan ke IDLE_FPS bila karyawannya sedang idle.
   const applyAgentFps = (employeeId) => {
@@ -628,6 +631,19 @@ app.prepare().then(() => {
     // Agent sends screenshot frame (binary buffer)
     socket.on('agent:screenshot', (frameBuffer) => {
       if (socket.source !== 'desktop-agent') return;
+
+      // Log jarang (frame pertama + tiap 20) — supaya masalah "layar tidak
+      // muncul" bisa dibedakan: agent tidak pernah kirim frame, vs frame
+      // terkirim tapi tidak ada penonton, vs masalah di sisi browser admin.
+      const n = (agentFrameCounts.get(socket.id) || 0) + 1;
+      agentFrameCounts.set(socket.id, n);
+      if (n === 1 || n % 20 === 0) {
+        const room = io.sockets.adapter.rooms.get(`monitor:${socket.userId}`);
+        const watchers = room ? room.size : 0;
+        const size = frameBuffer?.length || frameBuffer?.byteLength || 0;
+        console.log(`📸 ${socket.userEmail} frame #${n}, ${size} bytes, ${watchers} penonton`);
+      }
+
       // Relay screenshot ONLY to admins currently watching this employee
       io.to(`monitor:${socket.userId}`).emit('agent:frame', {
         userId: socket.userId,
@@ -739,6 +755,8 @@ app.prepare().then(() => {
     // Disconnect
     socket.on('disconnect', async () => {
       console.log(`❌ User disconnected: ${socket.userEmail} (source: ${socket.source})`);
+
+      agentFrameCounts.delete(socket.id);
 
       // Bersihkan sesi monitor yang melibatkan socket ini
       const affectedEmployees = new Set();
