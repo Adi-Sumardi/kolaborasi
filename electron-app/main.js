@@ -355,7 +355,7 @@ async function startAgent(token, user) {
         updateTrayMenu('Monitoring aktif');
         capture.startCapture(config.fps, (frameBuffer) => {
           socketAgent.emitScreenshot(frameBuffer);
-        }, config.quality || 60);
+        }, config.quality || 60, config.width || 1280);
       } else {
         updateTrayMenu('Terhubung');
         capture.stopCapture();

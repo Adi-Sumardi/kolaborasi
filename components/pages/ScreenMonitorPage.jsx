@@ -138,7 +138,9 @@ export default function ScreenMonitorPage({ user }) {
     };
 
     socket.on('agent:frame', onFrame);
-    targets.forEach(id => socket.emit('agent:watch', { targetUserId: id, fps: GRID_FPS }));
+    // Resolusi kecil untuk grid — thumbnail-nya cuma beberapa ratus piksel,
+    // percuma capture 1280px penuh untuk pratinjau sekecil itu.
+    targets.forEach(id => socket.emit('agent:watch', { targetUserId: id, fps: GRID_FPS, width: 480, quality: 55 }));
 
     return () => {
       socket.off('agent:frame', onFrame);
@@ -230,8 +232,10 @@ export default function ScreenMonitorPage({ user }) {
 
     setConnectingScreen(true);
 
-    // Subscribe to this employee's desktop stream
-    socket.emit('agent:watch', { targetUserId: employee.id, fps: 1 });
+    // Subscribe to this employee's desktop stream.
+    // fps 2 + resolusi 1600px + kualitas 75 supaya tampilan penuh jernih dan
+    // tidak patah-patah (dibanding grid yang sengaja dibuat hemat di 0.2fps).
+    socket.emit('agent:watch', { targetUserId: employee.id, fps: 2, width: 1600, quality: 75 });
 
     // Listen for frames
     const frameHandler = (data) => {

@@ -188,7 +188,9 @@ app.prepare().then(() => {
       credentials: true
     },
     path: '/socket.io/',
-    maxHttpBufferSize: 500 * 1024 // 500KB for screenshot binary
+    // Frame agent:screenshot bisa lebih besar saat mode "Lihat Layar" penuh
+    // minta resolusi/kualitas tinggi (lihat applyAgentSettings) — beri ruang.
+    maxHttpBufferSize: 3 * 1024 * 1024 // 3MB
   });
 
   // Socket.IO authentication middleware
@@ -354,24 +356,36 @@ app.prepare().then(() => {
   // Siapa menonton siapa dan pada fps berapa: employeeId -> Map<socketId, fps>.
   // Perlu per-penonton karena thumbnail grid menonton banyak orang di 0.2 fps
   // sementara tampilan penuh minta 1 fps — tanpa ini yang terakhir menimpa.
+  // employeeId -> Map<socketId, {fps, quality, width}>
   const agentWatchers = new Map();
   const IDLE_FPS = 0.2;
+  const DEFAULT_QUALITY = 60;
+  const DEFAULT_WIDTH = 1280;
 
   // Hitung frame per socket agent — untuk log diagnostik (frame pertama + tiap 20)
   const agentFrameCounts = new Map();
 
-  // Tentukan fps efektif: ambil permintaan tertinggi di antara penonton, lalu
-  // turunkan ke IDLE_FPS bila karyawannya sedang idle.
-  const applyAgentFps = (employeeId) => {
+  // Gabungkan permintaan semua penonton (grid @fps rendah + "Lihat Layar" @fps
+  // tinggi bisa nonton bareng): ambil fps/quality/width TERTINGGI yang diminta,
+  // supaya penonton yang minta paling detail tetap terlayani. Lalu turunkan ke
+  // IDLE_FPS bila karyawannya sedang idle (hemat bandwidth saat tak ada aktivitas).
+  const applyAgentSettings = (employeeId) => {
     const watchers = agentWatchers.get(employeeId);
     if (!watchers || watchers.size === 0) {
       io.to(`user:${employeeId}`).emit('agent:config', { fps: 0 });
       return 0;
     }
-    const requested = Math.max(...watchers.values());
+    const settings = [...watchers.values()];
+    const requestedFps = Math.max(...settings.map(s => s.fps));
+    const quality = Math.max(...settings.map(s => s.quality || DEFAULT_QUALITY));
+    const width = Math.max(...settings.map(s => s.width || DEFAULT_WIDTH));
     const idle = employeeActivity.get(employeeId)?.status === 'idle';
-    const fps = idle ? Math.min(requested, IDLE_FPS) : requested;
-    io.to(`user:${employeeId}`).emit('agent:config', { fps, quality: idle ? 40 : 60 });
+    const fps = idle ? Math.min(requestedFps, IDLE_FPS) : requestedFps;
+    io.to(`user:${employeeId}`).emit('agent:config', {
+      fps,
+      quality: idle ? Math.min(quality, 40) : quality,
+      width: idle ? Math.min(width, DEFAULT_WIDTH) : width,
+    });
     return fps;
   };
 
@@ -674,10 +688,15 @@ app.prepare().then(() => {
         }
       }
 
-      // Catat fps yang diminta penonton ini, lalu terapkan fps efektif
+      // Catat settingan yang diminta penonton ini, lalu terapkan yang efektif
+      // (gabungan tertinggi dari semua penonton — lihat applyAgentSettings)
       if (!agentWatchers.has(data.targetUserId)) agentWatchers.set(data.targetUserId, new Map());
-      agentWatchers.get(data.targetUserId).set(socket.id, Number(data.fps) || 1);
-      const fps = applyAgentFps(data.targetUserId);
+      agentWatchers.get(data.targetUserId).set(socket.id, {
+        fps: Number(data.fps) || 1,
+        quality: Number(data.quality) || DEFAULT_QUALITY,
+        width: Number(data.width) || DEFAULT_WIDTH,
+      });
+      const fps = applyAgentSettings(data.targetUserId);
 
       notifyWatchState(data.targetUserId);
       console.log(`👁️ ${socket.userEmail} started watching ${data.targetUserId} (fps efektif: ${fps})`);
@@ -695,14 +714,14 @@ app.prepare().then(() => {
         await endMonitorSessions(socket.userId, sessionId);
       }
 
-      // Lepas fps penonton ini; applyAgentFps otomatis mengirim fps 0
+      // Lepas fps penonton ini; applyAgentSettings otomatis mengirim fps 0
       // kalau sudah tidak ada penonton tersisa.
       const watchers = agentWatchers.get(data.targetUserId);
       if (watchers) {
         watchers.delete(socket.id);
         if (watchers.size === 0) agentWatchers.delete(data.targetUserId);
       }
-      applyAgentFps(data.targetUserId);
+      applyAgentSettings(data.targetUserId);
       notifyWatchState(data.targetUserId);
       console.log(`👁️ ${socket.userEmail} stopped watching ${data.targetUserId}`);
     });
@@ -725,12 +744,12 @@ app.prepare().then(() => {
     socket.on('activity:idle', () => {
       updateActivity(socket.userId, { status: 'idle' });
       // Adaptive fps: karyawan idle -> turunkan laju capture, hemat bandwidth
-      applyAgentFps(socket.userId);
+      applyAgentSettings(socket.userId);
     });
 
     socket.on('activity:active', () => {
       updateActivity(socket.userId, { status: 'online' });
-      applyAgentFps(socket.userId);
+      applyAgentSettings(socket.userId);
     });
 
     // Data aktivitas seluruh karyawan — admin only
@@ -789,7 +808,7 @@ app.prepare().then(() => {
 
         for (const employeeId of affectedEmployees) {
           io.to(`user:${employeeId}`).emit('monitor:stopped', {});
-          applyAgentFps(employeeId); // kirim fps 0 bila tak ada penonton tersisa
+          applyAgentSettings(employeeId); // kirim fps 0 bila tak ada penonton tersisa
           notifyWatchState(employeeId);
         }
       }

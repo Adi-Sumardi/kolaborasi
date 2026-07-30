@@ -35,11 +35,15 @@ function isBlankFrame(pngBuffer) {
   return nonZero < 10;
 }
 
-async function captureScreen(quality = 60) {
+async function captureScreen(quality = 60, width = 1280) {
   try {
+    // thumbnailSize adalah PLAFON resolusi capture (bukan cuma resize akhir) —
+    // kalau ini tidak ikut naik, permintaan width lebih tinggi dari server
+    // tidak akan berpengaruh, tetap mentok di sini.
+    const height = Math.round(width * 9 / 16);
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 1280, height: 720 }
+      thumbnailSize: { width, height }
     });
 
     if (sources.length === 0) return null;
@@ -66,17 +70,17 @@ async function captureScreen(quality = 60) {
       console.error('[Capture] Screen recording permission likely not granted - frame is blank/black');
     }
 
-    // Saat karyawan idle server mengirim quality lebih rendah — hemat bandwidth
+    // Saat karyawan idle server mengirim quality/width lebih rendah — hemat bandwidth
     if (sharp) {
       const jpegBuffer = await sharp(pngBuffer)
-        .resize({ width: 1280, withoutEnlargement: true })
+        .resize({ width, withoutEnlargement: true })
         .jpeg({ quality })
         .toBuffer();
       return jpegBuffer;
     }
 
     // Fallback: use NativeImage resize + JPEG
-    const resized = thumbnail.resize({ width: 1280 });
+    const resized = thumbnail.resize({ width });
     return resized.toJPEG(quality);
   } catch (err) {
     console.error('[Capture] Error:', err.message);
@@ -84,7 +88,7 @@ async function captureScreen(quality = 60) {
   }
 }
 
-function startCapture(fps, onFrame, quality = 60) {
+function startCapture(fps, onFrame, quality = 60, width = 1280) {
   stopCapture();
   if (fps <= 0) return;
 
@@ -92,10 +96,10 @@ function startCapture(fps, onFrame, quality = 60) {
   const intervalMs = Math.round(1000 / fps);
 
   let frameCount = 0;
-  console.log(`[Capture] Starting at ${fps} FPS, quality ${quality} (interval: ${intervalMs}ms)`);
+  console.log(`[Capture] Starting at ${fps} FPS, quality ${quality}, width ${width} (interval: ${intervalMs}ms)`);
 
   captureInterval = setInterval(async () => {
-    const frame = await captureScreen(quality);
+    const frame = await captureScreen(quality, width);
     if (frame) {
       frameCount++;
       if (frameCount <= 3 || frameCount % 10 === 0) {
