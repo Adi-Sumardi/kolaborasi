@@ -75,10 +75,18 @@ export default function ActivityTracker({ user, currentPage, pageLabel, isWorkin
 
             // Only ask for permission if no active stream (1x popup per session)
             if (!stream) {
+              // Minta SELURUH LAYAR, bukan tab aplikasi ini.
+              // Sebelumnya preferCurrentTab:true membuat admin hanya melihat
+              // dashboard kolaborasi itu sendiri — bukan pekerjaan sebenarnya.
               stream = await navigator.mediaDevices.getDisplayMedia({
-                video: { cursor: 'always' },
+                video: {
+                  cursor: 'always',
+                  displaySurface: 'monitor', // arahkan picker ke "Entire Screen"
+                },
                 audio: false,
-                preferCurrentTab: true
+                monitorTypeSurfaces: 'include',
+                selfBrowserSurface: 'exclude', // jangan tawarkan tab ini sendiri
+                surfaceSwitching: 'exclude',
               });
               streamRef.current = stream;
 

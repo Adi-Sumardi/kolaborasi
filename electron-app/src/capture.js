@@ -35,7 +35,7 @@ function isBlankFrame(pngBuffer) {
   return nonZero < 10;
 }
 
-async function captureScreen() {
+async function captureScreen(quality = 60) {
   try {
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
@@ -66,25 +66,25 @@ async function captureScreen() {
       console.error('[Capture] Screen recording permission likely not granted - frame is blank/black');
     }
 
-    // Use sharp if available, otherwise send raw PNG
+    // Saat karyawan idle server mengirim quality lebih rendah — hemat bandwidth
     if (sharp) {
       const jpegBuffer = await sharp(pngBuffer)
         .resize({ width: 1280, withoutEnlargement: true })
-        .jpeg({ quality: 60 })
+        .jpeg({ quality })
         .toBuffer();
       return jpegBuffer;
     }
 
     // Fallback: use NativeImage resize + JPEG
     const resized = thumbnail.resize({ width: 1280 });
-    return resized.toJPEG(60);
+    return resized.toJPEG(quality);
   } catch (err) {
     console.error('[Capture] Error:', err.message);
     return null;
   }
 }
 
-function startCapture(fps, onFrame) {
+function startCapture(fps, onFrame, quality = 60) {
   stopCapture();
   if (fps <= 0) return;
 
@@ -92,10 +92,10 @@ function startCapture(fps, onFrame) {
   const intervalMs = Math.round(1000 / fps);
 
   let frameCount = 0;
-  console.log(`[Capture] Starting at ${fps} FPS (interval: ${intervalMs}ms)`);
+  console.log(`[Capture] Starting at ${fps} FPS, quality ${quality} (interval: ${intervalMs}ms)`);
 
   captureInterval = setInterval(async () => {
-    const frame = await captureScreen();
+    const frame = await captureScreen(quality);
     if (frame) {
       frameCount++;
       if (frameCount <= 3 || frameCount % 10 === 0) {
